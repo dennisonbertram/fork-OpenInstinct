@@ -6,7 +6,7 @@ import { squareBaseUrl } from "@/lib/square";
 
 export default defineOpenAPIConnection({
   spec: "https://raw.githubusercontent.com/square/connect-api-specification/551af55f16fce178780e6556570973aaf660e52a/api.json",
-  baseUrl: squareBaseUrl(env.SQUARE_ENVIRONMENT),
+  baseUrl: squareBaseUrl(env.SQUARE_ENVIRONMENT, env.SQUARE_BASE_URL),
   description:
     "The connected user's Square seller account: locations, catalog items, customers, orders, payments, invoices, inventory, and bookings. Read-only.",
   headers: { "Square-Version": "2025-04-16" },

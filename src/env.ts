@@ -44,6 +44,15 @@ const betterAuthUrlSchema = requiredValue.refine(
   "BETTER_AUTH_URL must be an absolute URL"
 );
 
+const squareLoopbackBaseUrlSchema = requiredValue.refine((value) => {
+  if (!URL.canParse(value)) return false;
+  const url = new URL(value);
+  return (
+    url.protocol === "http:" &&
+    (url.hostname === "127.0.0.1" || url.hostname === "localhost")
+  );
+}, "SQUARE_BASE_URL must be http://127.0.0.1:<port> or http://localhost:<port>");
+
 function optionalValueWithLocalDefault<T extends z.ZodType<string, string>>(
   schema: T,
   localDefault: z.util.NoUndefined<z.output<T>>
@@ -86,8 +95,10 @@ export const env = createEnv({
     CRON_SECRET: requiredValue.optional(),
     GOOGLE_CONNECTOR_UID: requiredValue.default("google/open-instinct"),
     LINQ_CONNECTOR: requiredValue.optional(),
+    SQUARE_BASE_URL: squareLoopbackBaseUrlSchema.optional(),
     SQUARE_CONNECTOR_UID: requiredValue.optional(),
     SQUARE_ENVIRONMENT: z.enum(["sandbox", "production"]).default("sandbox"),
+    SQUARE_SANDBOX_ACCESS_TOKEN: requiredValue.optional(),
     LINQ_PHONE_NUMBER: requiredValue
       .refine(
         (value) => isE164PhoneNumber(value),
@@ -105,6 +116,22 @@ export const env = createEnv({
     VERCEL_PROJECT_PRODUCTION_URL: requiredValue.optional(),
     VERCEL_URL: requiredValue.optional(),
   },
+  createFinalSchema: (serverFields) =>
+    z
+      .object(serverFields)
+      .refine(
+        (value) =>
+          !(
+            value.SQUARE_SANDBOX_ACCESS_TOKEN !== undefined &&
+            (value.SQUARE_ENVIRONMENT === "production" ||
+              value.VERCEL_ENV === "production")
+          ),
+        {
+          message:
+            "SQUARE_SANDBOX_ACCESS_TOKEN must not be set when SQUARE_ENVIRONMENT or VERCEL_ENV is production.",
+          path: ["SQUARE_SANDBOX_ACCESS_TOKEN"],
+        }
+      ),
   experimental__runtimeEnv: {},
   emptyStringAsUndefined: true,
 });
