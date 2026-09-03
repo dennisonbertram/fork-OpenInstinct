@@ -51,6 +51,23 @@ describe("squareCases", () => {
     expect(facts).toContain("000001");
   });
 
+  it("accepts SearchCustomers or ListCustomers, and SearchOrders, for the Ada cases", () => {
+    for (const id of ["ada-order-total", "ada-disambiguation"]) {
+      const squareCase = squareCases.find((c) => c.id === id);
+      expect(squareCase?.expectTools).toEqual([
+        ["square__SearchCustomers", "square__ListCustomers"],
+        ["square__SearchOrders"],
+      ]);
+    }
+  });
+
+  it("accepts SearchOrders or ListPayments for today's sales total", () => {
+    const salesCase = squareCases.find((c) => c.id === "todays-sales-total");
+    expect(salesCase?.expectTools).toEqual([
+      ["square__SearchOrders", "square__ListPayments"],
+    ]);
+  });
+
   it("gives every 'any' factsMode case more than one candidate fact", () => {
     const anyModeCases = squareCases.filter((c) => c.factsMode === "any");
     expect(anyModeCases.length).toBeGreaterThan(0);

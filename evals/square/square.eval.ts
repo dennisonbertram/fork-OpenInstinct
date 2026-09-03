@@ -24,8 +24,12 @@ export default squareCases.map((squareCase) =>
       await t.send(squareCase.prompt);
       t.succeeded();
 
-      for (const tool of squareCase.expectTools) {
-        t.calledTool(tool);
+      for (const group of squareCase.expectTools) {
+        t.eventsSatisfy(
+          `at least one of [${group.join(", ")}] was called`,
+          (events) =>
+            calledToolNames(events).some((name) => group.includes(name))
+        );
       }
       t.eventsSatisfy(
         `no tool call matches ${squareCase.forbidTools.source}`,
