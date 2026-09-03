@@ -36,8 +36,9 @@ const rawArguments = process.argv.slice(2);
 const withDatabase =
   rawArguments.includes("--with-database") ||
   environment.EVAL_SQUARE_DATABASE === "compose";
+// pnpm forwards a bare "--" separator; eve would treat it as an eval id.
 const forwardedArguments = rawArguments.filter(
-  (arg) => arg !== "--with-database"
+  (arg) => arg !== "--with-database" && arg !== "--"
 );
 
 let activeChild: ChildProcess | undefined;
