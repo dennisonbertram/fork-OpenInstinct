@@ -1,5 +1,5 @@
 ---
-description: Use before any Square question about the user's sales, orders, customers, catalog, inventory, invoices, payments, or refunds, and before answering any request to change Square data.
+description: Load only when the user asks about Square or their point of sale (sales, orders, customers, catalog, inventory, invoices, payments, refunds) or asks to change Square data. Do not load for other topics.
 ---
 
 # Square seller data

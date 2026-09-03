@@ -10,16 +10,16 @@ being considered. Documents use three labels deliberately:
 
 ## Start here
 
-| Reader              | Document                                           | Purpose                                                                                               |
-| ------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Operator            | [`operations/VERCEL.md`](operations/VERCEL.md)     | Zero-to-running local and Vercel setup, Linq, verification, rollback, and incidents                   |
-| Coding agent        | [`AGENT_GUIDE.md`](AGENT_GUIDE.md)                 | Repository topology, ownership boundaries, change recipes, and gates                                  |
-| Architect           | [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md) | Current system, trust boundaries, findings, and portability limits                                    |
-| Product/engineering | [`PRODUCT_DIRECTION.md`](PRODUCT_DIRECTION.md)     | Infrastructure-first recommendation, product model, MVP, API, webhooks, and phone lifecycle           |
-| Platform engineer   | [`MULTITENANCY.md`](MULTITENANCY.md)               | Tenant isolation contract, migration sequence, quotas, lifecycle, and test strategy                   |
+| Reader              | Document                                           | Purpose                                                                                                        |
+| ------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Operator            | [`operations/VERCEL.md`](operations/VERCEL.md)     | Zero-to-running local and Vercel setup, Linq, verification, rollback, and incidents                            |
+| Coding agent        | [`AGENT_GUIDE.md`](AGENT_GUIDE.md)                 | Repository topology, ownership boundaries, change recipes, and gates                                           |
+| Architect           | [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md) | Current system, trust boundaries, findings, and portability limits                                             |
+| Product/engineering | [`PRODUCT_DIRECTION.md`](PRODUCT_DIRECTION.md)     | Infrastructure-first recommendation, product model, MVP, API, webhooks, and phone lifecycle                    |
+| Platform engineer   | [`MULTITENANCY.md`](MULTITENANCY.md)               | Tenant isolation contract, migration sequence, quotas, lifecycle, and test strategy                            |
 | Coding agent        | [`agent-loop.html`](agent-loop.html)               | Diagram of one turn: channels, scope, session hooks, steps, tool branches, bubble delivery (open in a browser) |
-| Integrations        | [`SQUARE.md`](SQUARE.md)                           | Per-user Square connection: implemented pieces, sandbox state, verification, and the proposed POS gym |
-| Contributor         | [`../README.md`](../README.md)                     | Product overview and normal development entry points                                                  |
+| Integrations        | [`SQUARE.md`](SQUARE.md)                           | Per-user Square connection: implemented pieces, sandbox state, verification, and the proposed POS gym          |
+| Contributor         | [`../README.md`](../README.md)                     | Product overview and normal development entry points                                                           |
 
 ## Current truth
 
