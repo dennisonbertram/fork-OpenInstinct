@@ -134,6 +134,14 @@ route map, ownership boundaries, storage rules, change recipes, and verification
 gates. The architecture review and operational contracts are linked from that
 guide.
 
+[`docs/agent-loop.html`](docs/agent-loop.html) is the diagram of how one user
+message becomes one reply (channels, scope, session hooks, turn steps, tool
+branches, bubble delivery). It names files and hook events, so it goes stale.
+When a change touches `agent/channels/`, `agent/hooks/`, `agent/tools/`,
+`agent/skills/`, `agent/connections/`, `agent/subagents/`, `agent/agent.ts`,
+or `agent/lib/linq/reply.ts`, update the diagram in the same pull request.
+Open it in a browser to check the SVG after editing.
+
 For product work involving configurable agents, managed phone lines, MCP/tool
 catalogs, public APIs, webhooks, or shared tenants, read
 [`docs/PRODUCT_DIRECTION.md`](docs/PRODUCT_DIRECTION.md) and
