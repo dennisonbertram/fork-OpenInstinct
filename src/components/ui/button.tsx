@@ -9,7 +9,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
+          "border-transparent bg-primary text-primary-foreground hover:bg-primary-hover",
         outline:
           "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
@@ -23,10 +23,10 @@ const buttonVariants = cva(
         plain:
           "border-transparent bg-transparent hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent active:not-aria-[haspopup]:translate-y-0",
         surface:
-          "border-border bg-card text-card-foreground shadow-sm hover:bg-muted/50 aria-expanded:bg-muted/50 active:not-aria-[haspopup]:translate-y-0",
+          "border-border bg-card text-card-foreground shadow-card hover:shadow-card-hover hover:bg-muted/50 aria-expanded:bg-muted/50 active:not-aria-[haspopup]:translate-y-0",
         destructive:
           "border-destructive-border bg-destructive-subtle text-destructive hover:bg-destructive-subtle/70 focus-visible:border-destructive-border focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",
-        link: "border-transparent text-primary underline-offset-4 hover:underline",
+        link: "border-transparent text-ring underline-offset-4 hover:underline",
         motion:
           "border-transparent bg-transparent text-muted-foreground hover:bg-transparent hover:text-foreground aria-pressed:text-foreground dark:hover:bg-transparent",
       },

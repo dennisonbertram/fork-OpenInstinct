@@ -5,26 +5,27 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const badgeVariants = cva(
-  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-4xl border border-transparent px-2 py-0.5 type-caption whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3!",
+  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 type-caption whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3!",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
+        default:
+          "bg-primary text-primary-foreground [a]:hover:bg-primary-hover",
         secondary:
           "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
         success:
-          "border-success-border bg-success-subtle text-success focus-visible:ring-success/20 [a]:hover:bg-success-subtle/70",
+          "border-success-border bg-success-subtle text-foreground focus-visible:ring-success/20 [a]:hover:bg-success-subtle/70 [&>svg]:text-success",
         warning:
-          "border-warning-border bg-warning-subtle text-warning focus-visible:ring-warning/20 [a]:hover:bg-warning-subtle/70",
+          "border-warning-border bg-warning-subtle text-foreground focus-visible:ring-warning/20 [a]:hover:bg-warning-subtle/70 [&>svg]:text-warning",
         information:
-          "border-information-border bg-information-subtle text-information focus-visible:ring-information/20 [a]:hover:bg-information-subtle/70",
+          "border-information-border bg-information-subtle text-foreground focus-visible:ring-information/20 [a]:hover:bg-information-subtle/70 [&>svg]:text-information",
         destructive:
           "border-destructive-border bg-destructive-subtle text-destructive focus-visible:ring-destructive/20 [a]:hover:bg-destructive-subtle/70",
         outline:
           "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
-        link: "text-primary underline-offset-4 hover:underline",
+        link: "text-ring underline-offset-4 hover:underline",
       },
     },
     defaultVariants: {

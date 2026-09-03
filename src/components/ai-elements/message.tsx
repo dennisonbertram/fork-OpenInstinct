@@ -55,8 +55,8 @@ export const MessageContent = ({
   <div
     className={cn(
       "flex w-fit min-w-0 max-w-full flex-col gap-3 overflow-hidden type-supporting-body",
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
-      "group-[.is-assistant]:text-foreground",
+      "group-[.is-user]:ml-auto group-[.is-user]:rounded-bubble group-[.is-user]:bg-bubble-user group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
+      "group-[.is-assistant]:rounded-bubble group-[.is-assistant]:bg-bubble-assistant group-[.is-assistant]:px-4 group-[.is-assistant]:py-3 group-[.is-assistant]:text-foreground",
       className
     )}
     {...props}
