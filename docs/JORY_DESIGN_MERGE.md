@@ -175,18 +175,20 @@ every later step depends on them.
 
 ### 3.1 Decisions that need the owner
 
-Each of these has no answer in either codebase. They are marked TBD.
+Each of these had no answer in either codebase. They were decided on 2026-09-03 and implemented in the same-day restyle; see `DESIGN_SYSTEM.md`.
 
-| #   | Decision                                                                                      | Options seen in the code                                     | Status |
-| --- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ------ |
-| D1  | Which Jory palette is canonical: the token file, the marketing mockup, or a reconciled set    | token `#071B36` / `#4F46E5`; marketing `#0D1A2F` / `#3E2EC0` | TBD    |
-| D2  | Which font: Inter Tight (Jory) or Vault (OpenInstinct)                                        | both are in use                                              | TBD    |
-| D3  | Does the product UI get the warm cream background, or white with cream reserved for marketing | product dashboard uses cream today; primitives use white     | TBD    |
-| D4  | Is dark mode in scope                                                                         | neither product ships it                                     | TBD    |
-| D5  | Headless library: keep base-ui (OpenInstinct) or move to radix-ui (Jory)                      | both are shadcn-supported                                    | TBD    |
-| D6  | Does the OpenInstinct primary blue survive anywhere, or does navy replace it                  | Jory has no blue                                             | TBD    |
+| #   | Decision                                                                                      | Options seen in the code                                     | Status                                                                                                               |
+| --- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| D1  | Which Jory palette is canonical: the token file, the marketing mockup, or a reconciled set    | token `#071B36` / `#4F46E5`; marketing `#0D1A2F` / `#3E2EC0` | Decided 2026-09-03: the token file. `foundation.css` maps it onto the shadcn semantic tokens.                        |
+| D2  | Which font: Inter Tight (Jory) or Vault (OpenInstinct)                                        | both are in use                                              | Decided 2026-09-03: Inter Tight (and JetBrains Mono for code) through `next/font`.                                   |
+| D3  | Does the product UI get the warm cream background, or white with cream reserved for marketing | product dashboard uses cream today; primitives use white     | Decided 2026-09-03: cream page (`#FAF7F0`), white cards and popovers; secondary and muted surfaces use `#E6E6E6`.    |
+| D4  | Is dark mode in scope                                                                         | neither product ships it                                     | Decided 2026-09-03: out of scope. The `.dark` block stays defined and unreachable.                                   |
+| D5  | Headless library: keep base-ui (OpenInstinct) or move to radix-ui (Jory)                      | both are shadcn-supported                                    | Decided 2026-09-03: keep base-ui.                                                                                    |
+| D6  | Does the OpenInstinct primary blue survive anywhere, or does navy replace it                  | Jory has no blue                                             | Decided 2026-09-03: navy `#061A33` is `primary`; indigo `#4F46E5` is `ring` and the link color; the blue is removed. |
 
 ### 3.2 Steps after the decisions
+
+Status 2026-09-03: steps 1 to 3 are implemented (tokens, type, primitives: pill badges, ink text on tints, bubbles). Steps 4 to 6 remain open.
 
 1. **Token layer.** Express the chosen Jory palette as OKLCH tokens in
    `src/app/styles/brand/foundation.css`, mapped onto the shadcn semantic

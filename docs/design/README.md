@@ -33,3 +33,5 @@ are converted to sRGB hex on the canvas.
 The three `catalog-*.md` files are the written specs the canvas was drawn
 from. Every value in them is read from a source file on 2026-09-03; the
 catalogs name the file for each value.
+
+Status 2026-09-03: the OpenInstinct sections 04 to 07 were drawn before the Jory restyle landed in code (`../DESIGN_SYSTEM.md`, "Restyle 2026-09-03"). Redrawing them is deferred follow-up work.
