@@ -189,7 +189,7 @@ export const QuestionPrompt = ({
   className,
   ...props
 }: QuestionPromptProps) => (
-  <p className={cn("font-medium text-sm", className)} {...props} />
+  <p className={cn("type-label", className)} {...props} />
 );
 
 export type QuestionDescriptionProps = HTMLAttributes<HTMLParagraphElement>;
@@ -198,7 +198,10 @@ export const QuestionDescription = ({
   className,
   ...props
 }: QuestionDescriptionProps) => (
-  <p className={cn("text-muted-foreground text-sm", className)} {...props} />
+  <p
+    className={cn("type-supporting-body text-muted-foreground", className)}
+    {...props}
+  />
 );
 
 export type QuestionOptionsProps = HTMLAttributes<HTMLDivElement>;

@@ -8,15 +8,15 @@ const activityPresentation: Record<
   BrowserActivityKind,
   { className: string; label: string }
 > = {
-  model: { className: "bg-violet-500", label: "Model" },
-  playwright: { className: "bg-cyan-500", label: "Playwright" },
-  semantic: { className: "bg-blue-500", label: "Browser DOM" },
-  visual: { className: "bg-fuchsia-500", label: "Visual CUA" },
-  web: { className: "bg-emerald-500", label: "Web" },
-  vault: { className: "bg-amber-500", label: "Vault" },
-  setup: { className: "bg-slate-400", label: "Setup" },
-  waiting: { className: "bg-orange-400", label: "Waiting" },
-  other: { className: "bg-zinc-400", label: "Other" },
+  model: { className: "bg-activity-1", label: "Model" },
+  playwright: { className: "bg-activity-2", label: "Playwright" },
+  semantic: { className: "bg-activity-3", label: "Browser DOM" },
+  visual: { className: "bg-activity-4", label: "Visual CUA" },
+  web: { className: "bg-activity-5", label: "Web" },
+  vault: { className: "bg-activity-6", label: "Vault" },
+  setup: { className: "bg-activity-7", label: "Setup" },
+  waiting: { className: "bg-activity-8", label: "Waiting" },
+  other: { className: "bg-activity-9", label: "Other" },
 };
 
 export function ActivityDurationBreakdown({
