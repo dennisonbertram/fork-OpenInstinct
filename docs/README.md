@@ -22,6 +22,8 @@ being considered. Documents use three labels deliberately:
 | Product/engineering | [`agent-conversation-feedback.md`](agent-conversation-feedback.md) | Dated log of user feedback on agent conversations; review material, not runtime instructions                    |
 | Design/frontend     | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)                             | The design system as implemented: fonts, type roles, color tokens, radius, motion, primitives, shell, gaps      |
 | Design/frontend     | [`JORY_DESIGN_MERGE.md`](JORY_DESIGN_MERGE.md)                     | Jory's design system inventory, side-by-side with this repository, and the proposed merge decisions             |
+| Plugin author       | [`PLUGINS.md`](PLUGINS.md)                                         | How to build a feature as an eve extension plus an MCP server: limits, identity contract, layout, mount, sale   |
+| Plugin author       | [`PLUGIN_TESTING.md`](PLUGIN_TESTING.md)                           | The five-layer autonomous test ladder for a plugin's MCP server and its mount                                   |
 | Design/frontend     | [`design/`](design/)                                               | Pencil canvas (`design-system.pen`) with both systems drawn, plus the three component catalogs it is built from |
 | Contributor         | [`../README.md`](../README.md)                                     | Product overview and normal development entry points                                                            |
 
