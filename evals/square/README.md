@@ -16,8 +16,9 @@ exit.
 
 Cost is recorded per case and never fails a run; the shape gate does (over 3
 bubbles, or a 5+ item list with no count and offer). Artifacts land in
-`.eve/square-evals/<timestamp>.json` and `latest.json`; CI appends a cost and
-tool-call table to `GITHUB_STEP_SUMMARY`.
+`.eve/square-evals/<timestamp>.json` and `latest.json`; the on-demand GitHub
+workflow (`square-evals.yml`) appends a cost and tool-call table to
+`GITHUB_STEP_SUMMARY`.
 
 Where an `expectTools` entry requires one of several equivalent read
 operations (for example `SearchCustomers` or `ListCustomers`), the case

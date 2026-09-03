@@ -129,9 +129,10 @@ gated.
 
 **The suite is green with the Square skill** (third run below: 12 of 12
 pass, judge 100%). The first two runs were red on the raw agent: 3 of 12,
-then 2 of 12. The CI job that runs this suite on every pull request is
-advisory (`continue-on-error`) until it has passed three times in a row; it
-has passed once locally so far.
+then 2 of 12. Since 2026-09-03 the suite runs on demand only: locally with
+`pnpm eval:square`, or in GitHub Actions through
+`.github/workflows/square-evals.yml` (`workflow_dispatch`). AGENTS.md lists
+the changes that require a run before the pull request opens.
 
 ### Tier A: the fake (default, `pnpm eval:square`)
 
