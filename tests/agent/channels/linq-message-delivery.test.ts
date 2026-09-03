@@ -121,7 +121,11 @@ describe("Linq message delivery", () => {
       sessionContext()
     );
 
-    expect(post).toHaveBeenCalledExactlyOnceWith({ markdown: message });
+    // A single line break inside a non-list block is joined with a space:
+    // Linq's markdown renderer drops a raw "\n" with no separator.
+    expect(post).toHaveBeenCalledExactlyOnceWith({
+      markdown: message.replaceAll("\n", " "),
+    });
   });
 
   it("replaces scoped artifact markdown with native iMessage files", async () => {

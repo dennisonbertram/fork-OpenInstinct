@@ -13,6 +13,7 @@ import { getAuth } from "@/auth";
 import { normalizeAuthPhoneNumber } from "@/auth/phone-number";
 import { accessScopeForUser, scopeFromPrincipal } from "@/lib/access-scope";
 import { prepareLinqBrowserImageDelivery } from "../lib/linq-browser-image-delivery";
+import { splitLinqReply } from "../lib/linq/reply";
 import {
   verifyScopeAccess,
   WorkspaceNotOperableError,
@@ -52,22 +53,6 @@ const cancelledWorkerTaskSchema = z.object({
 const workerCancellationsSchema = z.array(
   z.object({ sourceMessageId: z.string(), taskId: z.string() })
 );
-const markdownListItemPattern = /^\s*(?:[-+*]|\d+[.)])\s+/u;
-
-function splitLinqReply(message: string) {
-  return message
-    .trim()
-    .split(/\r?\n[\t ]*\r?\n/u)
-    .flatMap((block) => {
-      const lines = block.split(/\r?\n/u);
-      return lines.every((line) => markdownListItemPattern.test(line))
-        ? lines
-        : block;
-    })
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
 async function postLinqReply(
   thread: NonNullable<
     Parameters<
