@@ -1,5 +1,8 @@
 <title>OpenInstinct Agent Loop</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+/>
 <style>
   :root {
     --bg: #f6f7f5;
@@ -82,7 +85,9 @@
     border: 1px solid var(--line);
     padding: 20px 20px 14px;
   }
-  .scroll { overflow-x: auto; }
+  .scroll {
+    overflow-x: auto;
+  }
   svg {
     display: block;
     width: 100%;
@@ -91,24 +96,58 @@
     color: var(--ink);
     font-family: var(--sans);
   }
-  svg .mono { font-family: var(--mono); }
-  svg .muted { fill: var(--muted); }
-  svg .box { fill: var(--panel); stroke: currentColor; stroke-width: 1.2; }
-  svg .soft { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
-  svg .parkbox { fill: var(--park-soft); stroke: var(--park); stroke-width: 1.2; }
-  svg .accent { stroke: var(--accent); }
-  svg .accent-text { fill: var(--accent); }
-  svg .park-text { fill: var(--park); }
-  svg .park-line { stroke: var(--park); }
-  svg .lane { fill: none; stroke: var(--line); stroke-dasharray: 3 4; }
-  svg .flow { fill: none; stroke: currentColor; stroke-width: 1.2; }
+  svg .mono {
+    font-family: var(--mono);
+  }
+  svg .muted {
+    fill: var(--muted);
+  }
+  svg .box {
+    fill: var(--panel);
+    stroke: currentColor;
+    stroke-width: 1.2;
+  }
+  svg .soft {
+    fill: var(--accent-soft);
+    stroke: var(--accent);
+    stroke-width: 1.2;
+  }
+  svg .parkbox {
+    fill: var(--park-soft);
+    stroke: var(--park);
+    stroke-width: 1.2;
+  }
+  svg .accent {
+    stroke: var(--accent);
+  }
+  svg .accent-text {
+    fill: var(--accent);
+  }
+  svg .park-text {
+    fill: var(--park);
+  }
+  svg .park-line {
+    stroke: var(--park);
+  }
+  svg .lane {
+    fill: none;
+    stroke: var(--line);
+    stroke-dasharray: 3 4;
+  }
+  svg .flow {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.2;
+  }
   figcaption {
     margin-top: 12px;
     font-size: 13.5px;
     color: var(--muted);
     max-width: 90ch;
   }
-  figcaption code, p code, td code {
+  figcaption code,
+  p code,
+  td code {
     font-family: var(--mono);
     font-size: 12.5px;
     background: var(--accent-soft);
@@ -125,7 +164,8 @@
     width: 100%;
     font-size: 13.5px;
   }
-  th, td {
+  th,
+  td {
     text-align: left;
     padding: 8px 10px;
     border-bottom: 1px solid var(--line);
@@ -139,287 +179,699 @@
     color: var(--muted);
     font-weight: 500;
   }
-  td:first-child { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
-  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  @media (max-width: 800px) { .two { grid-template-columns: 1fr; } }
-  ul { margin: 0; padding-left: 18px; }
-  li { margin: 4px 0; }
-  li + li { margin-top: 6px; }
+  td:first-child {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+  .two {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 800px) {
+    .two {
+      grid-template-columns: 1fr;
+    }
+  }
+  ul {
+    margin: 0;
+    padding-left: 18px;
+  }
+  li {
+    margin: 4px 0;
+  }
+  li + li {
+    margin-top: 6px;
+  }
 </style>
 
 <main>
   <header>
     <p class="eyebrow">agent/ · eve 0.46 · read 2026-09-03</p>
     <h1>OpenInstinct Agent Loop</h1>
-    <p>How one user message becomes one reply. Every box names the file that owns it. eve runs the loop as a durable workflow; the project supplies the channels, hooks, tools, skills, and instructions around it.</p>
+    <p>
+      How one user message becomes one reply. Every box names the file that owns
+      it. eve runs the loop as a durable workflow; the project supplies the
+      channels, hooks, tools, skills, and instructions around it.
+    </p>
   </header>
 
   <figure>
     <p class="eyebrow">Figure 1</p>
     <div class="scroll">
-    <svg viewBox="0 0 1160 560" role="img" aria-label="One turn end to end: a message arrives on iMessage through Linq or on the web chat, is mapped to a Better Auth user and workspace scope, wakes a durable eve session, runs a turn of checkpointed steps, and the final message is split into iMessage bubbles or streamed to the web chat.">
-      <defs>
-        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-          <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
-        </marker>
-        <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-          <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
-        </marker>
-      </defs>
+      <svg
+        viewBox="0 0 1160 560"
+        role="img"
+        aria-label="One turn end to end: a message arrives on iMessage through Linq or on the web chat, is mapped to a Better Auth user and workspace scope, wakes a durable eve session, runs a turn of checkpointed steps, and the final message is split into iMessage bubbles or streamed to the web chat."
+      >
+        <defs>
+          <marker
+            id="arrow"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="8"
+            markerHeight="8"
+            orient="auto-start-reverse"
+          >
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor" />
+          </marker>
+          <marker
+            id="arrow-accent"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="8"
+            markerHeight="8"
+            orient="auto-start-reverse"
+          >
+            <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)" />
+          </marker>
+        </defs>
 
-      <!-- lane labels -->
-      <text x="20" y="28" font-size="11.5" class="mono muted">CHANNEL IN</text>
-      <text x="300" y="28" font-size="11.5" class="mono muted">IDENTITY → SCOPE</text>
-      <text x="580" y="28" font-size="11.5" class="mono muted">DURABLE SESSION</text>
-      <text x="850" y="28" font-size="11.5" class="mono muted">TURN</text>
-      <line x1="280" y1="40" x2="280" y2="400" class="lane"/>
-      <line x1="560" y1="40" x2="560" y2="400" class="lane"/>
-      <line x1="830" y1="40" x2="830" y2="400" class="lane"/>
+        <!-- lane labels -->
+        <text x="20" y="28" font-size="11.5" class="mono muted">
+          CHANNEL IN
+        </text>
+        <text x="300" y="28" font-size="11.5" class="mono muted">
+          IDENTITY → SCOPE
+        </text>
+        <text x="580" y="28" font-size="11.5" class="mono muted">
+          DURABLE SESSION
+        </text>
+        <text x="850" y="28" font-size="11.5" class="mono muted">TURN</text>
+        <line x1="280" y1="40" x2="280" y2="400" class="lane" />
+        <line x1="560" y1="40" x2="560" y2="400" class="lane" />
+        <line x1="830" y1="40" x2="830" y2="400" class="lane" />
 
-      <!-- inbound: Linq -->
-      <rect x="20" y="60" width="230" height="96" class="box"/>
-      <text x="32" y="82" font-size="13" font-weight="600">iMessage / SMS via Linq</text>
-      <text x="32" y="100" font-size="11.5" class="mono muted">agent/channels/linq.ts</text>
-      <text x="32" y="120" font-size="12">webhook on /eve/v1 · onMessage()</text>
-      <text x="32" y="138" font-size="12">bot authors dropped</text>
+        <!-- inbound: Linq -->
+        <rect x="20" y="60" width="230" height="96" class="box" />
+        <text x="32" y="82" font-size="13" font-weight="600">
+          iMessage / SMS via Linq
+        </text>
+        <text x="32" y="100" font-size="11.5" class="mono muted">
+          agent/channels/linq.ts
+        </text>
+        <text x="32" y="120" font-size="12">
+          webhook on /eve/v1 · onMessage()
+        </text>
+        <text x="32" y="138" font-size="12">bot authors dropped</text>
 
-      <!-- inbound: web -->
-      <rect x="20" y="200" width="230" height="96" class="box"/>
-      <text x="32" y="222" font-size="13" font-weight="600">Web chat at /chat</text>
-      <text x="32" y="240" font-size="11.5" class="mono muted">agent/channels/eve.ts</text>
-      <text x="32" y="260" font-size="12">Better Auth cookie · session</text>
-      <text x="32" y="278" font-size="12">ownership check (50 × 100 ms)</text>
+        <!-- inbound: web -->
+        <rect x="20" y="200" width="230" height="96" class="box" />
+        <text x="32" y="222" font-size="13" font-weight="600">
+          Web chat at /chat
+        </text>
+        <text x="32" y="240" font-size="11.5" class="mono muted">
+          agent/channels/eve.ts
+        </text>
+        <text x="32" y="260" font-size="12">Better Auth cookie · session</text>
+        <text x="32" y="278" font-size="12">ownership check (50 × 100 ms)</text>
 
-      <!-- identity -->
-      <rect x="300" y="60" width="240" height="236" class="box"/>
-      <text x="312" y="82" font-size="13" font-weight="600">Principal and workspace</text>
-      <text x="312" y="100" font-size="11.5" class="mono muted">src/lib/access-scope.ts</text>
-      <text x="312" y="126" font-size="12">Linq: phone number →</text>
-      <text x="312" y="142" font-size="12">verified Better Auth user</text>
-      <text x="312" y="168" font-size="12" class="mono">principalId</text>
-      <text x="312" y="184" font-size="12" class="mono">  better-auth:&lt;userId&gt;</text>
-      <text x="312" y="208" font-size="12" class="mono">workspaceId</text>
-      <text x="312" y="224" font-size="12" class="mono">  personal:&lt;hash&gt;</text>
-      <text x="312" y="252" font-size="12">enforcement flag on: scope</text>
-      <text x="312" y="268" font-size="12">must verify or the turn is dropped</text>
+        <!-- identity -->
+        <rect x="300" y="60" width="240" height="236" class="box" />
+        <text x="312" y="82" font-size="13" font-weight="600">
+          Principal and workspace
+        </text>
+        <text x="312" y="100" font-size="11.5" class="mono muted">
+          src/lib/access-scope.ts
+        </text>
+        <text x="312" y="126" font-size="12">Linq: phone number →</text>
+        <text x="312" y="142" font-size="12">verified Better Auth user</text>
+        <text x="312" y="168" font-size="12" class="mono">principalId</text>
+        <text x="312" y="184" font-size="12" class="mono">
+          better-auth:&lt;userId&gt;
+        </text>
+        <text x="312" y="208" font-size="12" class="mono">workspaceId</text>
+        <text x="312" y="224" font-size="12" class="mono">
+          personal:&lt;hash&gt;
+        </text>
+        <text x="312" y="252" font-size="12">enforcement flag on: scope</text>
+        <text x="312" y="268" font-size="12">
+          must verify or the turn is dropped
+        </text>
 
-      <!-- arrows in -->
-      <line x1="250" y1="108" x2="298" y2="108" class="flow" marker-end="url(#arrow)"/>
-      <text x="254" y="100" font-size="10.5" class="muted">phone</text>
-      <line x1="250" y1="248" x2="298" y2="248" class="flow" marker-end="url(#arrow)"/>
-      <text x="254" y="240" font-size="10.5" class="muted">cookie</text>
+        <!-- arrows in -->
+        <line
+          x1="250"
+          y1="108"
+          x2="298"
+          y2="108"
+          class="flow"
+          marker-end="url(#arrow)"
+        />
+        <text x="254" y="100" font-size="10.5" class="muted">phone</text>
+        <line
+          x1="250"
+          y1="248"
+          x2="298"
+          y2="248"
+          class="flow"
+          marker-end="url(#arrow)"
+        />
+        <text x="254" y="240" font-size="10.5" class="muted">cookie</text>
 
-      <!-- session -->
-      <rect x="580" y="60" width="230" height="236" class="box"/>
-      <text x="592" y="82" font-size="13" font-weight="600">eve session</text>
-      <text x="592" y="100" font-size="11.5" class="mono muted">agent/hooks/session-owner.ts</text>
-      <text x="592" y="126" font-size="12">one session per thread, survives</text>
-      <text x="592" y="142" font-size="12">restarts and redeploys</text>
-      <text x="592" y="170" font-size="12" class="mono">session.started</text>
-      <text x="592" y="186" font-size="12">  ensureScope · claimSession</text>
-      <text x="592" y="208" font-size="12" class="mono">message.received</text>
-      <text x="592" y="224" font-size="12">  saveChat</text>
-      <text x="592" y="246" font-size="12" class="mono">turn.started</text>
-      <text x="592" y="262" font-size="12">  checkBudget(model_tokens)</text>
+        <!-- session -->
+        <rect x="580" y="60" width="230" height="236" class="box" />
+        <text x="592" y="82" font-size="13" font-weight="600">eve session</text>
+        <text x="592" y="100" font-size="11.5" class="mono muted">
+          agent/hooks/session-owner.ts
+        </text>
+        <text x="592" y="126" font-size="12">
+          one session per thread, survives
+        </text>
+        <text x="592" y="142" font-size="12">restarts and redeploys</text>
+        <text x="592" y="170" font-size="12" class="mono">session.started</text>
+        <text x="592" y="186" font-size="12">ensureScope · claimSession</text>
+        <text x="592" y="208" font-size="12" class="mono">
+          message.received
+        </text>
+        <text x="592" y="224" font-size="12">saveChat</text>
+        <text x="592" y="246" font-size="12" class="mono">turn.started</text>
+        <text x="592" y="262" font-size="12">checkBudget(model_tokens)</text>
 
-      <line x1="540" y1="180" x2="578" y2="180" class="flow" marker-end="url(#arrow)"/>
-      <text x="543" y="172" font-size="10.5" class="muted">auth</text>
+        <line
+          x1="540"
+          y1="180"
+          x2="578"
+          y2="180"
+          class="flow"
+          marker-end="url(#arrow)"
+        />
+        <text x="543" y="172" font-size="10.5" class="muted">auth</text>
 
-      <!-- turn -->
-      <rect x="850" y="60" width="290" height="236" class="soft"/>
-      <text x="862" y="82" font-size="13" font-weight="600">Turn = durable workflow</text>
-      <text x="862" y="100" font-size="11.5" class="mono muted">eve default harness</text>
-      <!-- step chain -->
-      <rect x="866" y="118" width="70" height="40" class="box"/>
-      <text x="901" y="135" font-size="11.5" text-anchor="middle">step 1</text>
-      <text x="901" y="150" font-size="10" text-anchor="middle" class="muted">model+tools</text>
-      <rect x="960" y="118" width="70" height="40" class="box"/>
-      <text x="995" y="135" font-size="11.5" text-anchor="middle">step 2</text>
-      <text x="995" y="150" font-size="10" text-anchor="middle" class="muted">model+tools</text>
-      <rect x="1054" y="118" width="70" height="40" class="box"/>
-      <text x="1089" y="135" font-size="11.5" text-anchor="middle">step n</text>
-      <text x="1089" y="150" font-size="10" text-anchor="middle" class="muted">stop</text>
-      <line x1="936" y1="138" x2="958" y2="138" class="flow" marker-end="url(#arrow)"/>
-      <line x1="1030" y1="138" x2="1052" y2="138" class="flow" marker-end="url(#arrow)"/>
-      <text x="862" y="184" font-size="12">each step checkpoints; a crash</text>
-      <text x="862" y="200" font-size="12">resumes at the last completed step</text>
-      <text x="862" y="226" font-size="12" class="mono">step.started</text>
-      <text x="862" y="242" font-size="12">  model from DB settings (agent.ts)</text>
-      <text x="862" y="264" font-size="12" class="mono">step.completed</text>
-      <text x="862" y="280" font-size="12">  recordUsageEvent(tokens, USD)</text>
+        <!-- turn -->
+        <rect x="850" y="60" width="290" height="236" class="soft" />
+        <text x="862" y="82" font-size="13" font-weight="600">
+          Turn = durable workflow
+        </text>
+        <text x="862" y="100" font-size="11.5" class="mono muted">
+          eve default harness
+        </text>
+        <!-- step chain -->
+        <rect x="866" y="118" width="70" height="40" class="box" />
+        <text x="901" y="135" font-size="11.5" text-anchor="middle">
+          step 1
+        </text>
+        <text x="901" y="150" font-size="10" text-anchor="middle" class="muted">
+          model+tools
+        </text>
+        <rect x="960" y="118" width="70" height="40" class="box" />
+        <text x="995" y="135" font-size="11.5" text-anchor="middle">
+          step 2
+        </text>
+        <text x="995" y="150" font-size="10" text-anchor="middle" class="muted">
+          model+tools
+        </text>
+        <rect x="1054" y="118" width="70" height="40" class="box" />
+        <text x="1089" y="135" font-size="11.5" text-anchor="middle">
+          step n
+        </text>
+        <text
+          x="1089"
+          y="150"
+          font-size="10"
+          text-anchor="middle"
+          class="muted"
+        >
+          stop
+        </text>
+        <line
+          x1="936"
+          y1="138"
+          x2="958"
+          y2="138"
+          class="flow"
+          marker-end="url(#arrow)"
+        />
+        <line
+          x1="1030"
+          y1="138"
+          x2="1052"
+          y2="138"
+          class="flow"
+          marker-end="url(#arrow)"
+        />
+        <text x="862" y="184" font-size="12">
+          each step checkpoints; a crash
+        </text>
+        <text x="862" y="200" font-size="12">
+          resumes at the last completed step
+        </text>
+        <text x="862" y="226" font-size="12" class="mono">step.started</text>
+        <text x="862" y="242" font-size="12">
+          model from DB settings (agent.ts)
+        </text>
+        <text x="862" y="264" font-size="12" class="mono">step.completed</text>
+        <text x="862" y="280" font-size="12">
+          recordUsageEvent(tokens, USD)
+        </text>
 
-      <line x1="810" y1="180" x2="848" y2="180" class="flow" marker-end="url(#arrow)"/>
-      <text x="813" y="172" font-size="10.5" class="muted">turn</text>
+        <line
+          x1="810"
+          y1="180"
+          x2="848"
+          y2="180"
+          class="flow"
+          marker-end="url(#arrow)"
+        />
+        <text x="813" y="172" font-size="10.5" class="muted">turn</text>
 
-      <!-- return path -->
-      <path d="M995 296 L995 330 L640 330" class="flow accent" marker-end="url(#arrow-accent)"/>
-      <text x="1002" y="318" font-size="11.5" class="accent-text mono">message.completed</text>
+        <!-- return path -->
+        <path
+          d="M995 296 L995 330 L640 330"
+          class="flow accent"
+          marker-end="url(#arrow-accent)"
+        />
+        <text x="1002" y="318" font-size="11.5" class="accent-text mono">
+          message.completed
+        </text>
 
-      <!-- reply box, Linq -->
-      <rect x="300" y="350" width="340" height="110" class="box"/>
-      <text x="312" y="372" font-size="13" font-weight="600">Reply to iMessage</text>
-      <text x="312" y="390" font-size="11.5" class="mono muted">linq.ts · agent/lib/linq/reply.ts</text>
-      <text x="312" y="412" font-size="12">1. checkBudget(provider_message)</text>
-      <text x="312" y="428" font-size="12">2. attach worker images, if any (private /artifacts)</text>
-      <text x="312" y="444" font-size="12">3. splitLinqReply: blank line or bullet = 1 bubble</text>
+        <!-- reply box, Linq -->
+        <rect x="300" y="350" width="340" height="110" class="box" />
+        <text x="312" y="372" font-size="13" font-weight="600">
+          Reply to iMessage
+        </text>
+        <text x="312" y="390" font-size="11.5" class="mono muted">
+          linq.ts · agent/lib/linq/reply.ts
+        </text>
+        <text x="312" y="412" font-size="12">
+          1. checkBudget(provider_message)
+        </text>
+        <text x="312" y="428" font-size="12">
+          2. attach worker images, if any (private /artifacts)
+        </text>
+        <text x="312" y="444" font-size="12">
+          3. splitLinqReply: blank line or bullet = 1 bubble
+        </text>
 
-      <!-- reply box, web -->
-      <rect x="660" y="350" width="230" height="110" class="box"/>
-      <text x="672" y="372" font-size="13" font-weight="600">Reply to web chat</text>
-      <text x="672" y="390" font-size="11.5" class="mono muted">/eve/v1 session stream</text>
-      <text x="672" y="412" font-size="12">events stream to the</text>
-      <text x="672" y="428" font-size="12">/chat/[sessionId] page as</text>
-      <text x="672" y="444" font-size="12">they happen</text>
+        <!-- reply box, web -->
+        <rect x="660" y="350" width="230" height="110" class="box" />
+        <text x="672" y="372" font-size="13" font-weight="600">
+          Reply to web chat
+        </text>
+        <text x="672" y="390" font-size="11.5" class="mono muted">
+          /eve/v1 session stream
+        </text>
+        <text x="672" y="412" font-size="12">events stream to the</text>
+        <text x="672" y="428" font-size="12">/chat/[sessionId] page as</text>
+        <text x="672" y="444" font-size="12">they happen</text>
 
-      <!-- branch from return path to web reply -->
-      <path d="M775 330 L775 348" class="flow accent" marker-end="url(#arrow-accent)"/>
-      <path d="M470 330 L470 348" class="flow accent" marker-end="url(#arrow-accent)"/>
+        <!-- branch from return path to web reply -->
+        <path
+          d="M775 330 L775 348"
+          class="flow accent"
+          marker-end="url(#arrow-accent)"
+        />
+        <path
+          d="M470 330 L470 348"
+          class="flow accent"
+          marker-end="url(#arrow-accent)"
+        />
 
-      <!-- bubbles out -->
-      <path d="M300 405 L262 405 L262 108" class="flow accent" marker-end="url(#arrow-accent)"/>
-      <text x="120" y="330" font-size="11.5" class="accent-text">thread.post() once per bubble,</text>
-      <text x="120" y="346" font-size="11.5" class="accent-text">in order; files on the last one</text>
+        <!-- bubbles out -->
+        <path
+          d="M300 405 L262 405 L262 108"
+          class="flow accent"
+          marker-end="url(#arrow-accent)"
+        />
+        <text x="120" y="330" font-size="11.5" class="accent-text">
+          thread.post() once per bubble,
+        </text>
+        <text x="120" y="346" font-size="11.5" class="accent-text">
+          in order; files on the last one
+        </text>
 
-      <!-- typing status note -->
-      <rect x="20" y="480" width="1120" height="56" class="box" stroke-dasharray="3 4"/>
-      <text x="32" y="502" font-size="12" font-weight="600">Typing status.</text>
-      <text x="128" y="502" font-size="12">When a model step ends with finishReason "tool-calls", the short phrase it wrote before the call is kept as pendingToolCallMessage;</text>
-      <text x="32" y="522" font-size="12">Linq shows it as the live typing indicator instead of sending it as a message. The real answer is sent when a step ends with "stop".</text>
-    </svg>
+        <!-- typing status note -->
+        <rect
+          x="20"
+          y="480"
+          width="1120"
+          height="56"
+          class="box"
+          stroke-dasharray="3 4"
+        />
+        <text x="32" y="502" font-size="12" font-weight="600">
+          Typing status.
+        </text>
+        <text x="128" y="502" font-size="12">
+          When a model step ends with finishReason "tool-calls", the short
+          phrase it wrote before the call is kept as pendingToolCallMessage;
+        </text>
+        <text x="32" y="522" font-size="12">
+          Linq shows it as the live typing indicator instead of sending it as a
+          message. The real answer is sent when a step ends with "stop".
+        </text>
+      </svg>
     </div>
-    <figcaption>One turn end to end. Both channels resolve to the same principal and workspace scope before eve sees the message, so the session, the vault, the Square grant, and the usage ledger all key on that scope. The turn runs as a Workflow SDK durable workflow; the accent path is the reply leaving the turn. On iMessage a reply becomes as many bubbles as it has paragraphs and bullets, which is why the eval gym gates bubble count.</figcaption>
+    <figcaption>
+      One turn end to end. Both channels resolve to the same principal and
+      workspace scope before eve sees the message, so the session, the vault,
+      the Square grant, and the usage ledger all key on that scope. The turn
+      runs as a Workflow SDK durable workflow; the accent path is the reply
+      leaving the turn. On iMessage a reply becomes as many bubbles as it has
+      paragraphs and bullets, which is why the eval gym gates bubble count.
+    </figcaption>
   </figure>
 
   <figure>
     <p class="eyebrow">Figure 2</p>
     <div class="scroll">
-    <svg viewBox="0 0 1160 470" role="img" aria-label="Inside one step: compaction check, then a model call whose finish reason routes to tool execution and back to the model, to a parked turn waiting for a human or an OAuth callback or a subagent, or to the final reply.">
-      <defs>
-        <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-          <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
-        </marker>
-        <marker id="arrow2-park" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-          <path d="M0 0 L10 5 L0 10 z" fill="var(--park)"/>
-        </marker>
-      </defs>
+      <svg
+        viewBox="0 0 1160 470"
+        role="img"
+        aria-label="Inside one step: compaction check, then a model call whose finish reason routes to tool execution and back to the model, to a parked turn waiting for a human or an OAuth callback or a subagent, or to the final reply."
+      >
+        <defs>
+          <marker
+            id="arrow2"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="8"
+            markerHeight="8"
+            orient="auto-start-reverse"
+          >
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor" />
+          </marker>
+          <marker
+            id="arrow2-park"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="8"
+            markerHeight="8"
+            orient="auto-start-reverse"
+          >
+            <path d="M0 0 L10 5 L0 10 z" fill="var(--park)" />
+          </marker>
+        </defs>
 
-      <!-- context assembly -->
-      <rect x="20" y="40" width="250" height="150" class="box"/>
-      <text x="32" y="62" font-size="13" font-weight="600">Context for the model call</text>
-      <text x="32" y="84" font-size="12">system: agent/instructions.md</text>
-      <text x="32" y="100" font-size="12">memory recalled: profile, personal_info</text>
-      <text x="32" y="116" font-size="12">skills advertised by description only</text>
-      <text x="32" y="132" font-size="12">tool schemas: built-in + agent/tools</text>
-      <text x="32" y="148" font-size="12">conversation so far, append-only</text>
-      <text x="32" y="172" font-size="11.5" class="muted">compaction summarizes older turns at 70%</text>
+        <!-- context assembly -->
+        <rect x="20" y="40" width="250" height="150" class="box" />
+        <text x="32" y="62" font-size="13" font-weight="600">
+          Context for the model call
+        </text>
+        <text x="32" y="84" font-size="12">system: agent/instructions.md</text>
+        <text x="32" y="100" font-size="12">
+          memory recalled: profile, personal_info
+        </text>
+        <text x="32" y="116" font-size="12">
+          skills advertised by description only
+        </text>
+        <text x="32" y="132" font-size="12">
+          tool schemas: built-in + agent/tools
+        </text>
+        <text x="32" y="148" font-size="12">
+          conversation so far, append-only
+        </text>
+        <text x="32" y="172" font-size="11.5" class="muted">
+          compaction summarizes older turns at 70%
+        </text>
 
-      <line x1="270" y1="115" x2="318" y2="115" class="flow" marker-end="url(#arrow2)"/>
+        <line
+          x1="270"
+          y1="115"
+          x2="318"
+          y2="115"
+          class="flow"
+          marker-end="url(#arrow2)"
+        />
 
-      <!-- model call -->
-      <rect x="320" y="70" width="230" height="90" class="soft"/>
-      <text x="335" y="94" font-size="13" font-weight="600">Model call</text>
-      <text x="335" y="112" font-size="11.5" class="mono muted">gateway model, reasoning: low</text>
-      <text x="335" y="132" font-size="12">chosen per step from the</text>
-      <text x="335" y="148" font-size="12">workspace's saved setting</text>
+        <!-- model call -->
+        <rect x="320" y="70" width="230" height="90" class="soft" />
+        <text x="335" y="94" font-size="13" font-weight="600">Model call</text>
+        <text x="335" y="112" font-size="11.5" class="mono muted">
+          gateway model, reasoning: low
+        </text>
+        <text x="335" y="132" font-size="12">chosen per step from the</text>
+        <text x="335" y="148" font-size="12">workspace's saved setting</text>
 
-      <!-- branch: tool-calls -->
-      <line x1="550" y1="100" x2="638" y2="100" class="flow" marker-end="url(#arrow2)"/>
-      <text x="556" y="92" font-size="10.5" class="mono muted">tool-calls</text>
+        <!-- branch: tool-calls -->
+        <line
+          x1="550"
+          y1="100"
+          x2="638"
+          y2="100"
+          class="flow"
+          marker-end="url(#arrow2)"
+        />
+        <text x="556" y="92" font-size="10.5" class="mono muted">
+          tool-calls
+        </text>
 
-      <!-- tool executors -->
-      <rect x="640" y="40" width="500" height="250" class="box"/>
-      <text x="652" y="62" font-size="13" font-weight="600">Tool executors, in the app runtime</text>
+        <!-- tool executors -->
+        <rect x="640" y="40" width="500" height="250" class="box" />
+        <text x="652" y="62" font-size="13" font-weight="600">
+          Tool executors, in the app runtime
+        </text>
 
-      <rect x="652" y="76" width="154" height="96" class="box"/>
-      <text x="660" y="94" font-size="11.5" font-weight="600">eve built-ins</text>
-      <text x="660" y="110" font-size="11" class="mono">load_skill → square</text>
-      <text x="660" y="124" font-size="11" class="mono">connection_search</text>
-      <text x="660" y="138" font-size="10.5" class="mono">web_search · web_fetch</text>
-      <text x="660" y="152" font-size="10.5" class="mono">bash (sandbox) · todo</text>
-      <text x="660" y="166" font-size="11" class="mono muted">agent: disabled</text>
+        <rect x="652" y="76" width="154" height="96" class="box" />
+        <text x="660" y="94" font-size="11.5" font-weight="600">
+          eve built-ins
+        </text>
+        <text x="660" y="110" font-size="11" class="mono">
+          load_skill → square
+        </text>
+        <text x="660" y="124" font-size="11" class="mono">
+          connection_search
+        </text>
+        <text x="660" y="138" font-size="10.5" class="mono">
+          web_search · web_fetch
+        </text>
+        <text x="660" y="152" font-size="10.5" class="mono">
+          bash (sandbox) · todo
+        </text>
+        <text x="660" y="166" font-size="11" class="mono muted">
+          agent: disabled
+        </text>
 
-      <rect x="814" y="76" width="154" height="96" class="box"/>
-      <text x="822" y="94" font-size="11.5" font-weight="600">agent/tools</text>
-      <text x="822" y="110" font-size="11" class="mono">ask_question</text>
-      <text x="822" y="124" font-size="10.5" class="mono">google_workspace_read</text>
-      <text x="822" y="138" font-size="10.5" class="mono">google_workspace_write</text>
-      <text x="822" y="152" font-size="10.5" class="mono">request_vault_setup · import</text>
-      <text x="822" y="166" font-size="10.5" class="mono">update_user_profile</text>
+        <rect x="814" y="76" width="154" height="96" class="box" />
+        <text x="822" y="94" font-size="11.5" font-weight="600">
+          agent/tools
+        </text>
+        <text x="822" y="110" font-size="11" class="mono">ask_question</text>
+        <text x="822" y="124" font-size="10.5" class="mono">
+          google_workspace_read
+        </text>
+        <text x="822" y="138" font-size="10.5" class="mono">
+          google_workspace_write
+        </text>
+        <text x="822" y="152" font-size="10.5" class="mono">
+          request_vault_setup · import
+        </text>
+        <text x="822" y="166" font-size="10.5" class="mono">
+          update_user_profile
+        </text>
 
-      <rect x="976" y="76" width="152" height="96" class="box"/>
-      <text x="984" y="94" font-size="11.5" font-weight="600">connections</text>
-      <text x="984" y="110" font-size="10.5" class="mono">square__ListCustomers</text>
-      <text x="984" y="124" font-size="10.5" class="mono">square__SearchOrders …</text>
-      <text x="984" y="140" font-size="11">OpenAPI, read ops only</text>
-      <text x="984" y="154" font-size="11">per-user OAuth grant</text>
-      <text x="984" y="168" font-size="10.5" class="mono muted">connections/square.ts</text>
+        <rect x="976" y="76" width="152" height="96" class="box" />
+        <text x="984" y="94" font-size="11.5" font-weight="600">
+          connections
+        </text>
+        <text x="984" y="110" font-size="10.5" class="mono">
+          square__ListCustomers
+        </text>
+        <text x="984" y="124" font-size="10.5" class="mono">
+          square__SearchOrders …
+        </text>
+        <text x="984" y="140" font-size="11">OpenAPI, read ops only</text>
+        <text x="984" y="154" font-size="11">per-user OAuth grant</text>
+        <text x="984" y="168" font-size="10.5" class="mono muted">
+          connections/square.ts
+        </text>
 
-      <rect x="652" y="186" width="476" height="90" class="box"/>
-      <text x="660" y="204" font-size="11.5" font-weight="600">worker subagent (its own session, model, sandbox, browser)</text>
-      <text x="660" y="220" font-size="11" class="mono muted">agent/subagents/worker · zai/glm-5.2 · Kernel browser (src/lib/kernel.ts)</text>
-      <text x="660" y="238" font-size="11">only agent that touches a browser or injects vault secrets;</text>
-      <text x="660" y="252" font-size="11">one bounded assignment in, one final_output matching the task-completion schema out;</text>
-      <text x="660" y="266" font-size="11">runs in the background, so the root turn parks until the child settles</text>
+        <rect x="652" y="186" width="476" height="90" class="box" />
+        <text x="660" y="204" font-size="11.5" font-weight="600">
+          worker subagent (its own session, model, sandbox, browser)
+        </text>
+        <text x="660" y="220" font-size="11" class="mono muted">
+          agent/subagents/worker · zai/glm-5.2 · Kernel browser
+          (src/lib/kernel.ts)
+        </text>
+        <text x="660" y="238" font-size="11">
+          only agent that touches a browser or injects vault secrets;
+        </text>
+        <text x="660" y="252" font-size="11">
+          one bounded assignment in, one final_output matching the
+          task-completion schema out;
+        </text>
+        <text x="660" y="266" font-size="11">
+          runs in the background, so the root turn parks until the child settles
+        </text>
 
-      <!-- results back to model -->
-      <path d="M640 250 L600 250 L600 200 L435 200 L435 162" class="flow" marker-end="url(#arrow2)"/>
-      <text x="446" y="192" font-size="10.5" class="mono muted">results appended → next step</text>
+        <!-- results back to model -->
+        <path
+          d="M640 250 L600 250 L600 200 L435 200 L435 162"
+          class="flow"
+          marker-end="url(#arrow2)"
+        />
+        <text x="446" y="192" font-size="10.5" class="mono muted">
+          results appended → next step
+        </text>
 
-      <!-- branch: park -->
-      <path d="M320 150 L300 150 L300 275 L272 275" class="flow park-line" marker-end="url(#arrow2-park)"/>
-      <text x="276" y="212" font-size="10.5" class="mono park-text" text-anchor="end">needs input</text>
-      <rect x="20" y="220" width="250" height="110" class="parkbox"/>
-      <text x="32" y="242" font-size="13" font-weight="600" class="park-text">Turn parks, holds no compute</text>
-      <text x="32" y="264" font-size="12">human approval for a purchase or send</text>
-      <text x="32" y="280" font-size="12">Square sign-in link (OAuth callback)</text>
-      <text x="32" y="296" font-size="12">worker still running</text>
-      <text x="32" y="318" font-size="11.5" class="muted">resumes where it left off, hours later if needed</text>
+        <!-- branch: park -->
+        <path
+          d="M320 150 L300 150 L300 275 L272 275"
+          class="flow park-line"
+          marker-end="url(#arrow2-park)"
+        />
+        <text
+          x="276"
+          y="212"
+          font-size="10.5"
+          class="mono park-text"
+          text-anchor="end"
+        >
+          needs input
+        </text>
+        <rect x="20" y="220" width="250" height="110" class="parkbox" />
+        <text x="32" y="242" font-size="13" font-weight="600" class="park-text">
+          Turn parks, holds no compute
+        </text>
+        <text x="32" y="264" font-size="12">
+          human approval for a purchase or send
+        </text>
+        <text x="32" y="280" font-size="12">
+          Square sign-in link (OAuth callback)
+        </text>
+        <text x="32" y="296" font-size="12">worker still running</text>
+        <text x="32" y="318" font-size="11.5" class="muted">
+          resumes where it left off, hours later if needed
+        </text>
 
-      <!-- branch: stop -->
-      <path d="M435 160 L435 370" class="flow" marker-end="url(#arrow2)"/>
-      <text x="446" y="300" font-size="10.5" class="mono muted">stop</text>
-      <rect x="320" y="372" width="230" height="70" class="soft"/>
-      <text x="335" y="396" font-size="13" font-weight="600">Reply</text>
-      <text x="335" y="414" font-size="12">message.completed →</text>
-      <text x="335" y="430" font-size="12">channel posts it (Figure 1)</text>
+        <!-- branch: stop -->
+        <path d="M435 160 L435 370" class="flow" marker-end="url(#arrow2)" />
+        <text x="446" y="300" font-size="10.5" class="mono muted">stop</text>
+        <rect x="320" y="372" width="230" height="70" class="soft" />
+        <text x="335" y="396" font-size="13" font-weight="600">Reply</text>
+        <text x="335" y="414" font-size="12">message.completed →</text>
+        <text x="335" y="430" font-size="12">channel posts it (Figure 1)</text>
 
-      <!-- cancel note -->
-      <rect x="640" y="330" width="500" height="112" class="box" stroke-dasharray="3 4"/>
-      <text x="652" y="352" font-size="12" font-weight="600">Steering.</text>
-      <text x="720" y="352" font-size="12">A new user message during an active turn cancels it cooperatively:</text>
-      <text x="652" y="372" font-size="12" class="mono">turn.cancelled → session.waiting → new turn</text>
-      <text x="652" y="392" font-size="12">Side effects already done are not rolled back. The Linq channel records</text>
-      <text x="652" y="408" font-size="12">any running worker tasks so the next turn can call task_cancel on them</text>
-      <text x="652" y="424" font-size="11.5" class="mono muted">agent/hooks/worker-cancellation-delivery.ts</text>
-    </svg>
+        <!-- cancel note -->
+        <rect
+          x="640"
+          y="330"
+          width="500"
+          height="112"
+          class="box"
+          stroke-dasharray="3 4"
+        />
+        <text x="652" y="352" font-size="12" font-weight="600">Steering.</text>
+        <text x="720" y="352" font-size="12">
+          A new user message during an active turn cancels it cooperatively:
+        </text>
+        <text x="652" y="372" font-size="12" class="mono">
+          turn.cancelled → session.waiting → new turn
+        </text>
+        <text x="652" y="392" font-size="12">
+          Side effects already done are not rolled back. The Linq channel
+          records
+        </text>
+        <text x="652" y="408" font-size="12">
+          any running worker tasks so the next turn can call task_cancel on them
+        </text>
+        <text x="652" y="424" font-size="11.5" class="mono muted">
+          agent/hooks/worker-cancellation-delivery.ts
+        </text>
+      </svg>
     </div>
-    <figcaption>Inside one step. The model sees the instructions, recalled memory, skill descriptions, and tool schemas, then either calls tools (results are appended and the next step runs), needs something only a human or a callback can supply (the turn parks with no compute held), or stops (the text becomes the reply). Skills add instructions only; they never add a tool. The <code>square</code> skill was loaded on 12 of 12 eval turns on 2026-09-03.</figcaption>
+    <figcaption>
+      Inside one step. The model sees the instructions, recalled memory, skill
+      descriptions, and tool schemas, then either calls tools (results are
+      appended and the next step runs), needs something only a human or a
+      callback can supply (the turn parks with no compute held), or stops (the
+      text becomes the reply). Skills add instructions only; they never add a
+      tool. The <code>square</code> skill was loaded on 12 of 12 eval turns on
+      2026-09-03.
+    </figcaption>
   </figure>
 
   <section class="two">
     <div>
       <h2>Hooks that fire during the loop</h2>
       <table>
-        <thead><tr><th>event</th><th>what runs</th></tr></thead>
+        <thead>
+          <tr>
+            <th>event</th>
+            <th>what runs</th>
+          </tr>
+        </thead>
         <tbody>
-          <tr><td>session.started</td><td>ensureScope, claimSession. <code>agent/hooks/session-owner.ts</code></td></tr>
-          <tr><td>message.received</td><td>saveChat; record the turn for worker cancellation</td></tr>
-          <tr><td>turn.started</td><td>checkBudget on model tokens; a blown budget fails the turn before the model runs</td></tr>
-          <tr><td>step.started</td><td>pick the gateway model for the caller's workspace. <code>agent/agent.ts</code></td></tr>
-          <tr><td>step.completed</td><td>recordUsageEvent with tokens and cost estimate</td></tr>
-          <tr><td>message.completed</td><td>Linq: typing status or bubble posting. <code>agent/channels/linq.ts</code></td></tr>
-          <tr><td>turn.cancelled / failed / completed</td><td>clear the cancellation record</td></tr>
-          <tr><td>every event</td><td>evlog, redacted, message bodies omitted. <code>agent/hooks/evlog.ts</code></td></tr>
+          <tr>
+            <td>session.started</td>
+            <td>
+              ensureScope, claimSession.
+              <code>agent/hooks/session-owner.ts</code>
+            </td>
+          </tr>
+          <tr>
+            <td>message.received</td>
+            <td>saveChat; record the turn for worker cancellation</td>
+          </tr>
+          <tr>
+            <td>turn.started</td>
+            <td>
+              checkBudget on model tokens; a blown budget fails the turn before
+              the model runs
+            </td>
+          </tr>
+          <tr>
+            <td>step.started</td>
+            <td>
+              pick the gateway model for the caller's workspace.
+              <code>agent/agent.ts</code>
+            </td>
+          </tr>
+          <tr>
+            <td>step.completed</td>
+            <td>recordUsageEvent with tokens and cost estimate</td>
+          </tr>
+          <tr>
+            <td>message.completed</td>
+            <td>
+              Linq: typing status or bubble posting.
+              <code>agent/channels/linq.ts</code>
+            </td>
+          </tr>
+          <tr>
+            <td>turn.cancelled / failed / completed</td>
+            <td>clear the cancellation record</td>
+          </tr>
+          <tr>
+            <td>every event</td>
+            <td>
+              evlog, redacted, message bodies omitted.
+              <code>agent/hooks/evlog.ts</code>
+            </td>
+          </tr>
         </tbody>
       </table>
     </div>
     <div>
       <h2>Things the pictures do not show</h2>
       <ul>
-        <li><strong>Memory has its own lifecycle.</strong> Providers capture before compaction and recall after, so a summary never loses the profile. Two providers: <code>agent/memory/profile.ts</code> (file memory, Vercel Blob in production) and personal_info.</li>
-        <li><strong>The root has no browser tools.</strong> Browser work is delegated with a Task line and an output schema; the worker's 14 tools live under its own directory and are invisible to the root.</li>
-        <li><strong>Schedules carry no user.</strong> A cron turn has no initiator, so it cannot use the per-user Square grant. That is the open constraint on proactive checks (issue #34).</li>
-        <li><strong>Web chat and iMessage share one agent.</strong> Different channel files, same instructions, tools, and scope derivation. Only the delivery step differs.</li>
+        <li>
+          <strong>Memory has its own lifecycle.</strong> Providers capture
+          before compaction and recall after, so a summary never loses the
+          profile. Two providers: <code>agent/memory/profile.ts</code> (file
+          memory, Vercel Blob in production) and personal_info.
+        </li>
+        <li>
+          <strong>The root has no browser tools.</strong> Browser work is
+          delegated with a Task line and an output schema; the worker's 14 tools
+          live under its own directory and are invisible to the root.
+        </li>
+        <li>
+          <strong>Schedules carry no user.</strong> A cron turn has no
+          initiator, so it cannot use the per-user Square grant. That is the
+          open constraint on proactive checks (issue #34).
+        </li>
+        <li>
+          <strong>Web chat and iMessage share one agent.</strong> Different
+          channel files, same instructions, tools, and scope derivation. Only
+          the delivery step differs.
+        </li>
       </ul>
     </div>
   </section>
