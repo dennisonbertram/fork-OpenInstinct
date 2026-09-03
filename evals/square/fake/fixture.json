@@ -1,0 +1,144 @@
+{
+  "location": {
+    "id": "LQK1QAMZG63BM",
+    "name": "Default Test Account",
+    "currency": "USD",
+    "status": "ACTIVE",
+    "created_at": "2026-09-03T09:00:00Z"
+  },
+  "categories": [
+    { "id": "CAT_DRINKS", "name": "Drinks" },
+    { "id": "CAT_FOOD", "name": "Food" }
+  ],
+  "items": [
+    {
+      "itemId": "ITEM_ESPRESSO",
+      "variationId": "VAR_ESPRESSO",
+      "name": "Espresso",
+      "categoryId": "CAT_DRINKS",
+      "priceCents": 350,
+      "inventoryCount": 20
+    },
+    {
+      "itemId": "ITEM_LATTE",
+      "variationId": "VAR_LATTE",
+      "name": "Latte",
+      "categoryId": "CAT_DRINKS",
+      "priceCents": 525,
+      "inventoryCount": 27
+    },
+    {
+      "itemId": "ITEM_COLD_BREW",
+      "variationId": "VAR_COLD_BREW",
+      "name": "Cold Brew",
+      "categoryId": "CAT_DRINKS",
+      "priceCents": 475,
+      "inventoryCount": 34
+    },
+    {
+      "itemId": "ITEM_CROISSANT",
+      "variationId": "VAR_CROISSANT",
+      "name": "Croissant",
+      "categoryId": "CAT_FOOD",
+      "priceCents": 425,
+      "inventoryCount": 41
+    },
+    {
+      "itemId": "ITEM_AVOCADO_TOAST",
+      "variationId": "VAR_AVOCADO_TOAST",
+      "name": "Avocado Toast",
+      "categoryId": "CAT_FOOD",
+      "priceCents": 1150,
+      "inventoryCount": 48
+    },
+    {
+      "itemId": "ITEM_MUFFIN",
+      "variationId": "VAR_MUFFIN",
+      "name": "Blueberry Muffin",
+      "categoryId": "CAT_FOOD",
+      "priceCents": 395,
+      "inventoryCount": 55
+    }
+  ],
+  "customers": [
+    {
+      "id": "CUST_ADA",
+      "given_name": "Ada",
+      "family_name": "Lovelace",
+      "email_address": "ada@example.com",
+      "created_at": "2026-09-03T09:00:00Z"
+    },
+    {
+      "id": "CUST_GRACE",
+      "given_name": "Grace",
+      "family_name": "Hopper",
+      "email_address": "grace@example.com",
+      "created_at": "2026-09-03T09:01:00Z"
+    },
+    {
+      "id": "CUST_LINUS",
+      "given_name": "Linus",
+      "family_name": "Torvalds",
+      "email_address": "linus@example.com",
+      "created_at": "2026-09-03T09:02:00Z"
+    },
+    {
+      "id": "CUST_MARGARET",
+      "given_name": "Margaret",
+      "family_name": "Hamilton",
+      "email_address": "margaret@example.com",
+      "created_at": "2026-09-03T09:03:00Z"
+    }
+  ],
+  "orders": [
+    {
+      "id": "ORD_0",
+      "customerId": "CUST_ADA",
+      "state": "COMPLETED",
+      "quantity": 1,
+      "itemIndexes": [0, 1],
+      "createdAt": "2026-09-03T10:00:00Z"
+    },
+    {
+      "id": "ORD_1",
+      "customerId": "CUST_GRACE",
+      "state": "COMPLETED",
+      "quantity": 2,
+      "itemIndexes": [1, 2],
+      "createdAt": "2026-09-03T10:05:00Z"
+    },
+    {
+      "id": "ORD_2",
+      "customerId": "CUST_LINUS",
+      "state": "COMPLETED",
+      "quantity": 3,
+      "itemIndexes": [2, 3],
+      "createdAt": "2026-09-03T10:10:00Z"
+    },
+    {
+      "id": "ORD_3",
+      "customerId": "CUST_MARGARET",
+      "state": "OPEN",
+      "quantity": 4,
+      "itemIndexes": [3, 4],
+      "createdAt": "2026-09-03T10:15:00Z"
+    }
+  ],
+  "payments": [
+    { "id": "PAY_0", "orderId": "ORD_0", "createdAt": "2026-09-03T10:01:00Z" },
+    { "id": "PAY_1", "orderId": "ORD_1", "createdAt": "2026-09-03T10:06:00Z" },
+    { "id": "PAY_2", "orderId": "ORD_2", "createdAt": "2026-09-03T10:11:00Z" }
+  ],
+  "invoices": [
+    {
+      "id": "INV_0",
+      "orderId": "ORD_3",
+      "customerId": "CUST_MARGARET",
+      "invoiceNumber": "000001",
+      "title": "Catering order",
+      "status": "UNPAID",
+      "dueDate": "2026-09-16",
+      "createdAt": "2026-09-03T10:16:00Z"
+    }
+  ]
+}
