@@ -23,7 +23,7 @@ const buttonVariants = cva(
         plain:
           "border-transparent bg-transparent hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent active:not-aria-[haspopup]:translate-y-0",
         surface:
-          "border-border bg-card text-card-foreground shadow-sm hover:bg-muted/50 aria-expanded:bg-muted/50 active:not-aria-[haspopup]:translate-y-0",
+          "border-border bg-card text-card-foreground shadow-card hover:shadow-card-hover hover:bg-muted/50 aria-expanded:bg-muted/50 active:not-aria-[haspopup]:translate-y-0",
         destructive:
           "border-destructive-border bg-destructive-subtle text-destructive hover:bg-destructive-subtle/70 focus-visible:border-destructive-border focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",
         link: "border-transparent text-ring underline-offset-4 hover:underline",

@@ -360,3 +360,12 @@
   letter-spacing: var(--merit-recipe-label-letter-spacing);
   line-height: var(--merit-recipe-label-line-height);
 }
+
+/* Weight-only roles as real utilities so variants (data-active:, hover:) can target them. */
+@utility type-ui {
+  font-weight: var(--merit-weight-ui);
+}
+
+@utility type-emphasis {
+  font-weight: var(--merit-weight-emphasis);
+}

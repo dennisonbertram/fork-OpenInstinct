@@ -173,11 +173,11 @@ Badges use `rounded-full`.
 
 Source: `foundation.css`, `@theme inline`.
 
-| Token                | Value                                                                                                            | Use                                           |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `shadow-card`        | `0 2px 10px rgb(0 0 0 / 0.04)`                                                                                   | `Card`                                        |
-| `shadow-card-hover`  | `0 6px 20px rgb(0 0 0 / 0.06)`                                                                                   | Hover on a clickable card                     |
-| `activity-1` to `-9` | Tailwind v4 violet-500, cyan-500, blue-500, fuchsia-500, emerald-500, amber-500, slate-400, orange-400, zinc-400 | The nine kinds in the browser activity legend |
+| Token                | Value                                                                                                            | Use                                              |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `shadow-card`        | `0 2px 10px rgb(0 0 0 / 0.04)`                                                                                   | `Card`                                           |
+| `shadow-card-hover`  | `0 6px 20px rgb(0 0 0 / 0.06)`                                                                                   | Hover on the `surface` button (a clickable card) |
+| `activity-1` to `-9` | Tailwind v4 violet-500, cyan-500, blue-500, fuchsia-500, emerald-500, amber-500, slate-400, orange-400, zinc-400 | The nine kinds in the browser activity legend    |
 
 ### 3.6 Motion
 
@@ -254,19 +254,19 @@ default is marked with an asterisk.
 
 Button variant intent:
 
-| Variant       | Look                                            | Use for                                                            |
-| ------------- | ----------------------------------------------- | ------------------------------------------------------------------ |
-| `default`     | Navy fill, white text, darker navy on hover     | The one main action on a view                                      |
-| `outline`     | Border, white background, muted on hover        | Secondary actions                                                  |
-| `secondary`   | Light gray fill                                 | Secondary actions on the cream page or inside a colored region     |
-| `subtle`      | Light gray fill, muted text                     | Low-emphasis actions                                               |
-| `ghost`       | No fill until hover                             | Toolbar and icon actions                                           |
-| `quiet`       | No fill, muted text, no hover fill              | Inline actions in dense text                                       |
-| `plain`       | No styling at all                               | Wrapping custom content                                            |
-| `surface`     | Card look with shadow, full width, left aligned | Large tappable cards, such as the channel buttons on the home page |
-| `destructive` | Red tint fill, red border, red text             | Delete and disconnect                                              |
-| `link`        | Indigo text, underline on hover                 | Inline navigation                                                  |
-| `motion`      | Muted text, pressed state in foreground color   | The motion toggle in the chat composer                             |
+| Variant       | Look                                                                                          | Use for                                                            |
+| ------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `default`     | Navy fill, white text, darker navy on hover                                                   | The one main action on a view                                      |
+| `outline`     | Border, white background, muted on hover                                                      | Secondary actions                                                  |
+| `secondary`   | Light gray fill                                                                               | Secondary actions on the cream page or inside a colored region     |
+| `subtle`      | Light gray fill, muted text                                                                   | Low-emphasis actions                                               |
+| `ghost`       | No fill until hover                                                                           | Toolbar and icon actions                                           |
+| `quiet`       | No fill, muted text, no hover fill                                                            | Inline actions in dense text                                       |
+| `plain`       | No styling at all                                                                             | Wrapping custom content                                            |
+| `surface`     | Card look with `shadow-card`, lifts to `shadow-card-hover` on hover, full width, left aligned | Large tappable cards, such as the channel buttons on the home page |
+| `destructive` | Red tint fill, red border, red text                                                           | Delete and disconnect                                              |
+| `link`        | Indigo text, underline on hover                                                               | Inline navigation                                                  |
+| `motion`      | Muted text, pressed state in foreground color                                                 | The motion toggle in the chat composer                             |
 
 The compatibility layer in `src/app/styles/brand/shadcn.css` forces the text
 family and the ui weight onto every `[data-slot="button"|"badge"|"label"]`,
@@ -323,9 +323,13 @@ Each item is verified against the named file on 2026-09-03.
 2. **Two undefined type classes are in use.** `type-definitions` and
    `type-assertion` appear once each in `src/**/*.tsx` and are not defined in
    `typography.css`. They have no effect.
-3. **Duplicate utility declarations.** The end of `typography.css` re-declares
-   `type-caption`, `type-label`, and `type-card-title` with `@utility` after
-   the `@layer utilities` block defines them. The file gives no reason.
+3. **Two declarations per variant-capable role.** `typography.css` defines
+   every `type-*` role in `@layer utilities`, then re-declares
+   `type-caption`, `type-label`, `type-card-title`, `type-ui`, and
+   `type-emphasis` with `@utility`. Only the `@utility` form works behind a
+   Tailwind variant (`data-active:type-emphasis`, `hover:type-label`); the
+   other roles do not. Use one of those five when a role must change under a
+   variant, or add the missing `@utility` block.
 4. **No spacing, elevation scale, or z-index tokens.** Section 3.8 lists
    observed conventions only; section 3.5 has two shadows.
 5. **No component showcase route.** `docs/design/design-system.pen` (Pencil)
