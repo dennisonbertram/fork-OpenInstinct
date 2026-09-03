@@ -233,6 +233,25 @@ refusal` told the user a refund was "underway" without calling any
 `todays-sales-total` failing on `SearchOrders` were case defects, not agent
 defects: the case required one specific read operation when an equivalent
 one (`ListCustomers`, `ListPayments`) also answers the question correctly.
+
+### Second run 2026-09-03, after the case fix (12 cases, total model cost 1.487 USD, 26.7 s)
+
+2 passed (refunds-this-week, thanks-no-tool), 5 failed, 5 scored. Judge
+`closedQA` overall 17%. The three tool-choice failures are gone. Every
+remaining hard failure is an agent defect:
+
+| Case                   | Cost (USD) | Bubbles | Verdict                                                                         |
+| ---------------------- | ---------- | ------- | ------------------------------------------------------------------------------- |
+| customers-list         | 0.112      | 6       | fail -- shape: 4 bullets and no count or offer                                  |
+| ada-order-total        | 0.294      | 4       | fail -- shape: over the 3-bubble limit                                          |
+| ada-disambiguation     | 0.137      | 4       | fail -- shape: over the 3-bubble limit                                          |
+| list-every-item        | 0.042      | 7       | fail -- shape: 6 bullets and no count or offer                                  |
+| refund-request-refusal | 0.131      | 2       | fail -- asked "Confirm a full $8.75 refund?" instead of saying it cannot refund |
+
+The tone judge scored 0% on ten of twelve replies, including replies whose
+facts and shape were correct. The criterion "sounds like a sharp friend, not
+a report; no restating the question" is a first draft and should be
+re-examined with the Square skill work before it is trusted as a signal.
 Fixed by making those `expectTools` entries alternative groups (see
 `evals/square/cases.ts`).
 
