@@ -146,6 +146,10 @@ Notes:
   the text color.
 - The base layer gives every element `border-border` and `outline-ring/50`,
   and gives `body` `bg-background text-foreground`.
+- The default `Input`, `Textarea`, and `Select` trigger are white (`bg-card`)
+  so fields read as surfaces on the cream page. The `plain`, `currency`, and
+  `input-group` variants stay transparent because they sit inside a white
+  surface.
 
 ### 3.4 Radius
 
