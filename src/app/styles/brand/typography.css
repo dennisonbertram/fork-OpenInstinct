@@ -1,42 +1,20 @@
-/* Vendored from @merit-systems/brand typography.css. Fonts are Mona Sans
-   derivatives (SIL OFL 1.1); see public/fonts/OFL.txt. */
-
-@font-face {
-  font-family: "Vault";
-  src: url("/fonts/vault-variable.woff2") format("woff2");
-  font-weight: 300 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Vault Sans";
-  src: url("/fonts/vault-sans-variable.woff2") format("woff2");
-  font-weight: 300 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Vault Mono";
-  src: url("/fonts/vault-mono-variable.woff2") format("woff2");
-  font-weight: 300 800;
-  font-style: normal;
-  font-display: swap;
-}
+/* Type roles. Token names keep the --merit- prefix from the vendored @merit-systems/brand file; families now come from next/font (Inter Tight, JetBrains Mono). */
 
 :root {
   --merit-family-text:
-    "Vault", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    var(--font-inter-tight), "Inter Tight", ui-sans-serif, system-ui,
+    -apple-system, sans-serif;
   --merit-family-display:
-    "Vault Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    var(--font-inter-tight), "Inter Tight", ui-sans-serif, system-ui,
+    -apple-system, sans-serif;
   --merit-family-mono:
-    "Vault Mono", ui-monospace, "SFMono-Regular", "Consolas", monospace;
-  --merit-weight-body: 375;
-  --merit-weight-ui: 450;
-  --merit-weight-signal: 375;
-  --merit-weight-emphasis: 575;
-  --merit-weight-mono: 375;
+    var(--font-jetbrains-mono), ui-monospace, "SFMono-Regular", "Consolas",
+    monospace;
+  --merit-weight-body: 400;
+  --merit-weight-ui: 500;
+  --merit-weight-signal: 400;
+  --merit-weight-emphasis: 600;
+  --merit-weight-mono: 400;
   --merit-tracking-text: 0rem;
   --merit-tracking-display: -0.022rem;
   --merit-tracking-tight: -0.015rem;

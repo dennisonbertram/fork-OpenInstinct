@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { Inter_Tight, JetBrains_Mono } from "next/font/google";
 import { QueryProvider } from "@/app/_providers/query-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { accessScopeForUser } from "@/lib/access-scope";
@@ -14,6 +15,20 @@ export const metadata: Metadata = {
     "A self-hosted personal agent with private credentials and Kernel-powered browser execution.",
 };
 
+const interTight = Inter_Tight({
+  weight: ["400", "500", "600", "700", "800"],
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter-tight",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  weight: ["400", "500"],
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-jetbrains-mono",
+});
+
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const session = await getAuthSession(await headers());
   const workspaceId = session
@@ -21,7 +36,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     : undefined;
 
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      className={`${interTight.variable} ${jetbrainsMono.variable}`}
+    >
       <body data-workspace-id={workspaceId}>
         <QueryProvider>
           <TooltipProvider>{children}</TooltipProvider>
