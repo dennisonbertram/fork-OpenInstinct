@@ -12,7 +12,7 @@ label are implemented.
 **Restyle 2026-09-03.** The token and type layers moved to the Jory look:
 cream page, white cards, navy ink and primary, indigo ring and links, soft
 status tints, Inter Tight, 12px base radius, pill badges, and chat bubbles.
-The decisions behind it (D1 to D6) are recorded in
+The decisions behind it (D1 to D6) were proposed by the assistant and are not yet confirmed by the owner; they are recorded in
 [`JORY_DESIGN_MERGE.md`](JORY_DESIGN_MERGE.md) section 3.1. The Pencil canvas
 in `design/` predates this restyle in sections 04 to 07.
 
@@ -75,10 +75,10 @@ Source: `src/app/styles/brand/typography.css`. Pixel values assume a 16px root.
 
 | Utility                | Family      | Size                                  | Weight  | Tracking  | Line height | Use for                                   |
 | ---------------------- | ----------- | ------------------------------------- | ------- | --------- | ----------- | ----------------------------------------- |
-| `type-product-title`   | Inter Tight | 2.25rem (36)                          | 500     | -0.015rem | 1           | Product name on a landing or sign-in view |
-| `type-page-title`      | Inter Tight | 1.875rem (30)                         | 500     | -0.015rem | 1.2         | The one `h1` of a page                    |
-| `type-section-title`   | Inter Tight | 1.125rem (18)                         | 500     | 0         | 1.35        | `h2` of a page section                    |
-| `type-card-title`      | Inter Tight | 1rem (16)                             | 500     | 0         | 1.35        | Card and dialog titles                    |
+| `type-product-title`   | Inter Tight | 2.25rem (36)                          | 600     | -0.015rem | 1           | Product name on a landing or sign-in view |
+| `type-page-title`      | Inter Tight | 1.875rem (30)                         | 600     | -0.015rem | 1.2         | The one `h1` of a page                    |
+| `type-section-title`   | Inter Tight | 1.125rem (18)                         | 600     | 0         | 1.35        | `h2` of a page section                    |
+| `type-card-title`      | Inter Tight | 1rem (16)                             | 600     | 0         | 1.35        | Card and dialog titles                    |
 | `type-banner-metric`   | Inter Tight | 1.5rem (24)                           | 600     | 0         | 1           | A single large number                     |
 | `type-body`            | Inter Tight | inherit (16)                          | 400     | 0         | inherit     | Long-form prose                           |
 | `type-supporting-body` | Inter Tight | 0.875rem (14)                         | 400     | 0         | 1.5         | Descriptions, chat text, form help        |
@@ -312,7 +312,7 @@ The dark token set in `foundation.css` under `.dark` is the pre-restyle
 shadcn neutral set. The Tailwind variant is
 `@custom-variant dark (&:is(.dark *))`. No code sets the `dark` class, and
 the repository has no theme provider dependency. The application renders in
-light mode only. Decision D4 in `JORY_DESIGN_MERGE.md` keeps it that way.
+light mode only. Proposed decision D4 in `JORY_DESIGN_MERGE.md` keeps it that way.
 
 ## 8. Known gaps
 
