@@ -37,7 +37,13 @@ export const browserBenchmarkReporter: EvalReporter = {
     liveActivityDurations.clear();
     liveViewUrls.clear();
 
-    for (const evaluation of evaluations) {
+    // A config-level reporter observes every eval in the run, so ignore
+    // evals from other trees (e.g. the Square gym) sharing this run.
+    const browserEvaluations = evaluations.filter((evaluation) =>
+      evaluation.tags?.includes("browser")
+    );
+
+    for (const evaluation of browserEvaluations) {
       taskNames.set(evaluation.id, evaluation.description ?? evaluation.id);
     }
 
@@ -54,7 +60,7 @@ export const browserBenchmarkReporter: EvalReporter = {
       error: null,
       startedAt: new Date().toISOString(),
       status: "running",
-      tasks: evaluations.map((evaluation) => ({
+      tasks: browserEvaluations.map((evaluation) => ({
         activity: null,
         activityDurationsMs: {},
         browserLiveViewUrl: null,
@@ -78,6 +84,7 @@ export const browserBenchmarkReporter: EvalReporter = {
     }));
   },
   async onEvalStart(event) {
+    if (!taskNames.has(event.evaluation.id)) return;
     console.log(`START ${event.evaluation.description ?? event.evaluation.id}`);
     await updateLiveTask(event.evaluation.id, (task) => ({
       ...task,
@@ -86,6 +93,7 @@ export const browserBenchmarkReporter: EvalReporter = {
     }));
   },
   async onSessionStart(event) {
+    if (!taskNames.has(event.evaluation.id)) return;
     console.log(
       `SESSION ${event.primary ? "root" : "worker"} ${event.sessionId} · ${event.evaluation.description ?? event.evaluation.id}`
     );
@@ -104,6 +112,7 @@ export const browserBenchmarkReporter: EvalReporter = {
     }));
   },
   async onEvalComplete(result) {
+    if (!taskNames.has(result.id)) return;
     const task = summarizeTaskResult(
       result,
       taskNames.get(result.id) ?? result.id
@@ -135,6 +144,7 @@ export const browserBenchmarkReporter: EvalReporter = {
     }));
   },
   async onRunComplete(summary) {
+    if (taskNames.size === 0) return;
     console.log(tableBorder());
     const benchmark = await buildBenchmark(summary);
     const artifactPath = await writeBenchmark(benchmark);
@@ -284,11 +294,13 @@ function summarizeTaskResult(result: EveEvalResult, name: string) {
 async function buildBenchmark(
   summary: EveEvalRunSummary
 ): Promise<BrowserBenchmark> {
-  const tasks = summary.results.map(
-    (result) =>
-      completedTasks.get(result.id) ??
-      summarizeTaskResult(result, taskNames.get(result.id) ?? result.id)
-  );
+  const tasks = summary.results
+    .filter((result) => taskNames.has(result.id))
+    .map(
+      (result) =>
+        completedTasks.get(result.id) ??
+        summarizeTaskResult(result, taskNames.get(result.id) ?? result.id)
+    );
   const successfulDurations = tasks
     .filter((task) => task.success)
     .map((task) => task.durationMs)
