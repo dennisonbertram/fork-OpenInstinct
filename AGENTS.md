@@ -154,6 +154,9 @@ Before planning or changing product UI:
   typography utilities defined in `src/app/styles/brand/typography.css`.
 - Preserve the current `components.json` primitive base and local extensions;
   add new primitives with the official shadcn CLI.
+- Read [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md) for the token values,
+  type roles, primitive variants, and page patterns; update it in the same
+  pull request when any of those change.
 
 ## Type ownership
 
