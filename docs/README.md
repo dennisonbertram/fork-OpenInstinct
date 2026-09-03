@@ -10,19 +10,20 @@ being considered. Documents use three labels deliberately:
 
 ## Start here
 
-| Reader              | Document                                                           | Purpose                                                                                                        |
-| ------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| Operator            | [`operations/VERCEL.md`](operations/VERCEL.md)                     | Zero-to-running local and Vercel setup, Linq, verification, rollback, and incidents                            |
-| Coding agent        | [`AGENT_GUIDE.md`](AGENT_GUIDE.md)                                 | Repository topology, ownership boundaries, change recipes, and gates                                           |
-| Architect           | [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md)                 | Current system, trust boundaries, findings, and portability limits                                             |
-| Product/engineering | [`PRODUCT_DIRECTION.md`](PRODUCT_DIRECTION.md)                     | Infrastructure-first recommendation, product model, MVP, API, webhooks, and phone lifecycle                    |
-| Platform engineer   | [`MULTITENANCY.md`](MULTITENANCY.md)                               | Tenant isolation contract, migration sequence, quotas, lifecycle, and test strategy                            |
-| Coding agent        | [`agent-loop.html`](agent-loop.html)                               | Diagram of one turn: channels, scope, session hooks, steps, tool branches, bubble delivery (open in a browser) |
-| Integrations        | [`SQUARE.md`](SQUARE.md)                                           | Per-user Square connection: implemented pieces, sandbox state, verification, and the proposed POS gym          |
-| Product/engineering | [`agent-conversation-feedback.md`](agent-conversation-feedback.md) | Dated log of user feedback on agent conversations; review material, not runtime instructions                   |
-| Design/frontend     | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)                             | The design system as implemented: fonts, type roles, color tokens, radius, motion, primitives, shell, gaps     |
-| Design/frontend     | [`JORY_DESIGN_MERGE.md`](JORY_DESIGN_MERGE.md)                     | Jory's design system inventory, side-by-side with this repository, and the proposed merge decisions            |
-| Contributor         | [`../README.md`](../README.md)                                     | Product overview and normal development entry points                                                           |
+| Reader              | Document                                                           | Purpose                                                                                                         |
+| ------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Operator            | [`operations/VERCEL.md`](operations/VERCEL.md)                     | Zero-to-running local and Vercel setup, Linq, verification, rollback, and incidents                             |
+| Coding agent        | [`AGENT_GUIDE.md`](AGENT_GUIDE.md)                                 | Repository topology, ownership boundaries, change recipes, and gates                                            |
+| Architect           | [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md)                 | Current system, trust boundaries, findings, and portability limits                                              |
+| Product/engineering | [`PRODUCT_DIRECTION.md`](PRODUCT_DIRECTION.md)                     | Infrastructure-first recommendation, product model, MVP, API, webhooks, and phone lifecycle                     |
+| Platform engineer   | [`MULTITENANCY.md`](MULTITENANCY.md)                               | Tenant isolation contract, migration sequence, quotas, lifecycle, and test strategy                             |
+| Coding agent        | [`agent-loop.html`](agent-loop.html)                               | Diagram of one turn: channels, scope, session hooks, steps, tool branches, bubble delivery (open in a browser)  |
+| Integrations        | [`SQUARE.md`](SQUARE.md)                                           | Per-user Square connection: implemented pieces, sandbox state, verification, and the proposed POS gym           |
+| Product/engineering | [`agent-conversation-feedback.md`](agent-conversation-feedback.md) | Dated log of user feedback on agent conversations; review material, not runtime instructions                    |
+| Design/frontend     | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)                             | The design system as implemented: fonts, type roles, color tokens, radius, motion, primitives, shell, gaps      |
+| Design/frontend     | [`JORY_DESIGN_MERGE.md`](JORY_DESIGN_MERGE.md)                     | Jory's design system inventory, side-by-side with this repository, and the proposed merge decisions             |
+| Design/frontend     | [`design/`](design/)                                               | Pencil canvas (`design-system.pen`) with both systems drawn, plus the three component catalogs it is built from |
+| Contributor         | [`../README.md`](../README.md)                                     | Product overview and normal development entry points                                                            |
 
 ## Current truth
 

@@ -333,6 +333,16 @@ Each item is verified against the named file on 2026-09-03.
    conventions only.
 7. **No component showcase.** There is no route or story file that renders
    every primitive and variant. Visual review needs the real pages.
+   `docs/design/design-system.pen` (Pencil) draws every primitive, variant,
+   composed component, and screen from the catalog in
+   `docs/design/catalog-openinstinct.md`; it is a design file, not a
+   rendered route.
+8. **Nine raw palette colors in the browser activity legend.**
+   `src/components/browser/activity-duration-breakdown.tsx` uses
+   `bg-violet-500`, `bg-cyan-500`, `bg-blue-500`, `bg-fuchsia-500`,
+   `bg-emerald-500`, `bg-amber-500`, `bg-slate-400`, `bg-orange-400`, and
+   `bg-zinc-400` for its nine activity kinds. No token set covers nine
+   categories; the five `chart-*` tokens are the nearest.
 
 ## 9. How to change the system
 
