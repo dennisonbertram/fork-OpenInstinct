@@ -148,6 +148,26 @@ describe("square connection auth resolver", () => {
     ).resolves.toEqual({ token: "eval-token" });
   });
 
+  it("does not use the static token when VERCEL_ENV is production", async () => {
+    vi.doMock("@/env", () => ({
+      env: {
+        SQUARE_CONNECTOR_UID: undefined,
+        SQUARE_ENVIRONMENT: "sandbox",
+        SQUARE_SANDBOX_ACCESS_TOKEN: "eval-token",
+        VERCEL_ENV: "production",
+      },
+      isWorkspaceScopeEnforcementEnabled: mocks.scopeEnabled,
+    }));
+    vi.resetModules();
+    const { squareAuth: productionSquareAuth } =
+      await import("@/agent/lib/square/auth");
+
+    await expect(productionSquareAuth(sessionContext())).rejects.toThrow(
+      "SQUARE_CONNECTOR_UID"
+    );
+    expect(mocks.connect).not.toHaveBeenCalled();
+  });
+
   it("rejects a non-user principal in createSubject", async () => {
     await squareAuth(sessionContext());
     const call = mocks.connect.mock.calls.at(0);
