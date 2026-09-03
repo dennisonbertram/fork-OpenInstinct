@@ -121,6 +121,33 @@ describe("square connection auth resolver", () => {
     );
   });
 
+  it("returns a static-token provider in sandbox with a token, without calling connect()", async () => {
+    vi.doMock("@/env", () => ({
+      env: {
+        SQUARE_CONNECTOR_UID: undefined,
+        SQUARE_ENVIRONMENT: "sandbox",
+        SQUARE_SANDBOX_ACCESS_TOKEN: "eval-token",
+      },
+      isWorkspaceScopeEnforcementEnabled: mocks.scopeEnabled,
+    }));
+    vi.resetModules();
+    const { squareAuth: sandboxSquareAuth } =
+      await import("@/agent/lib/square/auth");
+
+    const provider = await sandboxSquareAuth(sessionContext());
+
+    expect(mocks.connect).not.toHaveBeenCalled();
+    expect(mocks.findInstallation).not.toHaveBeenCalled();
+    if (!("getToken" in provider))
+      throw new Error("expected a getToken provider");
+    await expect(
+      provider.getToken({
+        principal: { type: "app" },
+        connection: { url: "https://example.com" },
+      })
+    ).resolves.toEqual({ token: "eval-token" });
+  });
+
   it("rejects a non-user principal in createSubject", async () => {
     await squareAuth(sessionContext());
     const call = mocks.connect.mock.calls.at(0);

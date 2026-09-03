@@ -22,7 +22,11 @@ export function squareTokenParams(userId: string): ConnectTokenParams {
   };
 }
 
-export function squareBaseUrl(environment: "sandbox" | "production") {
+export function squareBaseUrl(
+  environment: "sandbox" | "production",
+  override?: string
+) {
+  if (override) return override;
   return environment === "production"
     ? "https://connect.squareup.com"
     : "https://connect.squareupsandbox.com";

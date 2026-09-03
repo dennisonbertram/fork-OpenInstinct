@@ -62,6 +62,48 @@ describe("environment", () => {
     );
   });
 
+  it("rejects a sandbox access token when the environment is production", async () => {
+    vi.stubEnv("SQUARE_ENVIRONMENT", "production");
+    vi.stubEnv("SQUARE_SANDBOX_ACCESS_TOKEN", "eval-token");
+
+    await expect(import("@/env")).rejects.toThrow(
+      "Invalid environment variables"
+    );
+    const loggedIssues = JSON.stringify(vi.mocked(console.error).mock.calls);
+    expect(loggedIssues).toContain("SQUARE_SANDBOX_ACCESS_TOKEN");
+  });
+
+  it("accepts a sandbox access token when the environment is sandbox", async () => {
+    vi.stubEnv("SQUARE_ENVIRONMENT", "sandbox");
+    vi.stubEnv("SQUARE_SANDBOX_ACCESS_TOKEN", "eval-token");
+
+    const { env } = await import("@/env");
+
+    expect(env.SQUARE_SANDBOX_ACCESS_TOKEN).toBe("eval-token");
+  });
+
+  it.each(["http://127.0.0.1:4111", "http://localhost:4111"])(
+    "accepts a loopback SQUARE_BASE_URL %s",
+    async (url) => {
+      vi.stubEnv("SQUARE_BASE_URL", url);
+
+      const { env } = await import("@/env");
+
+      expect(env.SQUARE_BASE_URL).toBe(url);
+    }
+  );
+
+  it.each(["https://evil.example", "http://evil.example:80"])(
+    "rejects a non-loopback SQUARE_BASE_URL %s",
+    async (url) => {
+      vi.stubEnv("SQUARE_BASE_URL", url);
+
+      await expect(import("@/env")).rejects.toThrow(
+        "Invalid environment variables"
+      );
+    }
+  );
+
   it("enables workspace scope enforcement when configured", async () => {
     vi.stubEnv("WORKSPACE_SCOPE_ENFORCEMENT", "enforce");
 
