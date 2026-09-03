@@ -2,6 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 const ignoredDirectories = new Set([
+  ".claude",
   ".git",
   ".next",
   ".pnpm-store",
@@ -25,7 +26,7 @@ describe("Vitest project configuration", () => {
     );
     expect(config).toContain("include: [defaultTestInclude]");
     expect(config).toMatch(
-      /exclude:\s+\[\s+"\*\*\/node_modules\/\*\*",\s+"\*\*\/.next\/\*\*",\s+"tests\/integration\/\*\*",\s+(?:\/\/[^\n]*\s+)?"tests\/e2e\/\*\*",\s+\]/u
+      /exclude:\s+\[\s+"\*\*\/node_modules\/\*\*",\s+"\*\*\/.next\/\*\*",\s+"\*\*\/.claude\/\*\*",\s+"tests\/integration\/\*\*",\s+(?:\/\/[^\n]*\s+)?"tests\/e2e\/\*\*",\s+\]/u
     );
     expect(config).toContain('include: ["tests/integration/**"]');
     expect(testFiles).not.toHaveLength(0);

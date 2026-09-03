@@ -56,6 +56,7 @@ export default defineConfig({
           exclude: [
             "**/node_modules/**",
             "**/.next/**",
+            "**/.claude/**",
             "tests/integration/**",
             // Playwright owns the e2e tier; vitest must not collect its specs.
             "tests/e2e/**",
