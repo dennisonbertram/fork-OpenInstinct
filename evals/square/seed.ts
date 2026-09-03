@@ -72,13 +72,21 @@ function assertOk(status: number, path: string, body: unknown): void {
   );
 }
 
-/** Parses a raw SquareFetch response body against a schema at the I/O boundary. */
-async function parseBody<T>(
-  // oxlint-disable-next-line anti-slop/no-unknown-returns -- the raw SquareFetch response; schema.parse validates it before anything downstream sees the value.
-  res: { json: () => Promise<unknown> },
+/**
+ * Reads a SquareFetch response body once, asserts the status BEFORE parsing
+ * against a schema, and only then validates the shape. Parsing first would
+ * strip an error body's `errors` field (it isn't in any success schema),
+ * silently losing the real Square error message.
+ */
+async function parseOk<T>(
+  // oxlint-disable-next-line anti-slop/no-unknown-returns -- the raw SquareFetch response; assertOk checks the status and schema.parse validates the shape before anything downstream sees the value.
+  res: { status: number; json: () => Promise<unknown> },
+  path: string,
   schema: z.ZodType<T>
 ): Promise<T> {
-  return schema.parse(await res.json());
+  const raw = await res.json();
+  assertOk(res.status, path, raw);
+  return schema.parse(raw);
 }
 
 function makeSquareFetch(baseUrl: string, token: string): SquareFetch {
@@ -106,8 +114,7 @@ const customersResponseSchema = z.object({
 
 async function purgeMarkedCustomers(squareFetch: SquareFetch): Promise<void> {
   const res = await squareFetch("/v2/customers", { method: "GET" });
-  const body = await parseBody(res, customersResponseSchema);
-  assertOk(res.status, "GET /v2/customers", body);
+  const body = await parseOk(res, "GET /v2/customers", customersResponseSchema);
   const ids = (body.customers ?? [])
     .filter((c) => c.note === SEED_MARKER)
     .map((c) => c.id);
@@ -138,8 +145,11 @@ async function purgeMarkedCatalogObjects(
   const res = await squareFetch("/v2/catalog/list?types=ITEM", {
     method: "GET",
   });
-  const body = await parseBody(res, catalogListResponseSchema);
-  assertOk(res.status, "GET /v2/catalog/list", body);
+  const body = await parseOk(
+    res,
+    "GET /v2/catalog/list",
+    catalogListResponseSchema
+  );
   const ids = (body.objects ?? [])
     .filter((o) => o.item_data?.description === SEED_MARKER)
     .map((o) => o.id);
@@ -199,8 +209,11 @@ async function upsertCatalog(
     },
     method: "POST",
   });
-  const body = await parseBody(res, catalogUpsertResponseSchema);
-  assertOk(res.status, "POST /v2/catalog/batch-upsert", body);
+  const body = await parseOk(
+    res,
+    "POST /v2/catalog/batch-upsert",
+    catalogUpsertResponseSchema
+  );
   const idMappings = new Map(
     (body.id_mappings ?? []).map((m) => [m.client_object_id, m.object_id])
   );
@@ -227,8 +240,11 @@ async function createCustomers(
       },
       method: "POST",
     });
-    const body = await parseBody(res, createCustomerResponseSchema);
-    assertOk(res.status, "POST /v2/customers", body);
+    const body = await parseOk(
+      res,
+      "POST /v2/customers",
+      createCustomerResponseSchema
+    );
     if (!body.customer) throw new Error("Square did not return a customer.");
     created.set(customer.id, body.customer.id);
   }
@@ -282,8 +298,11 @@ async function createOrders(
       },
       method: "POST",
     });
-    const body = await parseBody(res, createOrderResponseSchema);
-    assertOk(res.status, "POST /v2/orders", body);
+    const body = await parseOk(
+      res,
+      "POST /v2/orders",
+      createOrderResponseSchema
+    );
     if (!body.order) throw new Error("Square did not return an order.");
     created.set(order.id, {
       id: body.order.id,
@@ -351,8 +370,11 @@ async function createAndPublishInvoices(
       },
       method: "POST",
     });
-    const body = await parseBody(res, createInvoiceResponseSchema);
-    assertOk(res.status, "POST /v2/invoices", body);
+    const body = await parseOk(
+      res,
+      "POST /v2/invoices",
+      createInvoiceResponseSchema
+    );
     if (!body.invoice) throw new Error("Square did not return an invoice.");
     const publish = await squareFetch(
       `/v2/invoices/${body.invoice.id}/publish`,
