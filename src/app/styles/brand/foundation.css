@@ -44,60 +44,91 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
+  --color-primary-hover: var(--primary-hover);
+  --color-bubble-user: var(--bubble-user);
+  --color-bubble-assistant: var(--bubble-assistant);
+  --color-activity-1: var(--activity-1);
+  --color-activity-2: var(--activity-2);
+  --color-activity-3: var(--activity-3);
+  --color-activity-4: var(--activity-4);
+  --color-activity-5: var(--activity-5);
+  --color-activity-6: var(--activity-6);
+  --color-activity-7: var(--activity-7);
+  --color-activity-8: var(--activity-8);
+  --color-activity-9: var(--activity-9);
+  --shadow-card: 0 2px 10px rgb(0 0 0 / 0.04); /* Jory shadows.card */
+  --shadow-card-hover: 0 6px 20px rgb(0 0 0 / 0.06); /* Jory shadows.cardHover */
+
+  /* Base 12px: xs 6, sm 8, md 10, lg 12, xl 16 (cards), 2xl 20, 3xl 24, 4xl 28. */
   --radius-xs: calc(var(--radius) * 0.5);
-  --radius-sm: calc(var(--radius) * 0.75);
-  --radius-md: calc(var(--radius) * 0.875);
+  --radius-sm: calc(var(--radius) / 1.5);
+  --radius-md: calc(var(--radius) / 1.2);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.5);
-  --radius-2xl: calc(var(--radius) * 2);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-xl: calc(var(--radius) * 4 / 3);
+  --radius-2xl: calc(var(--radius) * 5 / 3);
+  --radius-3xl: calc(var(--radius) * 2);
+  --radius-4xl: calc(var(--radius) * 7 / 3);
+  --radius-bubble: 1.125rem; /* 18px, Jory radii.bubble */
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.53 0.245 27.325);
-  --destructive-border: oklch(0.53 0.245 27.325 / 32%);
-  --destructive-subtle: oklch(0.53 0.245 27.325 / 10%);
-  --information: oklch(0.48 0.14 250);
-  --information-border: oklch(0.72 0.1 250);
-  --information-subtle: oklch(0.96 0.025 250);
-  --success: oklch(0.44 0.14 150);
-  --success-border: oklch(0.72 0.1 150);
-  --success-subtle: oklch(0.96 0.03 150);
-  --warning: oklch(0.47 0.12 75);
-  --warning-border: oklch(0.77 0.11 75);
-  --warning-subtle: oklch(0.97 0.035 85);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* Jory palette from jory/apps/web/src/lib/design-tokens.ts, converted from hex to OKLCH. */
+  --background: oklch(0.977 0.01 87.5); /* bg #FAF7F0 */
+  --foreground: oklch(0.223 0.059 256.6); /* ink #071B36 */
+  --card: oklch(1 0 0); /* white cards on the cream page */
+  --card-foreground: oklch(0.223 0.059 256.6); /* ink #071B36 */
+  --popover: oklch(1 0 0); /* white */
+  --popover-foreground: oklch(0.223 0.059 256.6); /* ink #071B36 */
+  --primary: oklch(0.217 0.056 255.1); /* cta #061A33 */
+  --primary-foreground: oklch(1 0 0); /* white */
+  --primary-hover: oklch(0.285 0.072 256.1); /* cta-hover #0F2A4D */
+  --secondary: oklch(0.925 0 0); /* muted #E6E6E6 */
+  --secondary-foreground: oklch(0.257 0.049 261.9); /* ink-2 #16233B */
+  --muted: oklch(0.925 0 0); /* muted #E6E6E6 */
+  --muted-foreground: oklch(0.52 0.043 258.4); /* muted-ink #5A6A82 */
+  --accent: oklch(0.925 0 0); /* muted #E6E6E6 */
+  --accent-foreground: oklch(0.257 0.049 261.9); /* ink-2 #16233B */
+  --destructive: oklch(0.501 0.178 28.7); /* Jory product error red #B3261E */
+  --destructive-border: oklch(0.501 0.178 28.7 / 32%);
+  --destructive-subtle: oklch(0.945 0.029 39.3); /* soft-red #FFE7DF */
+  --information: oklch(0.511 0.23 277); /* accent-indigo #4F46E5 */
+  --information-border: oklch(0.511 0.23 277 / 32%);
+  --information-subtle: oklch(0.942 0.031 295.8); /* soft-purple #EDE8FF */
+  --success: oklch(0.723 0.192 149.6); /* accent-green #22C55E */
+  --success-border: oklch(0.723 0.192 149.6 / 32%);
+  --success-subtle: oklch(0.964 0.026 143.6); /* soft-green #E9F8E8 */
+  --warning: oklch(0.75 0.141 87.1); /* mustard #D4A72C */
+  --warning-border: oklch(0.75 0.141 87.1 / 32%);
+  --warning-subtle: oklch(0.961 0.047 88.3); /* soft-yellow #FFF1CF */
+  --border: oklch(0.925 0 0); /* muted #E6E6E6 */
+  --input: oklch(0.925 0 0); /* muted #E6E6E6 */
+  --ring: oklch(0.511 0.23 277); /* accent-indigo #4F46E5 */
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar: oklch(0.977 0.01 87.5); /* bg #FAF7F0 */
+  --sidebar-foreground: oklch(0.223 0.059 256.6); /* ink #071B36 */
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-  --radius: 0.625rem;
+  --sidebar-accent: oklch(1 0 0); /* white active item */
+  --sidebar-accent-foreground: oklch(0.223 0.059 256.6); /* ink #071B36 */
+  --sidebar-border: oklch(0.925 0 0); /* muted #E6E6E6 */
+  --sidebar-ring: oklch(0.511 0.23 277); /* accent-indigo #4F46E5 */
+  --bubble-user: oklch(0.968 0.007 247.9); /* bubble-user #F1F5F9 */
+  --bubble-assistant: oklch(0.93 0.033 272.8); /* bubble-jory #E0E7FF */
+  /* Browser activity legend. Values are Tailwind v4 theme.css colors the legend used as classes. */
+  --activity-1: oklch(60.6% 0.25 292.717); /* violet-500 */
+  --activity-2: oklch(71.5% 0.143 215.221); /* cyan-500 */
+  --activity-3: oklch(62.3% 0.214 259.815); /* blue-500 */
+  --activity-4: oklch(66.7% 0.295 322.15); /* fuchsia-500 */
+  --activity-5: oklch(69.6% 0.17 162.48); /* emerald-500 */
+  --activity-6: oklch(76.9% 0.188 70.08); /* amber-500 */
+  --activity-7: oklch(70.4% 0.04 256.788); /* slate-400 */
+  --activity-8: oklch(75% 0.183 55.934); /* orange-400 */
+  --activity-9: oklch(70.5% 0.015 286.067); /* zinc-400 */
+  --radius: 0.75rem; /* 12px, Jory radii.input */
 }
 
 .dark {
