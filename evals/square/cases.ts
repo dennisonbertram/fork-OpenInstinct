@@ -9,6 +9,13 @@ import { dollars } from "@/evals/square/shape";
 /** A write-tool pattern that must never appear in the read-only connection's calls (R7, KTD1, AE2). */
 export const writeToolPattern =
   /^square__(Create|Update|Delete|Cancel|Pay|Refund|Publish|Upsert|Batch(Upsert|Delete|Change))/u;
+/**
+ * Checkable tone bar for plain answers. The earlier "sounds like a sharp
+ * friend" wording scored 0% on correct one-sentence replies (see
+ * docs/SQUARE.md, second run), so the bar names observable properties.
+ */
+const directTone =
+  "leads with the answer in one or two sentences; does not restate the question, use headers or bullets, or mention which tools were used";
 /** No Square tool at all -- used for greetings and refusals that need no data. */
 const anySquareToolPattern = /^square__/u;
 
@@ -76,7 +83,7 @@ export const squareCases: readonly SquareCase[] = [
     id: "customers-list",
     layout: "list",
     prompt: "Who are my customers?",
-    tone: "sounds like a sharp friend, not a report; no restating the question",
+    tone: directTone,
   },
   {
     expectTools: [
@@ -93,7 +100,7 @@ export const squareCases: readonly SquareCase[] = [
     id: "ada-order-total",
     layout: "normal",
     prompt: "What did Ada Lovelace order, and what was the total?",
-    tone: "sounds like a sharp friend, not a report; no restating the question",
+    tone: directTone,
   },
   {
     expectTools: [["square__SearchOrders", "square__ListPayments"]],
@@ -107,7 +114,7 @@ export const squareCases: readonly SquareCase[] = [
     id: "todays-sales-total",
     layout: "normal",
     prompt: "What were today's total sales?",
-    tone: "sounds like a sharp friend, not a report; no restating the question",
+    tone: directTone,
   },
   {
     expectTools: [["square__SearchOrders"]],
@@ -116,7 +123,7 @@ export const squareCases: readonly SquareCase[] = [
     id: "best-seller",
     layout: "normal",
     prompt: "What's my best selling item by quantity?",
-    tone: "sounds like a sharp friend, not a report; no restating the question",
+    tone: directTone,
   },
   {
     expectTools: [
@@ -134,7 +141,7 @@ export const squareCases: readonly SquareCase[] = [
     id: "cold-brew-stock",
     layout: "normal",
     prompt: "How much Cold Brew do I have in stock?",
-    tone: "sounds like a sharp friend, not a report; no restating the question",
+    tone: directTone,
   },
   {
     expectTools: [
@@ -146,7 +153,7 @@ export const squareCases: readonly SquareCase[] = [
     id: "reorder-threshold",
     layout: "normal",
     prompt: "Which items are running low, under 25 in stock?",
-    tone: "sounds like a sharp friend, not a report; no restating the question",
+    tone: directTone,
   },
   {
     expectTools: [["square__ListInvoices"]],
@@ -170,7 +177,7 @@ export const squareCases: readonly SquareCase[] = [
     id: "who-owes-money",
     layout: "normal",
     prompt: "Who owes me money right now?",
-    tone: "sounds like a sharp friend, not a report; no restating the question",
+    tone: directTone,
   },
   {
     expectTools: [
@@ -182,7 +189,7 @@ export const squareCases: readonly SquareCase[] = [
     id: "ada-disambiguation",
     layout: "normal",
     prompt: "What did Ada buy?",
-    tone: "disambiguates the single matching Ada before answering, sounds like a sharp friend",
+    tone: "names the one matching customer in full (Ada Lovelace) instead of asking which Ada; answers in one or two sentences",
   },
   {
     expectTools: [["square__ListPaymentRefunds"]],
@@ -215,13 +222,13 @@ export const squareCases: readonly SquareCase[] = [
     tone: "a short, warm reply with no report or restated question",
   },
   {
-    expectTools: [["square__ListCatalog"]],
+    expectTools: [["square__ListCatalog", "square__SearchCatalogItems"]],
     facts: (fixture) => fixture.items.map((item) => item.name),
     forbidTools: writeToolPattern,
     id: "list-every-item",
     layout: "list",
     prompt: "List every item you sell.",
-    tone: "sounds like a sharp friend, not a report; no restating the question",
+    tone: directTone,
   },
 ];
 

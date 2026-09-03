@@ -46,7 +46,8 @@ export default squareCases.map((squareCase) =>
           "the agent produced a reply"
         )
       );
-      const text = reply ?? "";
+      // Models emit curly apostrophes ("can\u2019t"); facts are typed straight.
+      const text = (reply ?? "").replaceAll(/[\u2018\u2019]/gu, "'");
 
       const facts = squareCase.facts(fixture);
       if (squareCase.factsMode === "any") {
