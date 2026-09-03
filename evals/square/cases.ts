@@ -15,7 +15,11 @@ const anySquareToolPattern = /^square__/u;
 export interface SquareCase {
   readonly id: string;
   readonly prompt: string;
-  readonly expectTools: readonly string[];
+  /**
+   * Groups of tool names; each group needs at least one matching call
+   * (R7). A single-tool group is a plain required call.
+   */
+  readonly expectTools: readonly (readonly string[])[];
   readonly forbidTools: RegExp;
   readonly facts: (fixture: Fixture) => readonly string[];
   /** "all" (default) requires every fact; "any" passes if one fact appears. */
@@ -65,7 +69,7 @@ function lowStockItemNames(fixture: Fixture, threshold: number): string[] {
 
 export const squareCases: readonly SquareCase[] = [
   {
-    expectTools: ["square__ListCustomers"],
+    expectTools: [["square__ListCustomers"]],
     facts: (fixture) =>
       fixture.customers.map((c) => `${c.given_name} ${c.family_name}`),
     forbidTools: writeToolPattern,
@@ -75,7 +79,10 @@ export const squareCases: readonly SquareCase[] = [
     tone: "sounds like a sharp friend, not a report; no restating the question",
   },
   {
-    expectTools: ["square__SearchCustomers", "square__SearchOrders"],
+    expectTools: [
+      ["square__SearchCustomers", "square__ListCustomers"],
+      ["square__SearchOrders"],
+    ],
     facts: (fixture) => {
       const ada = fixture.orders.find((o) => o.customerId === "CUST_ADA");
       if (!ada) throw new Error("Fixture has no order for Ada.");
@@ -89,7 +96,7 @@ export const squareCases: readonly SquareCase[] = [
     tone: "sounds like a sharp friend, not a report; no restating the question",
   },
   {
-    expectTools: ["square__SearchOrders"],
+    expectTools: [["square__SearchOrders", "square__ListPayments"]],
     facts: (fixture) => {
       const total = fixture.orders
         .filter((order) => order.state === "COMPLETED")
@@ -103,7 +110,7 @@ export const squareCases: readonly SquareCase[] = [
     tone: "sounds like a sharp friend, not a report; no restating the question",
   },
   {
-    expectTools: ["square__SearchOrders"],
+    expectTools: [["square__SearchOrders"]],
     facts: (fixture) => [bestSellerName(fixture)],
     forbidTools: writeToolPattern,
     id: "best-seller",
@@ -113,8 +120,8 @@ export const squareCases: readonly SquareCase[] = [
   },
   {
     expectTools: [
-      "square__SearchCatalogItems",
-      "square__BatchRetrieveInventoryCounts",
+      ["square__SearchCatalogItems"],
+      ["square__BatchRetrieveInventoryCounts"],
     ],
     facts: (fixture) => {
       const item = fixture.items.find(
@@ -131,8 +138,8 @@ export const squareCases: readonly SquareCase[] = [
   },
   {
     expectTools: [
-      "square__ListCatalog",
-      "square__BatchRetrieveInventoryCounts",
+      ["square__ListCatalog"],
+      ["square__BatchRetrieveInventoryCounts"],
     ],
     facts: (fixture) => lowStockItemNames(fixture, 25),
     forbidTools: writeToolPattern,
@@ -142,7 +149,7 @@ export const squareCases: readonly SquareCase[] = [
     tone: "sounds like a sharp friend, not a report; no restating the question",
   },
   {
-    expectTools: ["square__ListInvoices"],
+    expectTools: [["square__ListInvoices"]],
     facts: (fixture) => {
       const invoice = fixture.invoices.find(
         (candidate) => candidate.status === "UNPAID"
@@ -166,7 +173,10 @@ export const squareCases: readonly SquareCase[] = [
     tone: "sounds like a sharp friend, not a report; no restating the question",
   },
   {
-    expectTools: ["square__SearchCustomers", "square__SearchOrders"],
+    expectTools: [
+      ["square__SearchCustomers", "square__ListCustomers"],
+      ["square__SearchOrders"],
+    ],
     facts: (fixture) => [customerName(fixture, "CUST_ADA").full],
     forbidTools: writeToolPattern,
     id: "ada-disambiguation",
@@ -175,7 +185,7 @@ export const squareCases: readonly SquareCase[] = [
     tone: "disambiguates the single matching Ada before answering, sounds like a sharp friend",
   },
   {
-    expectTools: ["square__ListPaymentRefunds"],
+    expectTools: [["square__ListPaymentRefunds"]],
     facts: () => ["no", "none", "haven't", "hasn't"],
     factsMode: "any",
     forbidTools: writeToolPattern,
@@ -205,7 +215,7 @@ export const squareCases: readonly SquareCase[] = [
     tone: "a short, warm reply with no report or restated question",
   },
   {
-    expectTools: ["square__ListCatalog"],
+    expectTools: [["square__ListCatalog"]],
     facts: (fixture) => fixture.items.map((item) => item.name),
     forbidTools: writeToolPattern,
     id: "list-every-item",
