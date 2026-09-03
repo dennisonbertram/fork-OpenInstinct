@@ -8,8 +8,8 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import fixtureJson from "./fixture.json" with { type: "json" };
 import { z } from "zod";
 
 const CUSTOMERS_PAGE_SIZE = 2;
@@ -130,9 +130,9 @@ function money(amount: number, currency: string): Money {
 }
 
 export function loadFixture(): Fixture {
-  const path = fileURLToPath(new URL("./fixture.json", import.meta.url));
-  const raw: unknown = JSON.parse(readFileSync(path, "utf8"));
-  return fixtureSchema.parse(raw);
+  // A static import keeps the fixture inside the bundle eve builds for
+  // authored modules; a file read relative to import.meta.url does not survive it.
+  return fixtureSchema.parse(fixtureJson);
 }
 
 function errorEnvelope(category: string, code: string, detail: string) {
