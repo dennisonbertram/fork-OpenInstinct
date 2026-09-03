@@ -74,9 +74,9 @@ const fixtureSchema = z.object({
   ),
 });
 
-type Fixture = z.infer<typeof fixtureSchema>;
-type FixtureItem = z.infer<typeof fixtureItemSchema>;
-type FixtureOrder = z.infer<typeof fixtureOrderSchema>;
+export type Fixture = z.infer<typeof fixtureSchema>;
+export type FixtureItem = z.infer<typeof fixtureItemSchema>;
+export type FixtureOrder = z.infer<typeof fixtureOrderSchema>;
 type FixtureCustomer = Fixture["customers"][number];
 type FixturePayment = Fixture["payments"][number];
 type FixtureInvoice = Fixture["invoices"][number];
@@ -129,7 +129,7 @@ function money(amount: number, currency: string): Money {
   return { amount, currency };
 }
 
-function loadFixture(): Fixture {
+export function loadFixture(): Fixture {
   const path = fileURLToPath(new URL("./fixture.json", import.meta.url));
   const raw: unknown = JSON.parse(readFileSync(path, "utf8"));
   return fixtureSchema.parse(raw);
@@ -139,7 +139,7 @@ function errorEnvelope(category: string, code: string, detail: string) {
   return { errors: [{ category, code, detail }] };
 }
 
-function itemAt(fixture: Fixture, index: number): FixtureItem {
+export function itemAt(fixture: Fixture, index: number): FixtureItem {
   const item = fixture.items[index];
   if (!item) {
     throw new Error(`Fixture item index ${String(index)} is out of range.`);
@@ -220,7 +220,7 @@ function orderLineItem(fixture: Fixture, item: FixtureItem, quantity: number) {
   };
 }
 
-function orderTotal(fixture: Fixture, order: FixtureOrder) {
+export function orderTotal(fixture: Fixture, order: FixtureOrder) {
   return order.itemIndexes.reduce(
     (sum, index) => sum + itemAt(fixture, index).priceCents * order.quantity,
     0
