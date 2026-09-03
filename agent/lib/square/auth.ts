@@ -10,7 +10,11 @@ import { env, isWorkspaceScopeEnforcementEnabled } from "@/env";
 import { squareScopes, squareSubject } from "@/lib/square";
 
 export const squareAuth: ConnectionAuthResolver = async (ctx) => {
-  if (env.SQUARE_ENVIRONMENT === "sandbox" && env.SQUARE_SANDBOX_ACCESS_TOKEN) {
+  if (
+    env.SQUARE_ENVIRONMENT === "sandbox" &&
+    env.VERCEL_ENV !== "production" &&
+    env.SQUARE_SANDBOX_ACCESS_TOKEN
+  ) {
     const token = env.SQUARE_SANDBOX_ACCESS_TOKEN;
     return { getToken: async () => ({ token }) };
   }

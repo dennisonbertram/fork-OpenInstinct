@@ -123,11 +123,12 @@ export const env = createEnv({
         (value) =>
           !(
             value.SQUARE_SANDBOX_ACCESS_TOKEN !== undefined &&
-            value.SQUARE_ENVIRONMENT === "production"
+            (value.SQUARE_ENVIRONMENT === "production" ||
+              value.VERCEL_ENV === "production")
           ),
         {
           message:
-            "SQUARE_SANDBOX_ACCESS_TOKEN must not be set when SQUARE_ENVIRONMENT is production.",
+            "SQUARE_SANDBOX_ACCESS_TOKEN must not be set when SQUARE_ENVIRONMENT or VERCEL_ENV is production.",
           path: ["SQUARE_SANDBOX_ACCESS_TOKEN"],
         }
       ),

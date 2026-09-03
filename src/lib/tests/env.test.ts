@@ -82,6 +82,28 @@ describe("environment", () => {
     expect(env.SQUARE_SANDBOX_ACCESS_TOKEN).toBe("eval-token");
   });
 
+  it("rejects a sandbox access token with VERCEL_ENV=production and SQUARE_ENVIRONMENT unset", async () => {
+    vi.stubEnv("SQUARE_ENVIRONMENT", "");
+    vi.stubEnv("SQUARE_SANDBOX_ACCESS_TOKEN", "eval-token");
+    vi.stubEnv("VERCEL_ENV", "production");
+
+    await expect(import("@/env")).rejects.toThrow(
+      "Invalid environment variables"
+    );
+    const loggedIssues = JSON.stringify(vi.mocked(console.error).mock.calls);
+    expect(loggedIssues).toContain("SQUARE_SANDBOX_ACCESS_TOKEN");
+  });
+
+  it("accepts a sandbox access token with VERCEL_ENV=preview", async () => {
+    vi.stubEnv("SQUARE_ENVIRONMENT", "sandbox");
+    vi.stubEnv("SQUARE_SANDBOX_ACCESS_TOKEN", "eval-token");
+    vi.stubEnv("VERCEL_ENV", "preview");
+
+    const { env } = await import("@/env");
+
+    expect(env.SQUARE_SANDBOX_ACCESS_TOKEN).toBe("eval-token");
+  });
+
   it.each(["http://127.0.0.1:4111", "http://localhost:4111"])(
     "accepts a loopback SQUARE_BASE_URL %s",
     async (url) => {
