@@ -158,6 +158,15 @@ Before planning or changing product UI:
   type roles, primitive variants, and page patterns; update it in the same
   pull request when any of those change.
 
+## Plugins
+
+A new feature that can live outside core ships as a plugin: an eve extension
+package plus an MCP server, mounted by one file under `agent/extensions/`.
+Read [`docs/PLUGINS.md`](docs/PLUGINS.md) before you design one, and run the
+ladder in [`docs/PLUGIN_TESTING.md`](docs/PLUGIN_TESTING.md) before you call
+it done. Do not add a plugin loader, registry, or tool catalog to core; eve
+already provides them.
+
 ## Type ownership
 
 - Keep each TypeScript concept anchored to one source of truth.
