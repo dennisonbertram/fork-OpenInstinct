@@ -411,6 +411,47 @@ from the Developer Dashboard in the same browser before a user clicks
 Connect; otherwise the authorize step fails. Delete the temporary credentials
 file after the connector accepts it.
 
+### Run the Square evals
+
+The Square eval gym grades the agent's Square replies against a fake Square
+server: 12 cases, about 1.5 USD in model cost and one to two minutes per run.
+It runs on demand only. `AGENTS.md` ("Square evals: on demand") lists the
+changes that require a run before a pull request opens.
+
+Prerequisite for the GitHub path: the `AI_GATEWAY_API_KEY` repository secret
+(set on 2026-09-03). Create the key in the Vercel AI Gateway dashboard for
+the team that owns the project, then store it without pasting it in a chat or
+a shell history:
+
+```bash
+# OPERATOR ACTION: prompts for the value.
+gh secret set AI_GATEWAY_API_KEY -R dennisonbertram/fork-OpenInstinct
+```
+
+Run it:
+
+```bash
+# Locally. Uses the model credential in .env.local; boots the app, the fake
+# Square, and the sandbox.
+pnpm eval:square
+pnpm eval:square --list      # print the case ids without running
+
+# In GitHub Actions, on any branch.
+gh workflow run square-evals.yml -R dennisonbertram/fork-OpenInstinct --ref <branch>
+gh run list -R dennisonbertram/fork-OpenInstinct --workflow square-evals.yml --limit 3
+gh run watch <run-id> -R dennisonbertram/fork-OpenInstinct --exit-status
+```
+
+Read the result: the run prints one line per case and ends with
+`Results: N passed (12 total)`, or `N passed, M scored` when a case passed
+every hard gate but missed the soft tone judge (scored is not a failure). Local artifacts land in
+`.eve/square-evals/<timestamp>.json` and `latest.json`; the GitHub run
+uploads them as the `square-evals` artifact and writes a cost and tool-call
+table to the job summary. A failed case is a defect in the agent or in the
+case, never a flake to re-run: read the `TERMINAL MESSAGE` and the failed
+gate, fix it, and run again. Put the `Results:` line in the pull request
+body.
+
 ## Migration and deployment
 
 Review the migration for backward compatibility, take a backup, and let the

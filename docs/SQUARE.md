@@ -257,6 +257,13 @@ re-examined with the Square skill work before it is trusted as a signal.
 Fixed by making those `expectTools` entries alternative groups (see
 `evals/square/cases.ts`).
 
+### First GitHub Actions run 2026-09-03 (workflow_dispatch on main, 29.7 s)
+
+11 passed, 1 scored, 0 failed; gates 86 of 86. The scored case was
+list-every-item: the judge marked the inline six-item list as not "one or two
+sentences". Tone stays ungated. The run exited red only because the workflow
+passed `--strict`; that flag was removed the same day.
+
 ### Third run 2026-09-03, with the Square skill (12 cases, total model cost 1.470 USD, 47.7 s)
 
 12 passed, 0 failed, 0 scored. Judge `closedQA` overall 100%. Every case
