@@ -1,0 +1,56 @@
+name: Square evals
+
+# On demand only. Run it when a change could alter Square reply quality;
+# see "Square evals" in AGENTS.md for the trigger list.
+#   gh workflow run square-evals.yml -R dennisonbertram/fork-OpenInstinct --ref <branch>
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: square-evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  square-evals:
+    name: Square evals
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Require the AI Gateway credential
+        run: |
+          if [ -z "${{ secrets.AI_GATEWAY_API_KEY }}" ]; then
+            echo "::error::AI_GATEWAY_API_KEY secret is not set; the evals cannot call the model."
+            exit 1
+          fi
+
+      - name: Run square evals
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          WORKSPACE_SCOPE_ENFORCEMENT: "off"
+        run: pnpm eval:square --with-database --strict --junit .eve/junit.xml
+
+      - name: Upload eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: square-evals
+          path: |
+            .eve/evals
+            .eve/square-evals
+          if-no-files-found: ignore
