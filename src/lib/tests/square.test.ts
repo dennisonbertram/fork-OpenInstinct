@@ -31,4 +31,10 @@ describe("square", () => {
     );
     expect(squareBaseUrl("production")).toBe("https://connect.squareup.com");
   });
+
+  it("returns the override base URL when provided", () => {
+    expect(squareBaseUrl("sandbox", "http://127.0.0.1:4111")).toBe(
+      "http://127.0.0.1:4111"
+    );
+  });
 });
