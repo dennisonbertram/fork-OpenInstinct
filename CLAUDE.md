@@ -12,6 +12,9 @@ instructions, skills, the Square connection, the Linq reply splitter, or
 `evals/square/`, run `pnpm eval:square` and put its `Results:` line in the
 PR body (see "Square evals" in AGENTS.md).
 
-Before every commit, read `git diff --staged`. Another agent may be editing
-this working tree at the same time; never stage a file by name without
-reading the diff you are about to commit.
+Start every task in a worktree (EnterWorktree) and merge back through a pull
+request; never edit or commit in the main checkout. A PreToolUse hook in
+`.claude/hooks/require-worktree.sh` blocks edits there. Before every commit,
+read `git diff --staged`: another agent may be editing the same files, so never
+stage a file by name without reading the diff you are about to commit. See
+"Work in a worktree" in AGENTS.md.
