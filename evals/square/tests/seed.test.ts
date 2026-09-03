@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   fixtureOrderTotalCents,
@@ -147,8 +147,29 @@ describe("evals/square/seed", () => {
   });
 
   it("makes no live network calls -- fetch is fully mocked", async () => {
-    const { fetch, calls } = mockSquareFetch();
+    const globalFetch = vi.spyOn(globalThis, "fetch");
+    const { fetch } = mockSquareFetch();
     await runSeed(fetch);
-    expect(calls.length).toBeGreaterThan(0);
+    expect(globalFetch).not.toHaveBeenCalled();
+    globalFetch.mockRestore();
+  });
+
+  it("surfaces the Square error body on a non-2xx response", async () => {
+    await expect(runSeed(errorFetch)).rejects.toThrow(/nope/);
   });
 });
+
+const errorFetch: SquareFetch = async () =>
+  Promise.resolve({
+    json: () =>
+      Promise.resolve({
+        errors: [
+          {
+            category: "INVALID_REQUEST_ERROR",
+            code: "BAD_REQUEST",
+            detail: "nope",
+          },
+        ],
+      }),
+    status: 400,
+  });

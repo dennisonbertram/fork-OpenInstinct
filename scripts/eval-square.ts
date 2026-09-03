@@ -73,11 +73,9 @@ function interrupt(child: ChildProcess, signal: NodeJS.Signals) {
 const shutdownSignals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
 for (const signal of shutdownSignals) {
   process.on(signal, () => {
-    if (shutdownSignal === undefined) {
-      shutdownSignal = signal;
-      if (activeChild !== undefined) {
-        interrupt(activeChild, signal);
-      }
+    shutdownSignal ??= signal;
+    if (activeChild !== undefined) {
+      interrupt(activeChild, signal);
     }
   });
 }
@@ -151,12 +149,12 @@ const composeArguments = (...args: string[]) => [
 ];
 
 async function withComposeDatabase<T>(body: () => Promise<T>): Promise<T> {
-  await run(
-    "docker",
-    composeArguments("up", "--detach", "--wait"),
-    inheritedEnvironment
-  );
   try {
+    await run(
+      "docker",
+      composeArguments("up", "--detach", "--wait"),
+      inheritedEnvironment
+    );
     const portOutput = await runForOutput(
       "docker",
       composeArguments("port", "postgres", "5432")
