@@ -70,6 +70,14 @@ exercise the production tenancy posture. Set `CRON_SECRET` in Vercel to enable
 the five-minute webhook drain cron; without it, the route responds with 404.
 The admin webhook drain button remains the supported manual drain path.
 
+## Repository is the fork, never upstream
+
+All work happens on `dennisonbertram/fork-OpenInstinct`. Never open pull
+requests, issues, or pushes against the upstream `Merit-Systems/OpenInstinct`.
+Pass `-R dennisonbertram/fork-OpenInstinct` to every `gh` command that targets
+a repository, and check the owner in any URL `gh` prints before reporting it.
+Upstream is a read-only sync source only (see the sync policy in `docs/`).
+
 ## Repository contract
 
 - The repository root owns the single Next.js application, Eve agent, and shared UI contract.
