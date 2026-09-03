@@ -127,10 +127,11 @@ Twelve scored cases grade the agent's replies for correctness, tool
 discipline, cost, and iMessage bubble shape. Reply tone is judged but not
 gated.
 
-**The suite is red on the current agent.** See Baseline below: 3 of 12
-cases pass, 6 fail on real defects, and 3 pass their hard gates but miss the
-soft tone bar. The CI job that runs this suite on every pull request is
-advisory (`continue-on-error`) until it has passed three times in a row.
+**The suite is green with the Square skill** (third run below: 12 of 12
+pass, judge 100%). The first two runs were red on the raw agent: 3 of 12,
+then 2 of 12. The CI job that runs this suite on every pull request is
+advisory (`continue-on-error`) until it has passed three times in a row; it
+has passed once locally so far.
 
 ### Tier A: the fake (default, `pnpm eval:square`)
 
@@ -255,6 +256,37 @@ re-examined with the Square skill work before it is trusted as a signal.
 Fixed by making those `expectTools` entries alternative groups (see
 `evals/square/cases.ts`).
 
+### Third run 2026-09-03, with the Square skill (12 cases, total model cost 1.470 USD, 47.7 s)
+
+12 passed, 0 failed, 0 scored. Judge `closedQA` overall 100%. Every case
+answered in 1 bubble. The change is `agent/skills/square.md`, loaded by
+`load_skill` on every Square turn (12 of 12 turns loaded it), plus one
+sentence in `agent/instructions.md` that tells the root agent to load it.
+The skill states that the connection is read-only, gives one procedure per
+common question, and sets the reply shape: no bullets, inline lists with a
+count, one paragraph, two at most.
+
+Replies quoted by the judge in the first skill run (the run before this
+one, same skill, before the case fixes below):
+
+- refund-request-refusal, 0 tool calls: "I can't issue refunds from this
+  read-only Square connection. You can refund Ada's payment from the Square
+  Dashboard or Square POS app."
+- cold-brew-stock, 1 bubble: "You have 34 Cold Brews in stock."
+- list-every-item, 1 bubble: "6 items: Avocado Toast ($11.50), Blueberry
+  Muffin ($3.95), Cold Brew ($4.75), Croissant ($4.25), Espresso ($3.50),
+  and Latte ($5.25)."
+
+Two case defects surfaced by the run before this one and fixed in the same
+change: the refusal check compared straight apostrophes against the model's
+curly "can't" (the eval now normalizes both), and list-every-item required
+`ListCatalog` when `SearchCatalogItems` answers the same question (now a
+group). The tone criterion was rewritten from "sounds like a sharp friend,
+not a report" to observable properties (leads with the answer in one or two
+sentences; no restated question, headers, bullets, or tool talk). The old
+wording scored 0% on six correct one-sentence replies in the run before; the
+new wording scored 100% on 12 of 12.
+
 ## Proposed: beyond the eval gym
 
 The gym should drive purpose-built capabilities, not only measure the raw
@@ -263,10 +295,9 @@ OpenAPI surface:
 - **Tier B nightly.** Running the sandbox seed and the suite against tier B
   on a schedule, not only on demand, to catch drift between the fake and
   real Square. Not built; `evals/square/seed.ts` is run by hand today.
-- **A Square skill** under `agent/skills/` with seller vocabulary and
-  procedures: how to compute a day's sales from orders and payments, how to
-  read inventory counts against variations, when to use `SearchOrders`
-  versus `ListInvoices`, and how to present money (currency, cents to dollars).
+- **A Square skill** under `agent/skills/`: implemented 2026-09-03 as
+  `agent/skills/square.md` (see the third run above). Seller vocabulary
+  beyond the twelve cases is not covered yet.
 - **Composite tools** for the questions sellers actually ask, each wrapping
   several Square calls into one answer with a stable shape: daily sales
   summary, low-stock report, outstanding invoices, top customers. These reduce
@@ -302,5 +333,5 @@ Three further directions, focused on Square first:
 Other tools and integrations are deferred until the Square gym, skill, and
 composite tools show measurable reply quality.
 
-None of tier B nightly, the skill, the composite tools, owner-created
-skills, the proactive schedule, or the web handoff exists yet.
+None of tier B nightly, the composite tools, owner-created skills, the
+proactive schedule, or the web handoff exists yet. The skill exists.

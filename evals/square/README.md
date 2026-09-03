@@ -24,9 +24,9 @@ operations (for example `SearchCustomers` or `ListCustomers`), the case
 declares a group -- `[["square__SearchCustomers", "square__ListCustomers"]]`
 -- and passes if any tool in the group was called.
 
-The suite is red on the current agent: 3 of 12 cases pass. See
-[`docs/SQUARE.md`](../../docs/SQUARE.md) for the baseline table and the
-defects it exposed.
+The suite passes 12 of 12 with the Square skill (`agent/skills/square.md`).
+See [`docs/SQUARE.md`](../../docs/SQUARE.md) for the red baseline runs, the
+defects they exposed, and the green run.
 
 ## Tier B: seeding the real sandbox
 
