@@ -95,6 +95,31 @@ the agent or the case; fix it before merging. The operator steps are in
 agent conversations. It is review material for planning; it is not a runtime
 instruction file. Save example screenshots under `docs/agent-feedback-assets/`.
 
+## Work in a worktree, merge back through a pull request
+
+More than one agent works in this repository at the same time. The main
+checkout (`/Users/dennison/develop/fork-OpenInstinct` on this machine) is
+shared and stays on `main`; nobody edits or commits there. Start every task in
+a linked worktree:
+
+```sh
+git worktree add .claude/worktrees/<name> -b <branch>   # Claude Code: EnterWorktree
+cd .claude/worktrees/<name>
+```
+
+Commit there, push, open the pull request, and merge it. Then, in the main
+checkout, run `git pull` and remove the worktree with `git worktree remove`.
+Read-only commands (`git status`, `git log`, `cat`, `grep`, the test runners)
+are fine in the main checkout.
+
+Claude Code enforces this with the PreToolUse hook in
+`.claude/hooks/require-worktree.sh` (wired in `.claude/settings.json`): it
+blocks file edits and write-shaped shell commands whose target is the main
+checkout, and allows them in any linked worktree. For a deliberate exception
+set `CLAUDE_ALLOW_MAIN_CHECKOUT=1`. Other agents follow the same rule by
+convention. Before every commit, read `git diff --staged` and confirm it holds
+only your change.
+
 ## Repository is the fork, never upstream
 
 All work happens on `dennisonbertram/fork-OpenInstinct`. Never open pull

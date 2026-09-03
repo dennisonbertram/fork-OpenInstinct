@@ -23,3 +23,6 @@ playwright/.auth/
 
 # pnpm local store
 .pnpm-store/
+
+# Claude Code worktrees
+.claude/worktrees/
