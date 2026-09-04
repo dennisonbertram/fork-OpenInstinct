@@ -121,6 +121,21 @@ shutdown signals. `Ctrl-C` removes the container while preserving the named
 Docker volume and stops Agentation only when this invocation started it. A
 healthy Agentation server that was already running is reused and left running.
 
+### Developer feature flags
+
+Developer-only UI is evaluated on the server from validated environment flags,
+so its configuration is not exposed through `NEXT_PUBLIC_*` values. Local
+development defaults the developer activity panel on. Set the value in
+`.env.local` and restart the app to override it:
+
+```dotenv
+FEATURE_DEVELOPER_ACTIVITY=off
+```
+
+Use `on` to expose the panel in an authorized preview environment. The panel is
+always disabled in production, even if the variable is set to `on`. Unset flags
+default off outside local development.
+
 ### Local authentication and Linq modes
 
 Local loopback development uses Better Auth's intentional phone bypass. Enter
@@ -148,7 +163,9 @@ Then use a browser to complete the real path:
 2. load `/`, `/vault`, `/chat`, and `/tasks`;
 3. start one web-chat turn and confirm it streams to completion;
 4. start a harmless browser task and confirm the worker-owned Kernel session;
-5. confirm the development-only Agentation toolbar is visible and
+5. confirm the development-only Agentation toolbar and chat activity panel are
+   visible (or that the panel is absent when
+   `FEATURE_DEVELOPER_ACTIVITY=off`) and
    `http://localhost:4747/pending` responds;
 6. create one harmless annotation, confirm the agent can observe it, then
    resolve it after the UI change;

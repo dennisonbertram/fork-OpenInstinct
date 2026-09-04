@@ -72,6 +72,7 @@ describe("chat session", () => {
   it("loads the routed session through the paginated agent", () => {
     const markup = renderToStaticMarkup(
       <ChatSession
+        developerActivityEnabled
         initialUsage={{ costUsd: null, inputTokens: 3, outputTokens: 2 }}
         sessionId="session/one"
       />
@@ -85,5 +86,16 @@ describe("chat session", () => {
     expect(markup).toContain("Conversation");
     expect(markup).toContain("Input");
     expect(markup).toContain("Activity");
+  });
+
+  it("omits developer activity when its feature flag is disabled", () => {
+    const markup = renderToStaticMarkup(
+      <ChatSession developerActivityEnabled={false} sessionId="session/one" />
+    );
+
+    expect(mocks.activityEvents).toBeUndefined();
+    expect(markup).not.toContain("Activity");
+    expect(markup).toContain("Conversation");
+    expect(markup).toContain("Input");
   });
 });

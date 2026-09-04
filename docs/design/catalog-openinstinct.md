@@ -1545,11 +1545,13 @@ and page-header patterns quoted below match its section 3.7).
 
 ### `src/app/(authenticated)/chat/[sessionId]/page.tsx` (chat, existing session)
 
-- Container: none of its own — delegates to `AgentChat`.
+- Container: none of its own — delegates to `ChatSession`.
 - Headings: none in the page file.
-- Renders: `AgentChat` (`../_components/agent-chat`) with `initialUsage`,
-  `sessionId`. Data via `readChat` (`@/db/services/chats`),
-  `requireRequestScope` (`@/lib/request-scope`).
+- Renders: `ChatSession` (`./_components/chat-session`) with `initialUsage`,
+  `sessionId`, and the server-evaluated `developerActivity` feature flag. The
+  chat Activity panel is absent when the flag is off. Data via `readChat`
+  (`@/db/services/chats`), `requireRequestScope` (`@/lib/request-scope`), and
+  `isFeatureEnabled` (`@/env`).
 
 ### `src/app/(authenticated)/chat/history/page.tsx`
 
@@ -1689,7 +1691,7 @@ and page-header patterns quoted below match its section 3.7).
 | `/sign-in`           | `RootLayout` -> `SignInPage` -> `LocalPhoneAuthForm` \| `PhoneOtpAuthForm`                                                                                                                                |
 | `/` (workspace home) | `RootLayout` -> `AuthenticatedLayout` (Sidebar shell) -> `Page` -> `ChannelsSection`, `ConnectionsSection` (`GoogleWorkspaceAction`, `SquareAction`), `WorkspaceSection`/`ConnectorRow` (`ModelSelector`) |
 | `/chat` (new)        | `RootLayout` -> `AuthenticatedLayout` -> `NewChatPage` -> `AgentChat` (`sessionless`)                                                                                                                     |
-| `/chat/[sessionId]`  | `RootLayout` -> `AuthenticatedLayout` -> `ChatSessionPage` -> `AgentChat`                                                                                                                                 |
+| `/chat/[sessionId]`  | `RootLayout` -> `AuthenticatedLayout` -> `ChatSessionPage` -> `ChatSession` -> optional `SubagentPanel` (`developerActivity`)                                                                             |
 | `/chat/history`      | `RootLayout` -> `AuthenticatedLayout` -> `AllChatsPage` -> chat row `Button`s, `Alert` (empty state)                                                                                                      |
 | `/admin` (overview)  | `RootLayout` -> `AuthenticatedLayout` -> `AdminLayout` -> `AdminOverviewPage` -> `OverviewDashboard` (`AdminShell`, `Card`/`Table`)                                                                       |
 | `/admin/usage`       | ... -> `AdminLayout` -> `AdminUsagePage` -> `UsageTable` (`AdminShell`, `Table`)                                                                                                                          |
@@ -1742,7 +1744,11 @@ variant="surface"` tiles — WebChat (`MessageSquareIcon`), iMessage
   (`max-w-xl`), `h1.type-product-title` "Local Vault Assistant", composer
   below (`PromptInput`/`PromptInputBody`/`PromptInputFooter`/
   `PromptInputTextarea`/`PromptInputTools`/`PromptInputSubmit`)
-- `SubagentPanel` (sheet/panel rendered alongside; trace-view toggle)
+- Optional `SubagentPanel` (sheet/panel rendered alongside; trace-view toggle),
+  controlled by the server-side `developerActivity` feature. Its Activity card
+  uses a compact, capsule-shaped task-row presentation adapted from Beautiful
+  UI while retaining the local `Button`, `Badge`, semantic tokens, and real
+  subagent state.
 
 ### Chat history
 

@@ -94,6 +94,7 @@ export const env = createEnv({
     BLOB_STORE_ID: requiredValue.optional(),
     CRON_SECRET: requiredValue.optional(),
     EVAL_CONTRACT_FIXTURE: z.enum(["0", "1"]).default("0"),
+    FEATURE_DEVELOPER_ACTIVITY: z.enum(["on", "off"]).optional(),
     GOOGLE_CONNECTOR_UID: requiredValue.default("google/open-instinct"),
     LINQ_CONNECTOR: requiredValue.optional(),
     SQUARE_BASE_URL: squareLoopbackBaseUrlSchema.optional(),
@@ -171,6 +172,21 @@ export const localPhoneAuthBypassEnabled =
 
 export function isContractFixtureEnabled() {
   return env.EVAL_CONTRACT_FIXTURE === "1";
+}
+
+const featureFlags = {
+  developerActivity:
+    env.VERCEL_ENV !== "production" &&
+    (env.NODE_ENV !== "production" || env.VERCEL_ENV !== undefined) &&
+    (env.FEATURE_DEVELOPER_ACTIVITY === undefined
+      ? localDevelopment
+      : env.FEATURE_DEVELOPER_ACTIVITY === "on"),
+} as const;
+
+export type FeatureFlag = keyof typeof featureFlags;
+
+export function isFeatureEnabled(feature: FeatureFlag) {
+  return featureFlags[feature];
 }
 
 let workspaceScopeEnforcementEnabled = () =>
