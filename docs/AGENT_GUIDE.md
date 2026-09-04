@@ -178,6 +178,17 @@ development, may be enabled in preview with
 - Run `pnpm test:unit`, `pnpm test:integration`, or `pnpm test:coverage` as relevant.
   Root Vitest runs both unit and integration suites. `REAL_PG` unset auto-detects
   Compose; `0` skips real Postgres and `1` requires it.
+- CI has five stable deterministic checks: `Checks`, `Build`, `Real Postgres`,
+  `Contract evals`, and `E2E`. `Build` uses synthetic configuration without paid
+  credentials. `node scripts/test-real-postgres.ts` is the CI/test-only database
+  runner: it creates a random owned Compose project, forces `REAL_PG=1`, runs
+  the real concurrency suite, and tears down only that project's containers and
+  volumes. It accepts no filters or skip overrides and records JUnit at
+  `.eve/ci/real-postgres.xml`. It does not replace `./init.sh` for app startup.
+  Missing Docker/Postgres, failed tests, cancellation, or failed cleanup cannot
+  produce a successful runner exit. Workflow check execution is not proof that
+  GitHub branch protection requires those checks; enforcement is a separate
+  operator setting.
 - `pnpm test:e2e` uses Playwright, which boots through `scripts/dev.ts` and owns
   Compose, migrations, and teardown. It authenticates through the local phone
   bypass and runs with `WORKSPACE_SCOPE_ENFORCEMENT=enforce`.

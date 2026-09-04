@@ -16,9 +16,10 @@ describe("message bubbles", () => {
     expect(html).toContain("group-[.is-user]:rounded-bubble");
   });
 
-  it("gives assistant prose the full reading width without a colored bubble", () => {
+  it("gives Jory a content-sized tinted bubble", () => {
     const html = bubble("assistant");
-    expect(html).toContain("group-[.is-assistant]:w-full");
-    expect(html).not.toContain("group-[.is-assistant]:bg-bubble-assistant");
+    expect(html).toContain("group-[.is-assistant]:bg-bubble-assistant");
+    expect(html).toContain("group-[.is-assistant]:rounded-bubble");
+    expect(html).not.toContain("group-[.is-assistant]:w-full");
   });
 });
