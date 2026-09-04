@@ -283,7 +283,7 @@ arguments. These commands are operator actions:
 | `BLOB_STORE_ID` / `VERCEL_OIDC_TOKEN`  | Vercel path         | Blob/Vercel attachment | Preferred short-lived Vercel path                        |
 | `BLOB_READ_WRITE_TOKEN`                | Non-Vercel fallback | Private Blob store     | Do not set when the Vercel attachment path is used       |
 | `LINQ_CONNECTOR` + `LINQ_PHONE_NUMBER` | Optional pair       | Linq setup             | Both or neither; production-only by default              |
-| `GOOGLE_CONNECTOR_UID`                 | Optional            | Google Connect setup   | User-scoped grant path                                   |
+| `GOOGLE_CONNECTOR_UID`                 | Optional            | Google Connect setup   | User-scoped grant; defaults to `google/open-instinct`    |
 | `SQUARE_CONNECTOR_UID`                 | Optional            | Square Connect setup   | User-scoped grant path                                   |
 | `SQUARE_ENVIRONMENT`                   | Optional            | Operator               | `sandbox` or `production`; default `sandbox`             |
 
@@ -402,30 +402,148 @@ line lifecycle UI.
 
 ## Google Workspace connector
 
-Google is optional and currently Vercel Connect-backed. Configure the Google
-Cloud consent screen, Gmail/Calendar/People APIs, and the callback URI required
-by Vercel Connect. Convert the downloaded client configuration outside the
-repository, then perform these operator actions:
+Google is optional and currently Vercel Connect-backed, one grant per user.
+It is a Customer Managed Connector: you register the OAuth client in Google
+Cloud and supply its credentials at create time.
+
+In one Google Cloud project, before touching Vercel:
+
+1. enable the **Gmail API**, **Google Calendar API**, and **People API**. A
+   missing API stays invisible until the first call, which then fails with a
+   403 naming the disabled service;
+2. configure the OAuth consent screen for **External** user type and add every
+   demo/operator account under **Test users**. While publishing status is
+   `Testing`, only listed test users can consent, and Google issues refresh
+   tokens that expire after seven days, so a demo account must reconnect
+   weekly ([Google OAuth 2.0 documentation](https://developers.google.com/identity/protocols/oauth2#refresh-token-expiration));
+3. declare the scopes this app requests
+   (`openid`, `email`, `profile`, `gmail.modify`, `calendar.events`,
+   `calendar.freebusy`, `contacts.readonly` — see `src/lib/google-workspace.ts`);
+4. create an OAuth client of type **Web application** and add the documented
+   Vercel Connect callback `https://connect.vercel.com/callback` as an
+   authorized redirect URI. Confirm it against the redirect URI shown on this
+   Google connector's own Vercel Connect configuration before consenting: a
+   wrong redirect URI fails only at consent time.
+
+Google downloads a nested `web.client_id` / `web.client_secret` JSON. Vercel
+Connect's `--data` expects top-level `clientId` and `clientSecret`, so convert
+the download into a temporary file outside the repository and never inline the
+values on the command line:
 
 ```bash
-# OPERATOR ACTION: create the OAuth connector from an approved temporary file.
-pnpm exec vercel connect create google --connection-method oauth \
-  --name <google-installation-name> --data @<temporary-credentials-file>
+# OPERATOR ACTION: convert the download without printing or committing it.
+# Both paths stay outside the repository; mktemp creates the file 0600.
+google_download_file="/absolute/path/to/client_secret.json"
+google_credentials_file="$(mktemp)"
+jq -e '.web.client_id as $id | .web.client_secret as $secret
+  | if ($id | type) == "string" and ($id | length) > 0
+      and ($secret | type) == "string" and ($secret | length) > 0
+    then {clientId: $id, clientSecret: $secret}
+    else error("client_secret.json is missing web.client_id or web.client_secret")
+    end' "$google_download_file" > "$google_credentials_file"
 
-# OPERATOR ACTION: attach the connector to the intended Vercel environment.
+# OPERATOR ACTION: create the OAuth connector from that approved temporary file.
+pnpm exec vercel connect create google --connection-method oauth \
+  --name <google-installation-name> --data @"$google_credentials_file"
+rm -f "$google_credentials_file"
+
+# OPERATOR ACTION: attach the connector to each intended Vercel environment.
+# Repeat -e for every environment that must request tokens; a production
+# attachment alone leaves preview and local development unable to connect.
 pnpm exec vercel connect attach <google-connector-uid> --project <vercel-project-name-or-id> \
-  --environment production --yes
+  -e production --yes
 
 # OPERATOR ACTION: enter the connector identifier at the prompt, then redeploy.
 pnpm exec vercel env add GOOGLE_CONNECTOR_UID production
 pnpm exec eve deploy --non-interactive --yes --project <vercel-project-name-or-id>
 ```
 
+If `jq` reports an error, delete the temporary file and fix the download before
+continuing; the redirect leaves an empty file behind.
+
+Use the stable connector UID that `vercel connect create` returned as
+`GOOGLE_CONNECTOR_UID`. Unlike
+`SQUARE_CONNECTOR_UID`, leaving it unset does not disable Google: the
+application falls back to `google/open-instinct`, and every request against a
+UID that does not exist renders the workspace row as "Admin setup needed".
+
 Delete the temporary credentials file after the connector accepts it. The
-grant is keyed to the authenticated OpenInstinct user today. It is not an
-installation-to-tenant mapping. For future multi-tenant support, persist and
-audit that mapping only after deciding whether a Google grant is personal or
-shared and how active-tenant authorization works.
+grant is keyed to the authenticated OpenInstinct user. When
+`WORKSPACE_SCOPE_ENFORCEMENT=enforce`, the application also persists a
+workspace-scoped installation record (provider, connector UID, authorization
+subject, requested scopes, status) in `connection_installations`: the first
+successful token request records it, workspace disconnect marks it revoked and
+writes an audit event, and the agent refuses a revoked installation until the
+user reconnects from `/`. That record is a per-user grant bound to its personal
+workspace, not a shared or admin-installed tenant installation; a multi-tenant
+model still needs a decision on whether a Google grant is personal or shared
+and how active-tenant authorization works.
+
+### Local Google Workspace development
+
+Vercel Connect calls from localhost authenticate with the short-lived
+`VERCEL_OIDC_TOKEN` in `.env.local`, so local Google work needs all three of:
+the connector attached to the `development` environment,
+`GOOGLE_CONNECTOR_UID` resolvable locally, and an unexpired OIDC token. Set the
+identifier in the Vercel `development` environment as well as production, so a
+refresh of `.env.local` keeps it instead of wiping a local-only edit:
+
+```bash
+# OPERATOR ACTION: attach development, then store the identifier there before
+# any environment pull, so the pulled file already carries it.
+pnpm exec vercel connect attach <google-connector-uid> --project <vercel-project-name-or-id> \
+  -e development --yes
+pnpm exec vercel env add GOOGLE_CONNECTOR_UID development
+
+# Refresh the local environment through the canonical startup path.
+pnpm exec eve link --non-interactive --project open-instinct --team dennisons-projects
+```
+
+`./init.sh` only re-pulls the development environment when `.env.local` is
+missing its required credentials or is still identical to `.env.example`, so a
+customized file needs the same `eve link` the script runs. That link rewrites
+`.env.local`: back the file up first if it holds local-only values, re-add them
+afterwards by editing the file, and never print or paste its contents.
+
+A local Connect authentication failure has more than one cause. An expired
+`VERCEL_OIDC_TOKEN` is one; a connector that is not attached to `development`,
+a `GOOGLE_CONNECTOR_UID` that names a different or non-existent connector, and
+a checkout linked to a different Vercel project or team produce the same
+symptom. Check the attachment and the identifier before assuming expiry, and
+re-pull the environment as the fix for expiry alone.
+
+### Google acceptance checks
+
+None of the setup above is evidence that the integration works. Do not describe
+Google as tested, working, or demo-ready until these live checks pass in each
+environment that will be used:
+
+- [ ] The demo Google account is listed as a test user on an `External`,
+      `Testing` consent screen and reaches consent without an access error.
+- [ ] A signed-in OpenInstinct user completes **Connect** on `/` and the
+      Google row reports connected for that user.
+- [ ] A real Gmail check succeeds: run the `gmail-connect` tool, which calls
+      `users.getProfile` and fails loudly when the Gmail API or the grant is
+      not usable.
+- [ ] A read-only Calendar call succeeds (`calendar-list-events` over a short
+      range). Nothing in the app probes the Calendar API before first use, so a
+      disabled Calendar API surfaces only here.
+- [ ] Both checks pass locally and in the deployed environment; a local pass
+      proves nothing about production.
+- [ ] Disconnect from `/`, then reconnect from `/`, and repeat the Gmail and
+      Calendar checks. Reconnecting is the supported path that clears the
+      revoked installation record.
+- [ ] Sending email and creating a calendar event still stop for approval. Do
+      not confirm either action as part of a smoke test.
+
+A limited `Testing` demo does not need Google's public verification or a
+security assessment; those are required for broad distribution of restricted
+scopes such as `gmail.modify`. Expect an unverified-app warning during consent,
+and expect that a Google Workspace administrator can block the client for
+accounts in a managed domain — confirm both against Google's current
+[OAuth application verification help](https://support.google.com/cloud/answer/13463073)
+for the account being used, since these are provider-side policies this
+repository cannot control.
 
 ## Square connector
 
