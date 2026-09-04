@@ -24,6 +24,7 @@ import {
   recordUsageEvent,
 } from "@/db/services/usage";
 import {
+  claimConversationInboundMessage,
   createConversationBinding,
   resolveConversationBinding,
 } from "@/db/services/channel-conversations";
@@ -439,6 +440,14 @@ export const linqChannelConfig = {
     if (!binding || binding.workspaceId !== verifiedScope.workspaceId) {
       return null;
     }
+    const messageId = z.string().min(1).safeParse(message.id);
+    if (!messageId.success) return null;
+    const claimed = await claimConversationInboundMessage({
+      bindingId: binding.id,
+      messageId: messageId.data,
+      workspaceId: verifiedScope.workspaceId,
+    });
+    if (!claimed) return null;
     if (bindingCreated) {
       try {
         await recordConnectionInstallation(verifiedScope, {

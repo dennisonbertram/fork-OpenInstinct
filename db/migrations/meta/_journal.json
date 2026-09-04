@@ -134,6 +134,13 @@
       "when": 1788468641199,
       "tag": "0018_dapper_microchip",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788488419532,
+      "tag": "0019_dark_cloak",
+      "breakpoints": true
     }
   ]
 }
