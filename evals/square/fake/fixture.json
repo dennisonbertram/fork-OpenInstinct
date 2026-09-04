@@ -4,7 +4,30 @@
     "name": "Default Test Account",
     "currency": "USD",
     "status": "ACTIVE",
+    "timezone": "America/New_York",
     "created_at": "2026-09-03T09:00:00Z"
+  },
+  "locations": [
+    {
+      "id": "LQK1QAMZG63BM",
+      "name": "Default Test Account",
+      "currency": "USD",
+      "status": "ACTIVE",
+      "timezone": "America/New_York",
+      "created_at": "2026-09-03T09:00:00Z"
+    },
+    {
+      "id": "LOCATION_OTHER",
+      "name": "Airport Test Counter",
+      "currency": "USD",
+      "status": "ACTIVE",
+      "timezone": "America/Los_Angeles",
+      "created_at": "2026-09-03T09:00:00Z"
+    }
+  ],
+  "clock": {
+    "asOf": "2026-11-02T04:59:59.999Z",
+    "timezone": "America/New_York"
   },
   "categories": [
     { "id": "CAT_DRINKS", "name": "Drinks" },
@@ -94,40 +117,162 @@
     {
       "id": "ORD_0",
       "customerId": "CUST_ADA",
+      "locationId": "LQK1QAMZG63BM",
       "state": "COMPLETED",
       "quantity": 1,
       "itemIndexes": [0, 1],
-      "createdAt": "2026-09-03T10:00:00Z"
+      "createdAt": "2026-11-01T04:00:00Z"
     },
     {
       "id": "ORD_1",
       "customerId": "CUST_GRACE",
+      "locationId": "LQK1QAMZG63BM",
       "state": "COMPLETED",
       "quantity": 2,
       "itemIndexes": [1, 2],
-      "createdAt": "2026-09-03T10:05:00Z"
+      "createdAt": "2026-11-01T06:30:00Z"
     },
     {
       "id": "ORD_2",
       "customerId": "CUST_LINUS",
+      "locationId": "LQK1QAMZG63BM",
       "state": "COMPLETED",
       "quantity": 3,
       "itemIndexes": [2, 3],
-      "createdAt": "2026-09-03T10:10:00Z"
+      "createdAt": "2026-11-02T04:59:59Z"
     },
     {
       "id": "ORD_3",
       "customerId": "CUST_MARGARET",
+      "locationId": "LQK1QAMZG63BM",
       "state": "OPEN",
       "quantity": 4,
       "itemIndexes": [3, 4],
-      "createdAt": "2026-09-03T10:15:00Z"
+      "createdAt": "2026-11-01T10:15:00Z"
+    },
+    {
+      "id": "ORD_CANCELED",
+      "customerId": "CUST_ADA",
+      "locationId": "LQK1QAMZG63BM",
+      "seed": false,
+      "state": "CANCELED",
+      "quantity": 1,
+      "itemIndexes": [0, 1],
+      "createdAt": "2026-11-01T12:00:00Z"
+    },
+    {
+      "id": "ORD_YESTERDAY",
+      "customerId": "CUST_GRACE",
+      "locationId": "LQK1QAMZG63BM",
+      "seed": false,
+      "state": "COMPLETED",
+      "quantity": 1,
+      "itemIndexes": [1, 2],
+      "createdAt": "2026-11-01T03:59:59Z"
+    },
+    {
+      "id": "ORD_OTHER_LOCATION",
+      "customerId": "CUST_LINUS",
+      "locationId": "LOCATION_OTHER",
+      "seed": false,
+      "state": "COMPLETED",
+      "quantity": 1,
+      "itemIndexes": [0, 1],
+      "createdAt": "2026-11-01T17:00:00Z"
+    },
+    {
+      "id": "ORD_SPRING_START",
+      "customerId": "CUST_ADA",
+      "locationId": "LQK1QAMZG63BM",
+      "seed": false,
+      "state": "COMPLETED",
+      "quantity": 1,
+      "itemIndexes": [0, 1],
+      "createdAt": "2026-03-08T05:00:00Z"
+    },
+    {
+      "id": "ORD_SPRING_END",
+      "customerId": "CUST_GRACE",
+      "locationId": "LQK1QAMZG63BM",
+      "seed": false,
+      "state": "COMPLETED",
+      "quantity": 2,
+      "itemIndexes": [1, 2],
+      "createdAt": "2026-03-09T03:59:59Z"
+    },
+    {
+      "id": "ORD_NEXT_LOCAL_DAY",
+      "customerId": "CUST_LINUS",
+      "locationId": "LQK1QAMZG63BM",
+      "seed": false,
+      "state": "COMPLETED",
+      "quantity": 1,
+      "itemIndexes": [0, 1],
+      "createdAt": "2026-11-02T05:00:00.000Z"
+    },
+    {
+      "id": "ORD_SPRING_BEFORE",
+      "customerId": "CUST_ADA",
+      "locationId": "LQK1QAMZG63BM",
+      "seed": false,
+      "state": "COMPLETED",
+      "quantity": 1,
+      "itemIndexes": [0, 1],
+      "createdAt": "2026-03-08T04:59:59.999Z"
+    },
+    {
+      "id": "ORD_SPRING_AFTER",
+      "customerId": "CUST_GRACE",
+      "locationId": "LQK1QAMZG63BM",
+      "seed": false,
+      "state": "COMPLETED",
+      "quantity": 2,
+      "itemIndexes": [1, 2],
+      "createdAt": "2026-03-09T04:00:00.000Z"
     }
   ],
   "payments": [
-    { "id": "PAY_0", "orderId": "ORD_0", "createdAt": "2026-09-03T10:01:00Z" },
-    { "id": "PAY_1", "orderId": "ORD_1", "createdAt": "2026-09-03T10:06:00Z" },
-    { "id": "PAY_2", "orderId": "ORD_2", "createdAt": "2026-09-03T10:11:00Z" }
+    { "id": "PAY_0", "orderId": "ORD_0", "createdAt": "2026-11-01T04:01:00Z" },
+    { "id": "PAY_1", "orderId": "ORD_1", "createdAt": "2026-11-01T06:31:00Z" },
+    { "id": "PAY_2", "orderId": "ORD_2", "createdAt": "2026-11-02T04:59:59Z" },
+    {
+      "id": "PAY_YESTERDAY",
+      "orderId": "ORD_YESTERDAY",
+      "createdAt": "2026-11-01T03:59:59.999Z"
+    },
+    {
+      "id": "PAY_OTHER_LOCATION",
+      "orderId": "ORD_OTHER_LOCATION",
+      "createdAt": "2026-11-01T17:00:00.000Z"
+    },
+    {
+      "id": "PAY_NEXT_LOCAL_DAY",
+      "orderId": "ORD_NEXT_LOCAL_DAY",
+      "createdAt": "2026-11-02T05:00:00.000Z"
+    }
+  ],
+  "refunds": [
+    {
+      "id": "REF_0",
+      "paymentId": "PAY_1",
+      "orderId": "ORD_1",
+      "amountCents": 525,
+      "createdAt": "2026-11-01T16:00:00Z"
+    },
+    {
+      "id": "REF_PREVIOUS_WEEK",
+      "paymentId": "PAY_YESTERDAY",
+      "orderId": "ORD_YESTERDAY",
+      "amountCents": 2000,
+      "createdAt": "2026-10-25T03:59:59.999Z"
+    },
+    {
+      "id": "REF_OTHER_LOCATION",
+      "paymentId": "PAY_OTHER_LOCATION",
+      "orderId": "ORD_OTHER_LOCATION",
+      "amountCents": 875,
+      "createdAt": "2026-11-01T16:00:00.000Z"
+    }
   ],
   "invoices": [
     {

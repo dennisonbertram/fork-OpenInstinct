@@ -17,15 +17,28 @@ afterAll(async () => {
 });
 
 interface SearchOrdersBody {
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly location_ids?: string[];
   readonly query: {
     readonly filter: {
-      readonly customer_filter: { readonly customer_ids: string[] };
+      readonly customer_filter?: { readonly customer_ids: string[] };
+      readonly date_time_filter?: {
+        readonly created_at: {
+          readonly start_at: string;
+          readonly end_at: string;
+        };
+      };
+      readonly state_filter?: { readonly states: string[] };
     };
   };
 }
 
 const searchOrdersResponseSchema = z.object({
-  orders: z.array(z.object({ total_money: z.object({ amount: z.number() }) })),
+  orders: z.array(
+    z.object({ id: z.string(), total_money: z.object({ amount: z.number() }) })
+  ),
+  cursor: z.string().optional(),
 });
 
 const invoicesResponseSchema = z.object({
@@ -70,7 +83,19 @@ describe("fake Square agrees with case facts", () => {
     const expected = adaCase?.facts(fixture) ?? [];
 
     const result = await searchOrders({
-      query: { filter: { customer_filter: { customer_ids: ["CUST_ADA"] } } },
+      location_ids: ["LQK1QAMZG63BM"],
+      query: {
+        filter: {
+          customer_filter: { customer_ids: ["CUST_ADA"] },
+          date_time_filter: {
+            created_at: {
+              start_at: "2026-11-01T04:00:00Z",
+              end_at: "2026-11-02T04:59:59.999Z",
+            },
+          },
+          state_filter: { states: ["COMPLETED"] },
+        },
+      },
     });
 
     expect(result.orders).toHaveLength(1);
@@ -92,5 +117,36 @@ describe("fake Square agrees with case facts", () => {
     const amount =
       invoice?.payment_requests[0]?.computed_amount_money.amount ?? 0;
     expect(expected).toContain(`$${(amount / 100).toFixed(2)}`);
+  });
+
+  it("requires every page of the fixed-clock, location-scoped gross-sales search to match the literal $55.75 case fact", async () => {
+    const fixture = loadSquareFixture();
+    const salesCase = squareCases.find((c) => c.id === "todays-sales-total");
+    const body = {
+      limit: 2,
+      location_ids: ["LQK1QAMZG63BM"],
+      query: {
+        filter: {
+          date_time_filter: {
+            created_at: {
+              start_at: "2026-11-01T04:00:00Z",
+              end_at: "2026-11-02T04:59:59.999Z",
+            },
+          },
+          state_filter: { states: ["COMPLETED"] },
+        },
+      },
+    } satisfies SearchOrdersBody;
+
+    const first = await searchOrders(body);
+    const second = await searchOrders({ ...body, cursor: first.cursor });
+    const total = [...first.orders, ...second.orders].reduce(
+      (sum, order) => sum + order.total_money.amount,
+      0
+    );
+
+    expect(first.cursor).toBeTruthy();
+    expect(total).toBe(5575);
+    expect(salesCase?.facts(fixture)).toContain("$55.75");
   });
 });

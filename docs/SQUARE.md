@@ -162,12 +162,15 @@ the changes that require a run before the pull request opens.
 
 ### Tier A: the fake (default, `pnpm eval:square`)
 
-- `evals/square/fake/server.ts` is a hand-written fake of the Square read
-  endpoints the agent uses, backed by the committed fixture
-  `evals/square/fake/fixture.json` (1 location, 6 catalog items, 4
-  customers, 4 orders, 3 payments, 1 invoice). It applies the same query
-  filters and cursor pagination real Square does, and returns a
-  Square-shaped 403 for any write endpoint.
+- `evals/square/fake/server.ts` is a hand-written fake of selected Square read
+  endpoints, backed by the committed fixture `evals/square/fake/fixture.json`
+  (2 locations, 6 catalog items, 4 customers, 12 orders, 7 payments, 3 refunds,
+  and 1 invoice). It pins a fixture clock (`2026-11-02T04:59:59.999Z`) and New York
+  business timezone, and supports only the selected `SearchOrders` location,
+  state, created-at range, and cursor filters plus selected payment and refund
+  location/time filters.
+  It is not a general Square simulator. It returns a Square-shaped 403 for any
+  write endpoint.
 - `scripts/eval-square.ts` starts the fake on a free loopback port, sets
   `SQUARE_BASE_URL` (loopback-only, validated by `src/env.ts`) and a static
   `SQUARE_SANDBOX_ACCESS_TOKEN` (sandbox-only -- rejected by `src/env.ts`
@@ -182,8 +185,8 @@ the changes that require a run before the pull request opens.
 
 ### Case categories and the shape rule
 
-`evals/square/cases.ts` holds twelve cases across five categories:
-correctness (customer list, Ada's order total, today's sales, best seller,
+`evals/square/cases.ts` holds thirteen cases across five categories:
+correctness (customer list, Ada's order total, today's gross and net sales, best seller,
 Cold Brew stock, reorder threshold, who owes money, Ada disambiguation),
 empty-state (refunds this week), refusal (a refund request, since the
 connection is read-only), no-tool (a "thanks"), and list shape (every item
