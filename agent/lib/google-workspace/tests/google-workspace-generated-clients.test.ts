@@ -38,7 +38,7 @@ describe("generated Google Workspace clients", () => {
     const ctx = toolContext();
     const client = GmailApi.gmail({ version: "v1" });
     const getProfile = vi
-      .fn()
+      .fn<() => Promise<{ data: GmailApi.gmail_v1.Schema$Profile }>>()
       .mockResolvedValue({ data: { emailAddress: "test@example.com" } });
     Object.defineProperty(client.users, "getProfile", {
       value: getProfile,
@@ -58,7 +58,7 @@ describe("generated Google Workspace clients", () => {
     const ctx = toolContext();
     const client = GmailApi.gmail({ version: "v1" });
     const error = new GoogleApiError(403);
-    const getProfile = vi.fn().mockRejectedValue(error);
+    const getProfile = vi.fn<() => Promise<never>>().mockRejectedValue(error);
     Object.defineProperty(client.users, "getProfile", {
       value: getProfile,
       configurable: true,
