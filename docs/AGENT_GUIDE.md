@@ -114,23 +114,24 @@ dispatch. Treat an uncertain dispatch as uncertain; never retry it automatically
 - Browser image storage needs a private Blob store/token. Artifact reads are
   scoped and hash-checked.
 - Local development uses Docker Compose Postgres and the generated random
-  loopback port owned by `scripts/dev.mjs`.
+  loopback port owned by `scripts/dev.ts`.
 
 ## Command matrix
 
-| Situation               | Command                      | Notes                                                                                 |
-| ----------------------- | ---------------------------- | ------------------------------------------------------------------------------------- |
-| First local setup       | `./init.sh`                  | Copies `.env.example` only when `.env.local` is absent, then delegates to `pnpm dev`. |
-| Check prerequisites     | `./init.sh --check`          | Non-mutating Node 24, pnpm, Docker, and Compose check.                                |
-| Install only            | `./init.sh --setup-only`     | Preserves `.env.local`; installs dependencies.                                        |
-| Local app lifecycle     | `pnpm dev`                   | Starts Postgres, migrates, runs Next, and tears down the container on exit.           |
-| App-only local run      | `pnpm dev:app`               | Use only with an externally managed database.                                         |
-| Unit/integration tests  | `pnpm test`                  | Vitest suite; provider calls are mocked.                                              |
-| Repository gate         | `pnpm check`                 | Lint, typecheck, tests, formatting, Knip, and boundaries.                             |
-| Web build               | `pnpm build`                 | Next production build; does not itself provision infrastructure.                      |
-| Eve production artifact | `pnpm build:eve`             | Required before a non-Vercel Eve service can start.                                   |
-| Eve process             | `pnpm start:eve`             | Run under a supervisor with persistent `.eve` state when self-hosting.                |
-| Vercel deployment       | `pnpm deploy` / `eve deploy` | Follow `docs/operations/VERCEL.md`; operator action.                                  |
+| Situation               | Command                      | Notes                                                                                        |
+| ----------------------- | ---------------------------- | -------------------------------------------------------------------------------------------- |
+| Complete local stack    | `./init.sh`                  | Installs, safely links missing credentials, starts Agentation, then delegates to `pnpm dev`. |
+| Check prerequisites     | `./init.sh --check`          | Non-mutating Node 24, pnpm, Docker, and Compose check.                                       |
+| Setup only              | `./init.sh --setup-only`     | Prepares dependencies and credentials without starting services.                             |
+| Local app lifecycle     | `pnpm dev`                   | Starts Postgres, migrates, runs Next, and tears down the container on exit.                  |
+| Agentation only         | `pnpm dev:agentation`        | Starts the local design-feedback server on port 4747.                                        |
+| App-only local run      | `pnpm dev:app`               | Use only with an externally managed database.                                                |
+| Unit/integration tests  | `pnpm test`                  | Vitest suite; provider calls are mocked.                                                     |
+| Repository gate         | `pnpm check`                 | Lint, typecheck, tests, formatting, Knip, and boundaries.                                    |
+| Web build               | `pnpm build`                 | Next production build; does not itself provision infrastructure.                             |
+| Eve production artifact | `pnpm build:eve`             | Required before a non-Vercel Eve service can start.                                          |
+| Eve process             | `pnpm start:eve`             | Run under a supervisor with persistent `.eve` state when self-hosting.                       |
+| Vercel deployment       | `pnpm deploy` / `eve deploy` | Follow `docs/operations/VERCEL.md`; operator action.                                         |
 
 ## Change recipes
 
@@ -148,8 +149,11 @@ dispatch. Treat an uncertain dispatch as uncertain; never retry it automatically
    Do not compile or evaluate tenant-provided JavaScript.
 5. **Change auth or routes:** test unauthenticated, authenticated, wrong-owner,
    and cross-origin cases. Test both Next proxy behavior and generated Eve routes.
-6. **Change local startup:** preserve `scripts/dev.mjs` ownership of Compose,
-   signal forwarding, dynamic port injection, migration, and teardown.
+6. **Change local startup:** preserve `scripts/dev.ts` ownership of Compose,
+   signal forwarding, dynamic port injection, migration, and teardown. Keep
+   `./init.sh`, its unit tests, the README quickstart, this command matrix, the
+   operations runbook, and `AGENTS.md` synchronized. Verify both Agentation and
+   the application are observable and that an owned sidecar stops on exit.
 7. **Add an optional product capability:** package it as an Eve extension plus
    a skill and credential-brokered MCP connection. Instantiate the contract
    gym before mounting it in the product agent.
