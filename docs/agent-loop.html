@@ -733,7 +733,9 @@
         <text x="32" y="242" font-size="13" font-weight="600" class="park-text">
           Turn parks, holds no compute
         </text>
-        <text x="32" y="264" font-size="12">one approval: purchase · send</text>
+        <text x="32" y="264" font-size="12">
+          iMessage approval: reply approve · cancel
+        </text>
         <text x="32" y="280" font-size="12">
           submit · delete · OAuth callback
         </text>
@@ -828,6 +830,14 @@
           <tr>
             <td>step.completed</td>
             <td>recordUsageEvent with tokens and cost estimate</td>
+          </tr>
+          <tr>
+            <td>input.requested</td>
+            <td>
+              Linq: post deterministic plain-text choices; tool approvals say to
+              reply exactly <code>approve</code> or <code>cancel</code>.
+              <code>agent/channels/linq.ts</code>
+            </td>
           </tr>
           <tr>
             <td>message.completed</td>

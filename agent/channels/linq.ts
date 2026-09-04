@@ -53,6 +53,34 @@ const cancelledWorkerTaskSchema = z.object({
 const workerCancellationsSchema = z.array(
   z.object({ sourceMessageId: z.string(), taskId: z.string() })
 );
+type LinqInputRequest = Parameters<
+  NonNullable<NonNullable<LinqChannelConfig["events"]>["input.requested"]>
+>[0]["requests"][number];
+
+function renderLinqInputRequest(request: LinqInputRequest) {
+  const options = request.options ?? [];
+  if (request.kind === "tool-approval") {
+    const replies = options.map((option) => `"${option.id}"`).join(" or ");
+    return [
+      request.prompt,
+      replies
+        ? `Reply exactly ${replies}.`
+        : 'Reply exactly "approve" or "cancel".',
+    ].join("\n\n");
+  }
+  if (options.length > 0) {
+    const choices = options
+      .map((option, index) => `${String(index + 1)}. ${option.label}`)
+      .join("\n");
+    return [
+      request.prompt,
+      choices,
+      "Reply with an option label or number.",
+    ].join("\n\n");
+  }
+  return [request.prompt, "Reply with your answer."].join("\n\n");
+}
+
 async function postLinqReply(
   thread: NonNullable<
     Parameters<
@@ -121,6 +149,12 @@ const credentials: LinqChannelCredentials = env.LINQ_CONNECTOR
 export const linqChannelConfig = {
   credentials,
   events: {
+    async "input.requested"(event, context) {
+      if (!context.thread || event.requests.length === 0) return;
+      await context.thread.post({
+        markdown: event.requests.map(renderLinqInputRequest).join("\n\n"),
+      });
+    },
     "action.result"(event, context) {
       const result = taskCancelResultSchema.safeParse(event.result);
       if (!result.success) return;

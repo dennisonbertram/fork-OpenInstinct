@@ -1,5 +1,6 @@
 /* oxlint-disable typescript/no-unsafe-type-assertion -- The handler fixture supplies only the Chat SDK fields exercised here. */
 import type { HookContext } from "eve/hooks";
+import type { LinqChannelConfig } from "eve/channels/linq";
 import type { AuditableLogger } from "evlog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as Blob from "@vercel/blob";
@@ -81,6 +82,10 @@ vi.mock("@vercel/blob", async (importOriginal) => {
 const channelEvents = linqChannelConfig.events;
 const trackWorkerCancellation = channelEvents["action.result"];
 const deliverCompletedMessage = channelEvents["message.completed"];
+// SAFETY: The test reads the optional event slot from the channel's public config contract.
+const deliverInputRequest = (
+  channelEvents as NonNullable<LinqChannelConfig["events"]>
+)["input.requested"];
 
 type HandlerParameters = Parameters<typeof deliverCompletedMessage>;
 
@@ -109,6 +114,111 @@ describe("Linq message delivery", () => {
     evlogCapture.useLogger.mockReset();
     evlogCapture.useLogger.mockReturnValue(evlogCapture);
     evlogCapture.warn.mockClear();
+  });
+
+  it("renders tool approval as exact plain-text replies", async () => {
+    expect(deliverInputRequest).toBeTypeOf("function");
+    if (!deliverInputRequest)
+      throw new Error("Linq input delivery is missing.");
+    const { context, post } = handlerContext();
+
+    await deliverInputRequest(
+      {
+        requests: [
+          {
+            action: {
+              callId: "call-google-write",
+              input: {
+                action: "send_email",
+                body: "Dennison!",
+                subject: "Just testing",
+                to: ["recipient@example.com"],
+              },
+              kind: "tool-call",
+              toolName: "google_workspace_write",
+            },
+            allowFreeform: false,
+            display: "confirmation",
+            kind: "tool-approval",
+            options: [
+              { id: "approve", label: "Approve" },
+              { id: "cancel", label: "Cancel" },
+            ],
+            prompt: "Approve tool call: google_workspace_write",
+            requestId: "approval-1",
+          },
+        ],
+        sequence: 0,
+        stepIndex: 0,
+        turnId: "turn-1",
+      },
+      context,
+      sessionContext()
+    );
+
+    expect(post).toHaveBeenCalledExactlyOnceWith({
+      markdown:
+        'Approve tool call: google_workspace_write\n\nReply exactly "approve" or "cancel".',
+    });
+  });
+
+  it("keeps selectable and freeform questions usable over text", async () => {
+    expect(deliverInputRequest).toBeTypeOf("function");
+    if (!deliverInputRequest)
+      throw new Error("Linq input delivery is missing.");
+    const { context, post } = handlerContext();
+
+    await deliverInputRequest(
+      {
+        requests: [
+          {
+            action: {
+              callId: "call-question-1",
+              input: {},
+              kind: "tool-call",
+              toolName: "ask_question",
+            },
+            allowFreeform: false,
+            display: "select",
+            kind: "question",
+            options: [
+              { id: "morning", label: "Morning" },
+              { id: "afternoon", label: "Afternoon" },
+            ],
+            prompt: "What time works?",
+            requestId: "question-1",
+          },
+          {
+            action: {
+              callId: "call-question-2",
+              input: {},
+              kind: "tool-call",
+              toolName: "ask_question",
+            },
+            allowFreeform: true,
+            display: "text",
+            kind: "question",
+            prompt: "What should the note say?",
+            requestId: "question-2",
+          },
+        ],
+        sequence: 0,
+        stepIndex: 0,
+        turnId: "turn-1",
+      },
+      context,
+      sessionContext()
+    );
+
+    expect(post).toHaveBeenCalledExactlyOnceWith({
+      markdown: [
+        "What time works?",
+        "1. Morning\n2. Afternoon",
+        "Reply with an option label or number.",
+        "What should the note say?",
+        "Reply with your answer.",
+      ].join("\n\n"),
+    });
   });
 
   it("posts final responses as native iMessage Markdown", async () => {
