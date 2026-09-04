@@ -210,6 +210,16 @@ Then start OpenInstinct:
 pnpm dev
 ```
 
+For visual design feedback, start the local Agentation server in a second
+terminal:
+
+```bash
+pnpm dev:agentation
+```
+
+The Agentation toolbar is lazy-loaded only in development and connects to the
+local server at `http://localhost:4747`. It is not rendered in production.
+
 `pnpm dev` starts PostgreSQL from `compose.yaml`, applies the committed database
 migrations, and starts the application. Stopping the development process also
 stops and removes the PostgreSQL container; its data remains in the

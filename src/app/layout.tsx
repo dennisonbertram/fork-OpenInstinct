@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Inter_Tight, JetBrains_Mono } from "next/font/google";
 import { QueryProvider } from "@/app/_providers/query-provider";
+import { AgentationToolbar } from "@/components/dev/agentation-toolbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { env } from "@/env";
 import { accessScopeForUser } from "@/lib/access-scope";
 import { applicationOrigin } from "@/lib/application-origin";
 import { getAuthSession } from "@/auth/session";
@@ -44,6 +46,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <QueryProvider>
           <TooltipProvider>{children}</TooltipProvider>
         </QueryProvider>
+        <AgentationToolbar enabled={env.NODE_ENV === "development"} />
       </body>
     </html>
   );
