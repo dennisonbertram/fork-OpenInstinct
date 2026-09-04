@@ -44,13 +44,14 @@ export default defineConfig({
       ADMIN_PHONE_NUMBERS: "+12025550123",
       SECRET_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
       WORKSPACE_SCOPE_ENFORCEMENT: "enforce",
+      EVAL_CONTRACT_FIXTURE: "1",
     },
     gracefulShutdown: {
       signal: "SIGTERM",
       timeout: 30_000,
     },
-    // oxlint-disable-next-line eslint/no-restricted-properties, turbo/no-undeclared-env-vars -- Playwright's documented local-server reuse switch is CI-specific.
-    reuseExistingServer: !process.env.CI,
+    // The chat suite must never attach to a paid-model or non-synthetic server.
+    reuseExistingServer: false,
     timeout: 300_000,
     url: baseURL,
   },

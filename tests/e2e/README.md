@@ -8,6 +8,19 @@ chunks for `127.0.0.1`. The config supplies synthetic `KERNEL_API_KEY`, Better A
 and a fresh valid base64 encryption key; no external Kernel, Blob, or Linq
 service is exercised.
 
+The supervisor receives `EVAL_CONTRACT_FIXTURE=1`, which the application rejects
+outside local development. Chat tests use this scripted model through the real
+authenticated Eve routes: they assert delivery, persisted history after reload,
+follow-up delivery without duplicate replies, and actionable turn-failure recovery.
+They do not intercept the chat API or call a paid model. Playwright never reuses
+an existing server, so an unrelated app cannot silently replace this fixture
+environment. Choose an unused `PLAYWRIGHT_PORT` when another app is running.
+
+The fixture owns turn-scoped tool-call IDs. Eve's mock request includes the whole
+conversation's tool results; a completed delivery from an earlier turn must not
+terminate a new turn. The single-turn fixture tests and real browser follow-up
+journey protect both sides of that boundary.
+
 The `setup` project signs in once at `/sign-in` using the local phone bypass
 and saves the cookie state to `playwright/.auth/user.json`. The Chromium project
 depends on that setup project and loads the saved state. Specs that cover

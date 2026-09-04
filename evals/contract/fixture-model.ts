@@ -18,17 +18,35 @@ const reactionTypes = new Set([
 export const contractFixtureModel = mockModel({
   modelId: "contract-fixture",
   provider: "openinstinct-contract-fixtures",
-  respond: contractFixtureResponse,
+  respond(request) {
+    // The SDK includes tool results from the entire conversation. Own the
+    // fixture's call IDs so a prior turn's delivery cannot finish this turn.
+    const turnPrefix = `contract-turn-${String(request.userMessageCount)}-`;
+    const response = contractFixtureResponse({
+      ...request,
+      toolResults: request.toolResults.filter((result) =>
+        result.id.startsWith(turnPrefix)
+      ),
+    });
+    return {
+      ...response,
+      toolCalls: response.toolCalls?.map((call, index) => ({
+        input: call.input,
+        name: call.name,
+        id: `${turnPrefix}${String(request.toolResults.length)}-${String(index)}`,
+      })),
+    };
+  },
 });
 
 export function contractFixtureResponse(
   request: MockModelRequest
-): MockModelResponse | string {
+): MockModelResponse {
   const command = request.lastUserMessage?.trim();
   if (!command) throw new Error("Contract fixture requires a command.");
 
   if (request.toolResults.some((result) => deliveryTools.has(result.name))) {
-    return "DELIVERY_COMPLETE";
+    return { text: "DELIVERY_COMPLETE" };
   }
 
   const requestedCall = parseCall(command);
