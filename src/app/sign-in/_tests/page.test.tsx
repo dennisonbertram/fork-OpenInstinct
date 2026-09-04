@@ -27,12 +27,9 @@ vi.mock("@/env", () => ({
   localPhoneAuthBypassEnabled: true,
 }));
 
-vi.mock("@/app/sign-in/_components/local-form", () => ({
-  LocalPhoneAuthForm: () => createElement("form"),
-}));
-
 vi.mock("@/app/sign-in/_components/otp-form", () => ({
-  PhoneOtpAuthForm: () => createElement("form"),
+  PhoneOtpAuthForm: ({ localBypass }: { readonly localBypass?: boolean }) =>
+    createElement("form", null, localBypass ? "two-step-local" : "live-otp"),
 }));
 
 import SignInPage from "@/app/sign-in/page";
@@ -48,5 +45,14 @@ describe("sign-in page", () => {
     expect(html).toMatch(/<h1 class="type-hero">Hey, Jory<\/h1>/);
     expect(html).not.toContain(">OpenInstinct<");
     expect(html).not.toContain("type-eyebrow");
+    expect(html).not.toContain(
+      "Can you check the Square inventory for low-stock items?"
+    );
+    expect(html).not.toContain(
+      "On it. I will pull the catalog and flag anything under threshold."
+    );
+    expect(html).toContain("two-step-local");
+    expect(html).toContain("lg:grid-cols");
+    expect(html).not.toContain("md:grid-cols");
   });
 });

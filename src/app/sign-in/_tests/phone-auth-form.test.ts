@@ -2,7 +2,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { LocalPhoneAuthForm } from "@/app/sign-in/_components/local-form";
 import {
   PhoneOtpAuthForm,
   phoneOtpErrorMessage,
@@ -75,12 +74,17 @@ describe("phone OTP errors", () => {
     expect(error).not.toContain("button");
   });
 
-  it("does not show Linq setup during local sign-in", () => {
+  it("keeps a separate code step without showing Linq setup locally", () => {
     const html = renderForm(
-      createElement(LocalPhoneAuthForm, { callbackUrl: "/" })
+      createElement(PhoneOtpAuthForm, {
+        callbackUrl: "/",
+        localBypass: true,
+      })
     );
 
     expect(html).not.toContain("First time signing in?");
-    expect(html).toContain("Continue");
+    expect(html).toContain("Send code");
+    expect(html).toContain("000000");
+    expect(html).not.toContain("Verify code");
   });
 });
