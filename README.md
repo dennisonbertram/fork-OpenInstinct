@@ -122,11 +122,15 @@ OpenInstinct stores only the stable user identity used to request them. Gmail
 access deliberately uses `gmail.modify`, not the permanent-delete
 `mail.google.com` scope.
 
-1. In one Google Cloud project, configure the OAuth consent screen and enable
-   the Gmail API, Google Calendar API, and People API.
-2. Create OAuth web credentials. Add
-   `https://connect.vercel.com/callback` as an authorized redirect URI, then
-   download the client-secret JSON.
+1. In one Google Cloud project, enable the Gmail API, Google Calendar API, and
+   People API, then configure the OAuth consent screen for the **External**
+   user type and declare the scopes listed in `src/lib/google-workspace.ts`.
+   While the publishing status is `Testing`, add every account that will sign
+   in under **Test users**; consent fails for anyone not listed.
+2. Create OAuth credentials of type **Web application**. Add
+   `https://connect.vercel.com/callback` as an authorized redirect URI — check
+   it against the redirect URI shown on the connector's Vercel Connect page —
+   then download the client-secret JSON.
 3. Vercel expects top-level `clientId` and `clientSecret` keys, not Google's
    nested `web.client_id` and `web.client_secret` download. Convert the download
    into a temporary file outside the repository, then create and attach the
@@ -145,7 +149,26 @@ access deliberately uses `gmail.modify`, not the permanent-delete
    Never commit either credential file.
 
 4. Set `GOOGLE_CONNECTOR_UID` to the returned UID and redeploy. The default is
-   `google/open-instinct`.
+   `google/open-instinct`, so an unset variable points at that UID rather than
+   disabling the connection; a UID that does not exist renders the workspace
+   row as "Admin setup needed".
+
+To use Google in local development, attach the same connector to the
+`development` environment
+(`vercel connect attach <returned-connector-uid> -e development --yes`) and run
+`vercel env add GOOGLE_CONNECTOR_UID development` before pulling the local
+environment, so a refresh of `.env.local` carries the identifier instead of
+wiping a local-only edit. `.env.local` also needs an unexpired
+`VERCEL_OIDC_TOKEN`, because Vercel Connect calls from localhost authenticate
+with it. Refresh that file through the canonical startup path instead of a
+separate script: `./init.sh` re-pulls the development environment when
+`.env.local` is missing required credentials or is unchanged from
+`.env.example`, and for a customized file you can rerun the same link it uses,
+`pnpm exec eve link --non-interactive --project open-instinct --team dennisons-projects`.
+Back the file up first if it holds local-only values and re-add them by editing
+it afterwards. A local authentication failure can mean an expired OIDC token,
+but also a connector not attached to `development`, a `GOOGLE_CONNECTOR_UID`
+naming another connector, or a checkout linked to a different project or team.
 
 Gotchas:
 
@@ -153,8 +176,13 @@ Gotchas:
   it. A production attachment does not make preview or local development work.
 - The Gmail read/modify scope is restricted. A Google OAuth app in Testing mode
   only works for listed test users, and those grants expire after seven days.
-  Broader distribution requires Google's OAuth verification and may require a
-  security assessment.
+  That limited use needs no Google verification, but expect an unverified-app
+  warning at consent and possible blocking by a Google Workspace administrator
+  for managed accounts. Broader distribution requires Google's OAuth
+  verification and may require a security assessment.
+- Setup is not evidence. Follow the runbook's
+  [Google acceptance checks](docs/operations/VERCEL.md#google-acceptance-checks)
+  before calling the integration working.
 - The scopes requested here must also be declared on the Google consent screen.
   After changing scopes or enabled APIs, disconnect and reconnect the account so
   Google issues a grant with the new access.
