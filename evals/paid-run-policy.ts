@@ -5,8 +5,7 @@ export interface PaidRunBudget {
 
 export interface PaidRunCostState {
   readonly actorCostUnaccountable: boolean;
-  readonly attemptsStarted: number;
-  readonly knownActorCostUsd: number;
+  readonly actorCostsUsd: readonly number[];
 }
 
 export function reserveEstimatedCost(
@@ -21,9 +20,10 @@ export function reserveEstimatedCost(
   if (budget.estimatedCostUsd > budget.maxCostUsd) {
     throw new Error("--estimated-cost-usd must not exceed --max-cost-usd.");
   }
-  const reservedCostUsd = Math.max(
-    state.knownActorCostUsd,
-    state.attemptsStarted * budget.estimatedCostUsd
+  const reservedCostUsd = state.actorCostsUsd.reduce(
+    (total, actorCostUsd) =>
+      total + Math.max(actorCostUsd, budget.estimatedCostUsd),
+    0
   );
   if (reservedCostUsd + budget.estimatedCostUsd > budget.maxCostUsd) {
     throw new Error("The next estimated attempt would exceed --max-cost-usd.");

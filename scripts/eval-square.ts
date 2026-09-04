@@ -52,8 +52,7 @@ if (appliedDefaults.length > 0) {
 const options = parseSquareEvalOptions(process.argv.slice(2));
 reserveEstimatedCost(options, {
   actorCostUnaccountable: false,
-  attemptsStarted: 0,
-  knownActorCostUsd: 0,
+  actorCostsUsd: [],
 });
 const withDatabase =
   options.withDatabase || environment.EVAL_SQUARE_DATABASE === "compose";

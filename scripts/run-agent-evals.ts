@@ -53,8 +53,7 @@ async function runAgentEvals() {
     const options = parseAgentEvalOptions(process.argv.slice(2));
     reserveEstimatedCost(options, {
       actorCostUnaccountable: false,
-      attemptsStarted: 0,
-      knownActorCostUsd: 0,
+      actorCostsUsd: [],
     });
     const manifestPath = await createEvalRunManifest({
       caseDirectory: "evals/agent",

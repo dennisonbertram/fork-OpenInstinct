@@ -95,7 +95,7 @@ describe("eval run manifest", () => {
       });
       await expect(manifestCostStatus(path)).resolves.toEqual({
         actorCostUnaccountable: true,
-        attemptsStarted: 1,
+        actorCostsUsd: [0],
         knownActorCostUsd: 0,
         knownCostUsd: 0,
         unknown: true,

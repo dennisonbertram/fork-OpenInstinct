@@ -295,13 +295,18 @@ export async function manifestCostStatus(path: string) {
     0
   );
   return {
+    actorCostsUsd: manifest.attempts.map((attempt) =>
+      attempt.cases.reduce(
+        (total, item) => total + item.cost.actor.knownCostUsd,
+        0
+      )
+    ),
     actorCostUnaccountable: manifest.attempts.some(
       (attempt) =>
         attempt.terminal === "running" ||
         attempt.summary === null ||
         attempt.cases.some((item) => item.cost.actor.status !== "measured")
     ),
-    attemptsStarted: manifest.attempts.length,
     knownActorCostUsd,
     knownCostUsd: cases.reduce(
       (total, item) => total + item.cost.total.knownCostUsd,
