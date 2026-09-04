@@ -44,19 +44,19 @@ export default async function AuthenticatedLayout({
                 <SidebarMenuButton
                   aria-label="Jory"
                   size="lg"
-                  className="gap-3 py-1.5"
+                  className="items-center gap-3 py-1.5"
                   render={<Link href="/" />}
                 >
-                  {/* Next intentionally types SVG imports as `any`; this is the reviewed local wordmark. */}
-                  {/* oxlint-disable-next-line typescript/no-unsafe-assignment */}
-                  <Image src={joryWordmark} alt="" className="h-6 w-auto" />
                   <Image
                     src={joryAvatar}
                     alt=""
                     width={36}
                     height={36}
-                    className="size-9 shrink-0 object-contain"
+                    className="size-9 shrink-0 rounded-full bg-muted object-contain p-0.5"
                   />
+                  {/* Next intentionally types SVG imports as `any`; this is the reviewed local wordmark. */}
+                  {/* oxlint-disable-next-line typescript/no-unsafe-assignment */}
+                  <Image src={joryWordmark} alt="" className="h-6 w-auto" />
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
