@@ -25,8 +25,13 @@ const capture = vi.hoisted(() => ({
       >
     >(),
   recordInstallation: vi.fn<() => Promise<void>>(),
+  claimInboundMessage: vi.fn<() => Promise<boolean>>(),
   resolveBinding:
-    vi.fn<() => Promise<{ readonly workspaceId: string } | undefined>>(),
+    vi.fn<
+      () => Promise<
+        { readonly id: string; readonly workspaceId: string } | undefined
+      >
+    >(),
   verifyScope:
     vi.fn<() => Promise<{ readonly workspaceId: string } | undefined>>(),
 }));
@@ -34,6 +39,7 @@ vi.mock("@/db/services/scope", () => ({
   verifyScopeAccess: capture.verifyScope,
 }));
 vi.mock("@/db/services/channel-conversations", () => ({
+  claimConversationInboundMessage: capture.claimInboundMessage,
   createConversationBinding:
     vi.fn<() => Promise<{ readonly workspaceId: string } | undefined>>(),
   resolveConversationBinding: capture.resolveBinding,
@@ -137,7 +143,8 @@ describe("Linq inbound authentication", () => {
       phoneIdentityId: "phone-1",
       userId: "user-1",
     });
-    capture.resolveBinding.mockResolvedValue({ workspaceId });
+    capture.resolveBinding.mockResolvedValue({ id: "binding-1", workspaceId });
+    capture.claimInboundMessage.mockResolvedValue(true);
 
     const result = await onMessage(
       threadContext(),

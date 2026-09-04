@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { accessScopeForUser } from "@/lib/access-scope";
 import {
   agentManifestContentDigest,
@@ -84,6 +84,36 @@ export async function resolveConversationBinding({
     )
     .limit(1);
   return binding;
+}
+
+export async function claimConversationInboundMessage({
+  bindingId,
+  messageId,
+  workspaceId,
+}: {
+  readonly bindingId: string;
+  readonly messageId: string;
+  readonly workspaceId: string;
+}) {
+  const [claimed] = await db
+    .update(channelConversations)
+    .set({
+      lastInboundMessageId: messageId,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(channelConversations.id, bindingId),
+        eq(channelConversations.workspaceId, workspaceId),
+        eq(channelConversations.status, "active"),
+        or(
+          isNull(channelConversations.lastInboundMessageId),
+          ne(channelConversations.lastInboundMessageId, messageId)
+        )
+      )
+    )
+    .returning({ id: channelConversations.id });
+  return claimed !== undefined;
 }
 
 export async function createConversationBinding({

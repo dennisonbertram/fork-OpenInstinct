@@ -158,6 +158,8 @@ vi.mock("@vercel/blob", async (importOriginal) => {
   };
 });
 const handleActionResult = linqChannelCapture.config?.events?.["action.result"];
+const deliverInputRequest =
+  linqChannelCapture.config?.events?.["input.requested"];
 if (!handleActionResult) {
   throw new Error("The Linq channel must configure action result delivery.");
 }
@@ -185,6 +187,100 @@ describe("Linq message delivery", () => {
     usageCapture.recordUsageEvent.mockResolvedValue(undefined);
     scheduleDeliveryCapture.finalize.mockResolvedValue(true);
     scheduleDeliveryCapture.release.mockResolvedValue(true);
+  });
+
+  it("renders tool approval as exact plain-text replies", async () => {
+    expect(deliverInputRequest).toBeTypeOf("function");
+    if (!deliverInputRequest)
+      throw new Error("Linq input delivery is missing.");
+    const { context, post } = handlerContext();
+
+    await deliverInputRequest(
+      inputRequestEvent([
+        {
+          action: {
+            callId: "call-google-write",
+            input: {
+              action: "send_email",
+              body: "Dennison!",
+              subject: "Just testing",
+              to: ["recipient@example.com"],
+            },
+            kind: "tool-call",
+            toolName: "google_workspace_write",
+          },
+          allowFreeform: false,
+          display: "confirmation",
+          kind: "tool-approval",
+          options: [
+            { id: "approve", label: "Approve" },
+            { id: "cancel", label: "Cancel" },
+          ],
+          prompt: "Approve tool call: google_workspace_write",
+          requestId: "approval-1",
+        },
+      ]),
+      context,
+      sessionContext()
+    );
+
+    expect(post).toHaveBeenCalledExactlyOnceWith({
+      raw: 'Approve tool call: google_workspace_write\n\nReply exactly "approve" or "cancel".',
+    });
+  });
+
+  it("keeps selectable and freeform questions usable over text", async () => {
+    expect(deliverInputRequest).toBeTypeOf("function");
+    if (!deliverInputRequest)
+      throw new Error("Linq input delivery is missing.");
+    const { context, post } = handlerContext();
+
+    await deliverInputRequest(
+      inputRequestEvent([
+        {
+          action: {
+            callId: "call-question-1",
+            input: {},
+            kind: "tool-call",
+            toolName: "ask_question",
+          },
+          allowFreeform: false,
+          display: "select",
+          kind: "question",
+          options: [
+            { id: "morning", label: "Morning" },
+            { id: "afternoon", label: "Afternoon" },
+          ],
+          prompt: "What time works?",
+          requestId: "question-1",
+        },
+        {
+          action: {
+            callId: "call-question-2",
+            input: {},
+            kind: "tool-call",
+            toolName: "ask_question",
+          },
+          allowFreeform: true,
+          display: "text",
+          kind: "question",
+          prompt: "What should the note say?",
+          requestId: "question-2",
+        },
+      ]),
+      context,
+      sessionContext()
+    );
+
+    expect(post).toHaveBeenCalledExactlyOnceWith({
+      raw: [
+        "What time works?",
+        "1. Morning\n2. Afternoon",
+        "Reply with an option label or number.",
+        "What should the note say?",
+        "Reply with your answer.",
+      ].join("\n\n"),
+    });
   });
 
   it("does not register automatic assistant text posting", () => {
@@ -638,6 +734,12 @@ function reactToMessageResult(
     stepIndex: 0,
     turnId: "turn-1",
   };
+}
+
+type InputRequestEvent = Parameters<NonNullable<typeof deliverInputRequest>>[0];
+
+function inputRequestEvent(requests: InputRequestEvent["requests"]) {
+  return { requests, sequence: 0, stepIndex: 0, turnId: "turn-1" };
 }
 
 function handlerContext(currentMessageId: string | undefined = "message-1") {

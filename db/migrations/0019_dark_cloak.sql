@@ -1,0 +1,1 @@
+ALTER TABLE "channel_conversations" ADD COLUMN "last_inbound_message_id" text;

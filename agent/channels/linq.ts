@@ -36,6 +36,7 @@ import {
   recordUsageEvent,
 } from "@/db/services/usage";
 import {
+  claimConversationInboundMessage,
   createConversationBinding,
   resolveConversationBinding,
 } from "@/db/services/channel-conversations";
@@ -72,9 +73,49 @@ const credentials = (
       }
 ) satisfies LinqChannelCredentials;
 
+type LinqInputRequest = Parameters<
+  NonNullable<NonNullable<LinqChannelConfig["events"]>["input.requested"]>
+>[0]["requests"][number];
+
+/**
+ * Renders one pending approval or question as plain text. eve renders HITL
+ * natively only for Discord, so Linq must post the choices itself. A tool
+ * approval repeats the exact option ids so the user never has to guess a
+ * reply word.
+ */
+function renderLinqInputRequest(request: LinqInputRequest) {
+  const options = request.options ?? [];
+  if (request.kind === "tool-approval") {
+    const replies = options.map((option) => `"${option.id}"`).join(" or ");
+    return [
+      request.prompt,
+      replies
+        ? `Reply exactly ${replies}.`
+        : 'Reply exactly "approve" or "cancel".',
+    ].join("\n\n");
+  }
+  if (options.length > 0) {
+    const choices = options
+      .map((option, index) => `${String(index + 1)}. ${option.label}`)
+      .join("\n");
+    return [
+      request.prompt,
+      choices,
+      "Reply with an option label or number.",
+    ].join("\n\n");
+  }
+  return [request.prompt, "Reply with your answer."].join("\n\n");
+}
+
 export const linqChannelConfig = {
   credentials,
   events: {
+    async "input.requested"(event, context) {
+      if (!context.thread || event.requests.length === 0) return;
+      await context.thread.post({
+        raw: event.requests.map(renderLinqInputRequest).join("\n\n"),
+      });
+    },
     async "action.result"(event, context, session) {
       const reaction = reactToMessageToolResultSchema.safeParse(event.result);
       if (event.status === "completed" && reaction.success) {
@@ -304,6 +345,14 @@ export const linqChannelConfig = {
     if (!binding || binding.workspaceId !== verifiedScope.workspaceId) {
       return null;
     }
+    const messageId = z.string().min(1).safeParse(message.id);
+    if (!messageId.success) return null;
+    const claimed = await claimConversationInboundMessage({
+      bindingId: binding.id,
+      messageId: messageId.data,
+      workspaceId: verifiedScope.workspaceId,
+    });
+    if (!claimed) return null;
     if (bindingCreated) {
       try {
         await recordConnectionInstallation(verifiedScope, {

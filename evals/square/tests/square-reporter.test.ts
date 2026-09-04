@@ -126,6 +126,8 @@ describe("squareEvalReporter", () => {
     const squareResult = makeCase("square/square/0000", [
       "square__SearchOrders",
       "square__SearchOrders",
+      "send_message",
+      "send_message",
     ]);
     const browserResult = makeCase("browser/browser/0000", ["kernel__click"]);
     await squareEvalReporter.onEvalComplete(squareResult);
@@ -155,7 +157,10 @@ describe("squareEvalReporter", () => {
     const [square] = parsed.cases;
     expect(square?.id).toBe("square/square/0000");
     expect(square?.costUsd).toBeCloseTo(0.03);
-    expect(square?.toolCalls).toEqual({ square__SearchOrders: 2 });
+    expect(square?.toolCalls).toEqual({
+      send_message: 2,
+      square__SearchOrders: 2,
+    });
     expect(square?.bubbles).toBe(2);
   });
 

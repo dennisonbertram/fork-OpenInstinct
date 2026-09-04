@@ -43,7 +43,7 @@ export function LocalPhoneAuthForm({
         <PhoneNumberField />
         <FieldError errors={signIn.error ? [signIn.error] : undefined} />
         <Button
-          className="w-full"
+          className="w-full rounded-full"
           disabled={signIn.isPending}
           size="lg"
           type="submit"
