@@ -37,7 +37,7 @@ Existing deterministic coverage per contract area:
 
 - **iMessage delivery**: `tests/agent/channels/linq-message-delivery.test.ts`
   proves one `send_message` call is one bubble with its images, link
-  previews, Tapback removal, approval rendering as exact plain-text replies,
+  previews, Tapback removal, generic user-facing approval rendering,
   idempotency on retry, and proactive sends. `linq-inbound-auth.test.ts`
   proves unverified senders are dropped. `tests/unit/linq-channel-scope.test.ts`
   proves a duplicate inbound message starts no second turn.
@@ -140,14 +140,14 @@ that motivates it, when there is one.
 
 ### 3.1 iMessage delivery
 
-| Id                      | Contract sentence                                                                         | Drive                                             | Assert                                                                                                                     | Broke on              |
-| ----------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| delivery-one-bubble     | A reply is delivered through `send_message`; the final assistant text is only the marker. | `say hi there`                                    | `calledTool("send_message", { count: 1 })`; `requireDeliveredText` equals "hi there"; `t.reply` equals `DELIVERY_COMPLETE` | gym graded the marker |
-| delivery-two-bubbles    | Two `send_message` calls are two bubbles in order.                                        | `say first \| second`                             | `calledTool("send_message", { count: 2 })`; delivered text joins in order                                                  | splitter retired      |
-| delivery-reaction       | A Tapback is a complete reply with no text.                                               | `say  ; react heart` (empty say)                  | `calledTool("react_to_message", { input: { operation: "add", type: "heart" } })`; `notCalledTool("send_message")`          | thanks case           |
-| delivery-approval-words | A pending tool approval tells the user to reply exactly `approve` or `cancel`.            | `call gmail-send {...}` on an approval-gated tool | `eventsSatisfy`: the `input.requested` event's rendered text contains `Reply exactly "approve" or "cancel"`                | PR #51 re-port        |
-| delivery-image-url      | An image result is delivered as an attachment, not as base64 text.                        | `call <tool that returns an image artifact>`      | delivered text has no `data:` prefix; the send_message input carries a file                                                | plugin rule           |
-| delivery-no-markdown    | Delivered text has no Markdown headings, bullets, or bold.                                | `call square__ListCustomers {}`                   | `assertPlainTextDelivery`                                                                                                  | upstream #113         |
+| Id                         | Contract sentence                                                                          | Drive                                             | Assert                                                                                                                     | Broke on              |
+| -------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| delivery-one-bubble        | A reply is delivered through `send_message`; the final assistant text is only the marker.  | `say hi there`                                    | `calledTool("send_message", { count: 1 })`; `requireDeliveredText` equals "hi there"; `t.reply` equals `DELIVERY_COMPLETE` | gym graded the marker |
+| delivery-two-bubbles       | Two `send_message` calls are two bubbles in order.                                         | `say first \| second`                             | `calledTool("send_message", { count: 2 })`; delivered text joins in order                                                  | splitter retired      |
+| delivery-reaction          | A Tapback is a complete reply with no text.                                                | `say  ; react heart` (empty say)                  | `calledTool("react_to_message", { input: { operation: "add", type: "heart" } })`; `notCalledTool("send_message")`          | thanks case           |
+| delivery-approval-language | Every pending tool approval hides tool internals and accepts a clear natural confirmation. | `call gmail-send {...}` on an approval-gated tool | `eventsSatisfy`: the rendered input contains no internal tool name; `yes`, `go ahead`, or `send it` resolves to approval   | Gmail feedback        |
+| delivery-image-url         | An image result is delivered as an attachment, not as base64 text.                         | `call <tool that returns an image artifact>`      | delivered text has no `data:` prefix; the send_message input carries a file                                                | plugin rule           |
+| delivery-no-markdown       | Delivered text has no Markdown headings, bullets, or bold.                                 | `call square__ListCustomers {}`                   | `assertPlainTextDelivery`                                                                                                  | upstream #113         |
 
 The Linq webhook path itself, inbound signature, duplicate claim, and
 unverified senders stay in the channel unit tests. The eval target is the
@@ -211,7 +211,7 @@ stub from upstream fails the test until a person decides.
    `step.started` resolver is undocumented. Verify it with the first eval;
    if it fails, the fallback is a second agent directory
    (`agents/contract/agent/`), which eve 0.51 supports and eve 0.49 does not.
-3. **Approval-gated evals.** `delivery-approval-words` needs an
+3. **Approval-gated evals.** `delivery-approval-language` needs an
    approval-gated tool and the `input.requested` event. Check that the eval
    runner surfaces that event through `t.events` before writing the eval.
 4. **MCP fixture server in CI.** `mount-demo-connection` needs the demo server

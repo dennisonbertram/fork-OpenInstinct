@@ -23,6 +23,7 @@ interface BrowserImage {
 interface PendingInputStateFixture {
   readonly requests: readonly {
     readonly allowFreeform?: boolean;
+    readonly kind?: "question" | "session-limit" | "tool-approval";
     readonly options?: readonly {
       readonly id: string;
       readonly label: string;
@@ -177,6 +178,8 @@ vi.mock("@vercel/blob", async (importOriginal) => {
 const { linqChannelConfig } = await import("@/agent/channels/linq");
 const handleActionResult = linqChannelConfig.events["action.result"];
 const deliverInputRequest = linqChannelConfig.events["input.requested"];
+const handleAuthorizationRequired =
+  linqChannelConfig.events["authorization.required"];
 
 type ActionHandlerParameters = Parameters<typeof handleActionResult>;
 
@@ -207,7 +210,7 @@ describe("Linq message delivery", () => {
     scheduleDeliveryCapture.release.mockResolvedValue(true);
   });
 
-  it("renders tool approval as exact plain-text replies", async () => {
+  it("renders every tool approval without exposing tool internals", async () => {
     expect(deliverInputRequest).toBeTypeOf("function");
     const { context, post } = handlerContext();
 
@@ -217,13 +220,12 @@ describe("Linq message delivery", () => {
           action: {
             callId: "call-google-write",
             input: {
-              action: "send_email",
-              body: "Dennison!",
-              subject: "Just testing",
-              to: ["recipient@example.com"],
+              attendees: ["recipient@example.com"],
+              start: "2026-09-05T14:00:00-04:00",
+              title: "Planning",
             },
             kind: "tool-call",
-            toolName: "google_workspace_write",
+            toolName: "calendar-create-event",
           },
           allowFreeform: false,
           display: "confirmation",
@@ -232,7 +234,7 @@ describe("Linq message delivery", () => {
             { id: "approve", label: "Approve" },
             { id: "cancel", label: "Cancel" },
           ],
-          prompt: "Approve tool call: google_workspace_write",
+          prompt: "Approve tool call: calendar-create-event",
           requestId: "approval-1",
         },
       ]),
@@ -241,7 +243,7 @@ describe("Linq message delivery", () => {
     );
 
     expect(post).toHaveBeenCalledExactlyOnceWith({
-      raw: 'Approve tool call: google_workspace_write\n\nReply exactly "approve" or "cancel".',
+      raw: "Ready for me to do that?\n\nReply naturally—“yes,” “go ahead,” or “cancel.”",
     });
     expect(linqChannelCapture.connectState).toHaveBeenCalledOnce();
     expect(linqChannelCapture.setState).toHaveBeenCalledExactlyOnceWith(
@@ -250,6 +252,7 @@ describe("Linq message delivery", () => {
         requests: [
           {
             allowFreeform: false,
+            kind: "tool-approval",
             options: [
               { id: "approve", label: "Approve" },
               { id: "cancel", label: "Cancel" },
@@ -261,6 +264,31 @@ describe("Linq message delivery", () => {
       },
       86_400_000
     );
+  });
+
+  it("posts the Google sign-in URL as a direct connection prompt", async () => {
+    expect(handleAuthorizationRequired).toBeTypeOf("function");
+    const { context, post } = handlerContext();
+
+    await handleAuthorizationRequired(
+      {
+        authorization: {
+          displayName: "Google",
+          instructions: "Connect Google to continue.",
+          url: "https://accounts.google.test/authorize",
+        },
+        description: "Google authorization",
+        name: "google",
+        sequence: 0,
+        stepIndex: 0,
+        turnId: "turn-1",
+      },
+      context
+    );
+
+    expect(post).toHaveBeenCalledExactlyOnceWith({
+      raw: "Connect Google to continue:\nhttps://accounts.google.test/authorize",
+    });
   });
 
   it("keeps selectable and freeform questions usable over text", async () => {
@@ -775,8 +803,9 @@ function inputRequestEvent(requests: InputRequestEvent["requests"]) {
 }
 
 function handlerContext(currentMessageId: string | undefined = "message-1") {
-  const post = vi.fn<(message: LinqTestMessage) => Promise<void>>();
-  post.mockResolvedValue();
+  const post =
+    vi.fn<(message: LinqTestMessage) => Promise<{ readonly id: string }>>();
+  post.mockResolvedValue({ id: "posted-message" });
   const addReaction = vi
     .fn<(threadId: string, messageId: string, emoji: string) => Promise<void>>()
     .mockResolvedValue(undefined);

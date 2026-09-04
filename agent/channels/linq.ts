@@ -79,6 +79,7 @@ const pendingLinqInputSchema = z.object({
   requests: z.array(
     z.object({
       allowFreeform: z.boolean().optional(),
+      kind: z.enum(["question", "session-limit", "tool-approval"]).optional(),
       options: z
         .array(z.object({ id: z.string(), label: z.string() }))
         .optional(),
@@ -88,6 +89,28 @@ const pendingLinqInputSchema = z.object({
   workspaceId: z.string().min(1),
 });
 const pendingInputTtlMs = 86_400_000;
+const approvalReplies = new Set([
+  "do it",
+  "go ahead",
+  "looks good",
+  "ok",
+  "okay",
+  "send",
+  "send it",
+  "sure",
+  "yeah",
+  "yep",
+  "yes",
+]);
+const cancellationReplies = new Set([
+  "cancel",
+  "don't",
+  "do not",
+  "never mind",
+  "no",
+  "nope",
+  "stop",
+]);
 const linqState = createPostgresState({
   keyPrefix: "openinstinct-linq",
   url: env.DATABASE_URL,
@@ -117,20 +140,15 @@ type OpenInstinctLinqChannelConfig = Omit<LinqChannelConfig, "onMessage"> & {
 };
 
 /**
- * Renders one pending approval or question as plain text. eve renders HITL
- * natively only for Discord, so Linq must post the choices itself. A tool
- * approval repeats the exact option ids so the user never has to guess a
- * reply word.
+ * Renders one pending approval or question as user-facing plain text. eve
+ * renders HITL natively only for Discord, so Linq must post the choices itself.
  */
 function renderLinqInputRequest(request: LinqInputRequest) {
   const options = request.options ?? [];
   if (request.kind === "tool-approval") {
-    const replies = options.map((option) => `"${option.id}"`).join(" or ");
     return [
-      request.prompt,
-      replies
-        ? `Reply exactly ${replies}.`
-        : 'Reply exactly "approve" or "cancel".',
+      "Ready for me to do that?",
+      "Reply naturally—“yes,” “go ahead,” or “cancel.”",
     ].join("\n\n");
   }
   if (options.length > 0) {
@@ -163,6 +181,7 @@ export const linqChannelConfig = {
           {
             requests: event.requests.map((request) => ({
               allowFreeform: request.allowFreeform,
+              kind: request.kind,
               options: request.options?.map((option) => ({
                 id: option.id,
                 label: option.label,
@@ -177,6 +196,22 @@ export const linqChannelConfig = {
       await context.thread.post({
         raw: event.requests.map(renderLinqInputRequest).join("\n\n"),
       });
+    },
+    async "authorization.required"(event, context) {
+      if (!context.thread || event.candidateId !== undefined) return;
+      const displayName = event.authorization?.displayName ?? "this account";
+      const url = event.authorization?.url;
+      const prompt = url
+        ? `Connect ${displayName} to continue:\n${url}`
+        : (event.authorization?.instructions ??
+          `Connect ${displayName} to continue.`);
+      const posted = await context.thread.post({ raw: prompt });
+      if (posted.id) {
+        context.state.pendingAuthMessageIds = {
+          ...context.state.pendingAuthMessageIds,
+          [event.name]: posted.id,
+        };
+      }
     },
     async "action.result"(event, context, session) {
       const reaction = reactToMessageToolResultSchema.safeParse(event.result);
@@ -556,14 +591,18 @@ async function resolvePendingInputResponses({
 
   const [request] = parsed.data.requests;
   if (!request) return undefined;
-  const normalized = text.toLocaleLowerCase();
+  const normalized = normalizeInputReply(text);
   const options = request.options ?? [];
-  const option = options.find(
+  let option = options.find(
     (candidate, index) =>
-      candidate.id.toLocaleLowerCase() === normalized ||
-      candidate.label.toLocaleLowerCase() === normalized ||
+      normalizeInputReply(candidate.id) === normalized ||
+      normalizeInputReply(candidate.label) === normalized ||
       String(index + 1) === normalized
   );
+  if (!option && request.kind === "tool-approval") {
+    const optionId = approvalOptionId(normalized);
+    option = options.find((candidate) => candidate.id === optionId);
+  }
   const response = option
     ? { optionId: option.id, requestId: request.requestId }
     : request.allowFreeform
@@ -574,6 +613,21 @@ async function resolvePendingInputResponses({
     inputResponses: [response],
     inputResponseStateKey: key,
   };
+}
+
+function normalizeInputReply(text: string) {
+  return text
+    .normalize("NFKC")
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[.!?]+$/gu, "")
+    .trim();
+}
+
+function approvalOptionId(reply: string) {
+  if (approvalReplies.has(reply)) return "approve";
+  if (cancellationReplies.has(reply)) return "cancel";
+  return undefined;
 }
 
 /**

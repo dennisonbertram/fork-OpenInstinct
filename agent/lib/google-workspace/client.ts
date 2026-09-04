@@ -24,6 +24,8 @@ export const googleWorkspaceAuthOptions = {
     }
     return googleWorkspaceSubject(principal.id);
   },
+  displayName: "Google",
+  instructions: "Connect Google to continue.",
   tokenParams: { scopes: [...googleWorkspaceScopes] },
   validate: true,
 } satisfies EveAuthorizationOptions;

@@ -4,6 +4,7 @@ import type * as GmailModule from "@/agent/lib/google-workspace/gmail";
 import type { updateGmail } from "@/agent/lib/google-workspace/gmail";
 
 const gmail = vi.hoisted(() => ({
+  connect: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
   update: vi
     .fn<typeof updateGmail>()
     .mockResolvedValue({ action: "archive", updatedCount: 2 }),
@@ -11,12 +12,23 @@ const gmail = vi.hoisted(() => ({
 
 vi.mock("@/agent/lib/google-workspace/gmail", async (importOriginal) => ({
   ...(await importOriginal<typeof GmailModule>()),
+  ensureGmailConnection: gmail.connect,
   updateGmail: gmail.update,
 }));
 
-import { gmailUpdate } from "@/agent/tools/gmail";
+import { gmailConnect, gmailUpdate } from "@/agent/tools/gmail";
 
 describe("Google Workspace tools", () => {
+  it("checks authorization without requesting action approval", async () => {
+    const context = toolContext();
+
+    await expect(gmailConnect.execute({}, context)).resolves.toEqual({
+      connected: true,
+    });
+    expect(gmail.connect).toHaveBeenCalledExactlyOnceWith(context);
+    expect(gmailConnect.approval).toBeUndefined();
+  });
+
   it("reports the selected Gmail update without an action discriminator", async () => {
     const context = toolContext();
     const result = await gmailUpdate.execute(
