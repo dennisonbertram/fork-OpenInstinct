@@ -5330,7 +5330,7 @@
                         {
                           "type": "image",
                           "enabled": true,
-                          "url": "assets/jory-wordmark.svg",
+                          "url": "../../../design-system-docs/docs/design/assets/jory-wordmark.svg",
                           "mode": "fit"
                         }
                       ],
@@ -6374,7 +6374,7 @@
                                       "fill": {
                                         "type": "image",
                                         "enabled": true,
-                                        "url": "assets/jory-avatar_clay.webp",
+                                        "url": "../../../design-system-docs/docs/design/assets/jory-avatar_clay.webp",
                                         "mode": "fill"
                                       },
                                       "cornerRadius": 28,
@@ -6783,7 +6783,7 @@
                               "fill": {
                                 "type": "image",
                                 "enabled": true,
-                                "url": "assets/jory-character-pointing_clay.webp",
+                                "url": "../../../design-system-docs/docs/design/assets/jory-character-pointing_clay.webp",
                                 "mode": "fit"
                               },
                               "layout": "none"
@@ -35748,6 +35748,477 @@
               ]
             }
           ]
+        },
+        {
+          "type": "frame",
+          "id": "cVCEx",
+          "name": "E. Beautiful UI · Activity task rows (implemented)",
+          "width": "fill_container",
+          "fill": "$oi-card",
+          "layout": "vertical",
+          "gap": 24,
+          "children": [
+            {
+              "type": "text",
+              "id": "OTOVB",
+              "name": "Beautiful UI section title",
+              "fill": "$oi-foreground",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "E. Beautiful UI · Activity task rows",
+              "lineHeight": 1.4,
+              "fontFamily": "$font-oi",
+              "fontSize": 28,
+              "fontWeight": "600"
+            },
+            {
+              "type": "text",
+              "id": "P2Keex",
+              "name": "Implementation status",
+              "fill": "$oi-foreground",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "Implemented · PR #65 · September 2026\nCompact task rows adapted to Jory’s existing Button, Badge, typography and color tokens.",
+              "lineHeight": 1.4,
+              "fontFamily": "$font-oi",
+              "fontSize": 16,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "OqsZS",
+              "name": "Activity component and implementation notes",
+              "width": "fill_container",
+              "gap": 48,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "HHOis",
+                  "name": "Chat / Developer Activity",
+                  "width": 400,
+                  "fill": "$oi-card",
+                  "cornerRadius": "$oi-radius-card",
+                  "stroke": "$oi-border",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "gap": 16,
+                  "padding": 16,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Rh2Ly",
+                      "name": "Activity heading",
+                      "fill": "$oi-muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Activity",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "X25b5A",
+                      "name": "Trace switch row",
+                      "width": "fill_container",
+                      "gap": 16,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "plTfj",
+                          "name": "Trace label",
+                          "fill": "$oi-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Show full trace",
+                          "lineHeight": 1.4,
+                          "fontFamily": "$font-oi",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "id": "LFoT8",
+                          "type": "ref",
+                          "ref": "qCm2V",
+                          "name": "Full trace switch"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "HixiU",
+                      "name": "Usage row",
+                      "width": "fill_container",
+                      "gap": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "R90sq",
+                          "name": "Usage label",
+                          "fill": "$oi-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Usage",
+                          "lineHeight": 1.4,
+                          "fontFamily": "$font-oi",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "i2qI0",
+                          "name": "Example usage",
+                          "fill": "$oi-muted-foreground",
+                          "content": "12.4K tokens",
+                          "fontFamily": "$font-oi",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "jxnHC",
+                      "name": "Tasks divider",
+                      "fill": "$oi-border",
+                      "width": "fill_container",
+                      "height": 1
+                    },
+                    {
+                      "type": "text",
+                      "id": "iRxi6",
+                      "name": "Tasks heading",
+                      "fill": "$oi-muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Tasks",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "izdrU",
+                      "name": "Example task count",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "1 working                                      1 done",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "R5MIns",
+                      "name": "Task rows · 8px spacing",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "H0a5k",
+                          "name": "Activity task row / Working",
+                          "width": "fill_container",
+                          "height": 56,
+                          "fill": "$oi-card",
+                          "cornerRadius": 999,
+                          "stroke": "$oi-border",
+                          "strokeWidth": 1,
+                          "gap": 8,
+                          "padding": [
+                            8,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "wYpB5",
+                              "type": "ref",
+                              "ref": "p2ddfG",
+                              "name": "Working status",
+                              "descendants": {
+                                "Fxpsd": {
+                                  "content": "working"
+                                }
+                              }
+                            },
+                            {
+                              "type": "frame",
+                              "id": "wSu3Q",
+                              "name": "Task labels",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 2,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "V1Z85R",
+                                  "name": "Agent name",
+                                  "fill": "$oi-foreground",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Browser",
+                                  "lineHeight": 1.4,
+                                  "fontFamily": "$font-oi",
+                                  "fontSize": 14,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "nxWnb",
+                                  "name": "Task description",
+                                  "fill": "$oi-muted-foreground",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Checking availability",
+                                  "lineHeight": 1.4,
+                                  "fontFamily": "$font-oi",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "icon",
+                              "id": "zxlRb",
+                              "name": "Open task trace",
+                              "width": 16,
+                              "height": 16,
+                              "icon": "chevron-right",
+                              "library": "lucide",
+                              "fill": "$oi-muted-foreground"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "I7hRvf",
+                          "name": "Activity task row / Done",
+                          "width": "fill_container",
+                          "height": 56,
+                          "fill": "$oi-card",
+                          "cornerRadius": 999,
+                          "stroke": "$oi-border",
+                          "strokeWidth": 1,
+                          "gap": 8,
+                          "padding": [
+                            8,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "id": "JNrgx",
+                              "type": "ref",
+                              "ref": "HfzT6",
+                              "name": "Done status",
+                              "descendants": {
+                                "Fy11r": {
+                                  "content": "done"
+                                }
+                              }
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Kdjam",
+                              "name": "Task labels",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 2,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "zv8aW",
+                                  "name": "Agent name",
+                                  "fill": "$oi-foreground",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Browser",
+                                  "lineHeight": 1.4,
+                                  "fontFamily": "$font-oi",
+                                  "fontSize": 14,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "iwxC9",
+                                  "name": "Task description",
+                                  "fill": "$oi-muted-foreground",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Found three options",
+                                  "lineHeight": 1.4,
+                                  "fontFamily": "$font-oi",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "icon",
+                              "id": "b23J1",
+                              "name": "Open task trace",
+                              "width": 16,
+                              "height": 16,
+                              "icon": "chevron-right",
+                              "library": "lucide",
+                              "fill": "$oi-muted-foreground"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "AAjfn",
+                  "name": "Activity contract",
+                  "width": 640,
+                  "layout": "vertical",
+                  "gap": 20,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "wTO9I",
+                      "name": "Interaction heading",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Interaction",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 16,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Cv2fE",
+                      "name": "Interaction details",
+                      "fill": "$oi-muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Select a row to open that subagent’s trace. Status precedes the agent name and task description. Long labels truncate in the app. Rows have a minimum height of 44px, 10px horizontal padding and 8px vertical padding.",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Fx4k0",
+                      "name": "Visibility heading",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Visibility",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 16,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "x3shLI",
+                      "name": "Visibility details",
+                      "fill": "$oi-muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "FEATURE_DEVELOPER_ACTIVITY=off hides the entire Activity panel, trace control, usage and mobile trigger. Defaults on locally; preview can opt in. Production is always off.",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "oq2OL",
+                      "name": "Empty state heading",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Empty state",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 16,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "C2RyWK",
+                      "name": "Empty state details",
+                      "fill": "$oi-muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "When there are no subagent sessions, the Tasks section reads “No tasks yet”. Example labels and usage here are design fixtures; the app uses live session data.",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "P3WeUC",
+                      "name": "Intake rules heading",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Intake rules",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 16,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "PjEie",
+                      "name": "Intake rules details",
+                      "fill": "$oi-muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Reuse Jory tokens and existing primitives. Preserve semantic type roles and Lucide icons. Do not import Beautiful UI foundation styles, demo timers or sample data. Keep the row at the Activity feature owner until a second consumer exists.",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "eZLc9",
+                      "name": "Source and scope heading",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Source and scope",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 16,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "E6Azz",
+                      "name": "Source and scope details",
+                      "fill": "$oi-muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Beautiful UI / Task Rows · MIT · Shane Levine, 2026\nRevision 06557d7ff33a1eb70d5987bae9ac4c70fa0e20c4\nSee docs/DESIGN_SYSTEM.md §5.1 and THIRD_PARTY_NOTICES.md. Other Beautiful UI chat patterns are not implemented yet.",
+                      "lineHeight": 1.4,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -50799,5 +51270,5 @@
       "value": 18
     }
   },
-  "fileToken": "3a38baa5-1d1e-473a-a284-dd230c74a87d"
+  "fileToken": "69591926-4919-4568-babb-5dcb55b43956"
 }
