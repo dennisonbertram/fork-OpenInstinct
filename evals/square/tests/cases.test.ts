@@ -68,6 +68,38 @@ describe("squareCases", () => {
     ]);
   });
 
+  it("states independent measure, period, location, and exclusions for each sales case", () => {
+    const salesCases = squareCases.filter((squareCase) => squareCase.sales);
+    expect(salesCases.map((squareCase) => squareCase.id)).toEqual([
+      "todays-sales-total",
+      "todays-net-sales-total",
+      "refunds-this-week",
+    ]);
+    for (const squareCase of salesCases) {
+      const sales = squareCase.sales;
+      if (!sales)
+        throw new Error(`${squareCase.id} is missing sales metadata.`);
+      for (const value of [
+        sales.measure,
+        sales.period,
+        sales.location,
+        sales.exclusions,
+      ]) {
+        expect(value.length).toBeGreaterThan(0);
+      }
+    }
+    expect(
+      squareCases
+        .find((squareCase) => squareCase.id === "todays-sales-total")
+        ?.facts(fixture)
+    ).toEqual(["$55.75"]);
+    expect(
+      squareCases
+        .find((squareCase) => squareCase.id === "todays-net-sales-total")
+        ?.facts(fixture)
+    ).toEqual(["$50.50"]);
+  });
+
   it("gives every 'any' factsMode case more than one candidate fact", () => {
     const anyModeCases = squareCases.filter((c) => c.factsMode === "any");
     expect(anyModeCases.length).toBeGreaterThan(0);
