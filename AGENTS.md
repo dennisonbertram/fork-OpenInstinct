@@ -122,9 +122,11 @@ only your change.
 
 ## Upstream syncs
 
-Merge `upstream/main` into a branch on a short cadence; do not cherry-pick.
-Before resolving conflicts, sort every upstream pull request into take,
-adapt, or skip, and write the adapt decisions in the sync PR. The fork keeps
+Review `upstream/main` on a short cadence, but intake only selected changes on
+a topic branch. Sort candidates into take, adapt, or skip and record the
+decision in the sync PR. Port a cohesive commit or reimplement the idea against
+the fork's current boundaries; a whole-tree merge requires an explicit review
+of the complete diff. The fork keeps
 `load_skill` and `connection_search` enabled at the root; the Square skill and
 connection need them. Upstream migrations are renumbered after the fork's
 last migration. A sync PR that touches `agent/` runs the Square evals. The

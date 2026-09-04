@@ -7,7 +7,7 @@ package format serves two products, Jory (this repository) and Partyline (a
 separate fork), and it is the unit we can sell.
 
 Labels follow [`README.md`](README.md): **Verified** facts were exercised on
-2026-09-03. **Proposed** parts are the design; nothing under a Proposed
+2026-09-04. **Proposed** parts are the design; nothing under a Proposed
 heading exists in a repository yet.
 
 Companion: [`PLUGIN_TESTING.md`](PLUGIN_TESTING.md) is the autonomous test
@@ -18,7 +18,7 @@ harness for the MCP server and for the plugged-in agent.
 ## 1. The decision: do not build a plugin system
 
 **Verified.** eve already has the plugin format. Three pieces exist in the
-pinned `eve@0.46.1` (`node_modules/eve/docs`):
+pinned `eve@0.49.0` (`node_modules/eve/docs`):
 
 | Piece                 | What it gives a plugin                                                                                                                                                                                                                | Doc page                                |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
@@ -47,7 +47,7 @@ All four are **Verified**.
    not supported (`connections/mcp.mdx` line 25). This repository already hit
    this limit with Square (`docs/SQUARE.md`). Every MCP server is a deployed
    HTTP service, never a local process.
-2. **eve 0.46.1 speaks MCP protocol versions 2024-11-05 through 2025-11-25.**
+2. **eve 0.49.0 speaks MCP protocol versions 2024-11-05 through 2025-11-25.**
    The compiled client is `node_modules/eve/dist/src/compiled/@ai-sdk/mcp/index.js`
    and lists exactly those four versions. The live MCP specification is
    revision 2026-07-28 and removed sessions and the GET stream. Build the
@@ -173,7 +173,7 @@ Rules:
 - Bare tool names. The host mount adds the prefix. Name the tool `search`,
   not `dating_search` (`extensions.md` line 44).
 - No `eve` in `dependencies`. eve is a peer (`"eve": "*"`) and a dev
-  dependency pinned to the host version, `0.46.1`.
+  dependency pinned to the host version, `0.49.0`.
 - `zod` and other SDKs go in `dependencies`; `eve extension build` bundles them.
 
 ---
@@ -183,7 +183,7 @@ Rules:
 ### 5.1 Scaffold
 
 ```sh
-npx eve@0.46.1 extension init <name> -y
+npx eve@0.49.0 extension init <name> -y
 ```
 
 Use the pinned version, not `@latest`. `npx eve@latest` resolved to `0.51.0`
@@ -222,7 +222,7 @@ Generated `package.json` (exact, from the scaffold):
   "dependencies": { "zod": "4.5.4" },
   "devDependencies": {
     "@types/node": "24.x",
-    "eve": "0.46.1",
+    "eve": "0.49.0",
     "typescript": "7.0.2"
   },
   "peerDependencies": { "eve": "*" },
@@ -343,7 +343,7 @@ Publish `dist/` only (`files: ["dist"]`).
 
 Do not use `mcp-handler@2.x` for now. It peer-depends on
 `@modelcontextprotocol/server@^2.0.0` and serves protocol 2026-07-28 natively;
-the 2025-era transport that eve 0.46.1 speaks is a "legacy stateless" fallback
+the 2025-era transport that eve 0.49.0 speaks is a "legacy stateless" fallback
 in that package. That path is unverified here. Revisit when the host upgrades
 eve.
 
@@ -619,12 +619,14 @@ A plugin is done when all of these are true and the evidence is in the PR:
 
 ---
 
-## 11. What is not verified
+## 11. What is and is not verified
 
-- eve 0.46.1 talking to an SDK 1.30.0 server end to end. Both sides list
-  protocol 2025-11-25, and the SDK server passed its own client tests, but
-  no eve session called a plugin tool in this session. Layer 3 in
-  PLUGIN_TESTING.md is the check. Run it first.
+- **Verified:** Eve 0.49.0 mounts the repository's reference extension, loads
+  its namespaced skill, discovers its authenticated connection, injects a
+  user-scoped bearer token, and calls its SDK 1.30.0 read-only MCP tool. Run
+  `pnpm eval:contract`; see [`CONTRACT_EVALS.md`](CONTRACT_EVALS.md).
+- **Not verified:** a separately released customer plugin using its production
+  identity token and deployed server. Its own layer 3 and layer 4 gates remain
+  required.
 - The Express app as a Vercel function entry.
 - `eve add --non-interactive` against a self-hosted registry item.
-- A skill body that names `<mount>__<tool>` and steers the model to it.

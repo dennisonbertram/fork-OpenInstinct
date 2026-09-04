@@ -50,7 +50,7 @@ The supervisor in `scripts/run-contract-evals.ts`:
 
 1. removes `AI_GATEWAY_API_KEY`, `VERCEL_OIDC_TOKEN`, and `VERCEL_ENV`;
 2. starts an isolated Compose PostgreSQL database, the fake Square server, and
-   a loopback stateless MCP server;
+   a bearer-protected loopback stateless MCP server;
 3. migrates and seeds the fixed authenticated caller;
 4. builds the demo Eve extension;
 5. runs the product-agent contract evals, then the isolated mount harness; and
@@ -89,13 +89,16 @@ workspace fixture package from
 `evals/contract/fixtures/demo-extension`; the product agent never imports or
 mounts that test extension.
 
-| Eval                    | Implemented contract                                                                                            |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `mount-demo-tool`       | A native extension tool is callable as `demo__ping`.                                                            |
-| `mount-demo-connection` | `connection_search` discovers the mounted `demo__echo` connection and calls its MCP tool as `demo__echo__echo`. |
+| Eval                    | Implemented contract                                                                                                                |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `mount-demo-tool`       | A native extension tool is callable as `demo__ping`.                                                                                |
+| `mount-demo-skill`      | A skill packaged by the extension loads as `demo__reference`.                                                                       |
+| `mount-demo-connection` | `connection_search` discovers `demo__echo`; Eve injects user-scoped bearer auth and calls its read-only tool as `demo__echo__echo`. |
 
 The MCP server uses `@modelcontextprotocol/sdk@1.30.0`, matching Eve's supported
-2025-11-25 protocol generation, and returns bounded structured content.
+2025-11-25 protocol generation, rejects missing or incorrect bearer tokens, and
+returns bounded structured content without reflecting the credential. The
+fixture model fails the run if that credential appears in any model request.
 
 ## Covered elsewhere
 
@@ -105,6 +108,9 @@ the repository proves user-facing approval prompts hide tool internals and
 accept clear natural confirmations, plus one tool call per native bubble,
 native attachments, retries, galleries, and Tapbacks. Inbound signature,
 duplicate-claim, and unverified-sender behavior also remains in channel tests.
+The reusable cases in `tests/agent/channels/provider-contract.ts` are
+instantiated by Linq and are the admission contract for a future provider such
+as Sendblue; they do not create a premature production provider abstraction.
 
 Cross-workspace denial and fail-closed no-user behavior remain integration and
 auth unit tests. The model-free eval channel currently authenticates one fixed

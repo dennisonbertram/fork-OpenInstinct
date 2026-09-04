@@ -11,6 +11,7 @@ const demoExtensionRoot = fileURLToPath(
 const mountHarnessRoot = fileURLToPath(
   new URL("../evals/contract/mount-harness", import.meta.url)
 );
+const contractMcpToken = "contract-mcp-credential";
 const composeProject = `open-instinct-contract-${createHash("sha256")
   .update(repositoryRoot)
   .digest("hex")
@@ -67,12 +68,13 @@ async function runContractEvals() {
 
     const databaseUrl = `postgresql://postgres:postgres@127.0.0.1:${port}/open_instinct`;
     activeFake = await startFakeSquare({ port: 0 });
-    activeDemo = await startDemoMcp();
+    activeDemo = await startDemoMcp({ token: contractMcpToken });
     const environment: NodeJS.ProcessEnv = {
       ...inheritedEnvironment,
       BETTER_AUTH_SECRET: "contract-eval-local-auth-secret-placeholder",
       BETTER_AUTH_URL: "http://127.0.0.1:9",
       CONTRACT_MCP_URL: activeDemo.url,
+      CONTRACT_MCP_TOKEN: contractMcpToken,
       DATABASE_URL: databaseUrl,
       DATABASE_URL_UNPOOLED: databaseUrl,
       EVAL_CONTRACT_FIXTURE: "1",

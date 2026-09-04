@@ -12,6 +12,7 @@ import type {
   finalizeScheduledReport,
   releaseScheduledReport,
 } from "@/db/services/scheduled-agent-jobs";
+import { defineMessagingProviderContract } from "./provider-contract";
 
 interface BrowserImage {
   bytes: Uint8Array;
@@ -195,7 +196,7 @@ interface LinqTestMessage {
     readonly filename: string;
     readonly mimeType: string;
   }[];
-  readonly text: string;
+  readonly raw: string;
 }
 
 describe("Linq message delivery", () => {
@@ -209,6 +210,78 @@ describe("Linq message delivery", () => {
     scheduleDeliveryCapture.finalize.mockResolvedValue(true);
     scheduleDeliveryCapture.release.mockResolvedValue(true);
   });
+
+  defineMessagingProviderContract("Linq", () => ({
+    async addReaction() {
+      const { addReaction, context, post } = handlerContext();
+      await handleActionResult(
+        reactToMessageResult({ operation: "add", type: "heart" }),
+        context,
+        sessionContext()
+      );
+      return {
+        messageCount: post.mock.calls.length,
+        reactionCount: addReaction.mock.calls.length,
+      };
+    },
+    async requestApproval(toolName) {
+      const { context, post } = handlerContext();
+      await deliverInputRequest(
+        inputRequestEvent([
+          {
+            action: {
+              callId: "call-provider-contract",
+              input: {},
+              kind: "tool-call",
+              toolName,
+            },
+            allowFreeform: false,
+            display: "confirmation",
+            kind: "tool-approval",
+            options: [
+              { id: "approve", label: "Approve" },
+              { id: "cancel", label: "Cancel" },
+            ],
+            prompt: `Approve tool call: ${toolName}`,
+            requestId: "provider-contract-approval",
+          },
+        ]),
+        context,
+        sessionContext()
+      );
+      return post.mock.calls[0]?.[0].raw ?? "";
+    },
+    async sendImage(url) {
+      const { context, post } = handlerContext();
+      await handleActionResult(
+        sendMessageResult({
+          attachments: [{ kind: "image", url }],
+          kind: "message",
+        }),
+        context,
+        sessionContext()
+      );
+      return {
+        attachmentUrls:
+          post.mock.calls[0]?.[0].attachments?.map(
+            (attachment) => attachment.url
+          ) ?? [],
+        messageCount: post.mock.calls.length,
+      };
+    },
+    async sendText(text) {
+      const { context, post } = handlerContext();
+      await handleActionResult(
+        sendMessageResult({ kind: "message", text }),
+        context,
+        sessionContext()
+      );
+      return {
+        messageCount: post.mock.calls.length,
+        text: post.mock.calls[0]?.[0].raw ?? "",
+      };
+    },
+  }));
 
   it("renders every tool approval without exposing tool internals", async () => {
     expect(deliverInputRequest).toBeTypeOf("function");
