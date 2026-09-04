@@ -28,6 +28,37 @@ in the PR, rather than treating a command's existence as verification.
 
 ## 2. Maintained MCP and extension example
 
+### Supported Jory admission subset (Implemented)
+
+The reference helper in [`evals/contract/mcp-admission.ts`](../evals/contract/mcp-admission.ts)
+uses the installed `@modelcontextprotocol/sdk@1.30.0` `Client`,
+`StreamableHTTPClientTransport`, and its Ajv provider over Streamable HTTP.
+Run the focused fixture checks with:
+
+```sh
+pnpm exec vitest run evals/contract/mcp-admission.test.ts
+```
+
+`runMcpAdmission` returns machine-readable named checks for missing and invalid
+bearer credentials, initialization and the four supported protocol versions,
+tool-list membership, declared descriptions/annotations/input and output
+schemas, JSON Schema compilation plus explicit valid/invalid example
+validation, structured success and error results, and bounded UTF-8 text and
+structured output. Declared schemas are compared semantically; every declared
+tool and every explicitly invoked example must be listed, and every listed tool
+must have a declared contract. Declared tools may be uncalled. At least one
+explicit example is required. Non-text content is outside this subset and
+fails admission. Invalid-input protocol
+errors are accepted only as the SDK's typed `McpError` with
+`ErrorCode.InvalidParams`; HTTP 5xx, malformed errors, and network failures
+fail. Targets must be loopback HTTP(S) URLs, redirects are rejected, and the
+unauthenticated probes have a bounded timeout.
+
+The helper invokes only caller-supplied synthetic examples. It never discovers
+calls from schemas, fuzzes, or automatically calls listed tools. The demo
+fixture has test-only malformed description/schema/annotation, contract
+mismatch, auth, missing-tool, invalid-input, error, output, and size modes.
+
 Run from the repository root:
 
 ```sh
