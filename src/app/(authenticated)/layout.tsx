@@ -1,6 +1,7 @@
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Logo } from "@/components/ui/logo";
+import joryWordmark from "../../../docs/design/assets/jory-wordmark-color.svg";
 import {
   Sidebar,
   SidebarContent,
@@ -39,9 +40,14 @@ export default async function AuthenticatedLayout({
           <SidebarHeader>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton render={<Link href="/" />}>
-                  <Logo />
-                  <span>OpenInstinct</span>
+                <SidebarMenuButton
+                  aria-label="Jory"
+                  size="lg"
+                  render={<Link href="/" />}
+                >
+                  {/* Next intentionally types SVG imports as `any`; this is the reviewed local wordmark. */}
+                  {/* oxlint-disable-next-line typescript/no-unsafe-assignment */}
+                  <Image src={joryWordmark} alt="" className="h-6 w-auto" />
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

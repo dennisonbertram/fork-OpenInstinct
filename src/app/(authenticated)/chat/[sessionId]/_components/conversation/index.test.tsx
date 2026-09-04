@@ -24,6 +24,9 @@ describe("chat conversation", () => {
       );
       expect(markup).toContain("<output");
       expect(markup).toContain("Jory is working");
+      expect(markup).toContain('data-slot="typing-indicator"');
+      expect(markup.match(/data-slot="typing-dot"/g)).toHaveLength(3);
+      expect(markup).toContain('class="sr-only"');
     }
   );
 
@@ -43,6 +46,7 @@ describe("chat conversation", () => {
     );
     expect(markup).toContain("Working in the browser");
     expect(markup).not.toContain("task_worker");
+    expect(markup).toContain('data-slot="typing-indicator"');
   });
 
   it("shows send_message output instead of assistant stream text", () => {
@@ -88,6 +92,7 @@ describe("chat conversation", () => {
     expect(markup).toContain("The visible iMessage response.");
     expect(markup).not.toContain("Internal assistant narration");
     expect(markup).not.toContain("DELIVERY_COMPLETE");
+    expect(markup).not.toContain('data-slot="typing-indicator"');
   });
 
   it("keeps the previous visible message while a filtered assistant shell is pending", () => {
@@ -146,6 +151,7 @@ describe("chat conversation", () => {
     expect(markup).not.toContain("Request failed");
     expect(markup).not.toContain("Internal runtime failure");
     expect(markup).toContain("Please try sending your message again.");
+    expect(markup).not.toContain('data-slot="typing-indicator"');
   });
 });
 
