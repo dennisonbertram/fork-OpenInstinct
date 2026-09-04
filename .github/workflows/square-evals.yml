@@ -50,10 +50,12 @@ jobs:
 
       - name: Upload eval artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: square-evals
           path: |
             .eve/evals
+            .eve/eval-runs
             .eve/square-evals
+          include-hidden-files: true
           if-no-files-found: ignore
