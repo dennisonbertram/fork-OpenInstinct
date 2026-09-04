@@ -45,9 +45,10 @@ tool-list membership, declared descriptions/annotations/input and output
 schemas, JSON Schema compilation plus explicit valid/invalid example
 validation, structured success and error results, and bounded UTF-8 text and
 structured output. Declared schemas are compared semantically; every declared
-tool and every explicitly invoked example must be listed. Other uncalled listed
-tools remain optional. At least one explicit example is required. Non-text
-content is outside this subset and fails admission. Invalid-input protocol
+tool and every explicitly invoked example must be listed, and every listed tool
+must have a declared contract. Declared tools may be uncalled. At least one
+explicit example is required. Non-text content is outside this subset and
+fails admission. Invalid-input protocol
 errors are accepted only as the SDK's typed `McpError` with
 `ErrorCode.InvalidParams`; HTTP 5xx, malformed errors, and network failures
 fail. Targets must be loopback HTTP(S) URLs, redirects are rejected, and the
