@@ -29,10 +29,12 @@ const capture = vi.hoisted(() => ({
     >(),
   verifyScope:
     vi.fn<() => Promise<{ readonly workspaceId: string } | undefined>>(),
+  connectState: vi.fn<() => Promise<void>>(),
   getState: vi.fn<() => Promise<null>>(),
 }));
 vi.mock("@chat-adapter/state-pg", () => ({
   createPostgresState: () => ({
+    connect: capture.connectState,
     delete: vi.fn<() => Promise<void>>(),
     get: capture.getState,
     set: vi.fn<() => Promise<void>>(),

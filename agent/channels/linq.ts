@@ -157,6 +157,7 @@ export const linqChannelConfig = {
         const scope = scopeFromPrincipal(caller);
         const threadId = z.string().safeParse(context.thread.id);
         if (!threadId.success) return;
+        await linqState.connect();
         await linqState.set(
           pendingInputKey(threadId.data),
           {
@@ -505,6 +506,7 @@ async function dispatchLinqMessage(
     );
     if (result.inputResponseStateKey) {
       try {
+        await linqState.connect();
         await linqState.delete(result.inputResponseStateKey);
       } catch {
         console.warn("[linq] resolved input state cleanup failed");
@@ -545,6 +547,7 @@ async function resolvePendingInputResponses({
   const text = message.text.trim();
   if (!text) return undefined;
   const key = pendingInputKey(threadId);
+  await linqState.connect();
   const parsed = pendingLinqInputSchema.safeParse(await linqState.get(key));
   if (!parsed.success || parsed.data.workspaceId !== workspaceId) {
     return undefined;
