@@ -42,11 +42,7 @@ export default async function SignInPage({
     <main className="flex min-h-svh items-center justify-center bg-background px-4 py-8 text-foreground">
       <div className="grid w-full max-w-5xl items-end gap-10 md:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
         <Card className="w-full max-w-md gap-6 justify-self-center p-8 md:justify-self-start">
-          <SignInHero
-            eyebrow="OpenInstinct"
-            headline="Sign in."
-            subhead={subhead}
-          />
+          <SignInHero headline="Hey, Jory" subhead={subhead} />
           {!localPhoneAuthBypassEnabled && !linqConfigured ? (
             <p className="type-supporting-body mt-6 text-muted-foreground">
               iMessage sign-in is not configured for this deployment. Attach a

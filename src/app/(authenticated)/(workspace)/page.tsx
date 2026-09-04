@@ -116,7 +116,7 @@ function ConnectionsSection({
     googleState === "connected"
       ? (google?.accountLabel ?? "Gmail, Calendar, and Contacts connected.")
       : googleState === "unavailable"
-        ? "Attach a Vercel Connect Google OAuth connector to enable this."
+        ? "A deployment admin must attach the Google OAuth connector in Vercel Connect; then you can connect your account here."
         : "Gmail, Calendar, and Contacts through your Google account.";
 
   const squareState = square?.state;
@@ -124,7 +124,7 @@ function ConnectionsSection({
     squareState === "connected"
       ? "Square account connected."
       : squareState === "unavailable"
-        ? "Attach a Vercel Connect Square OAuth connector to enable this."
+        ? "A deployment admin must attach the Square OAuth connector in Vercel Connect; then you can connect your account here."
         : "Locations, items, customers, and orders from your Square account.";
 
   return (
@@ -245,9 +245,7 @@ function ConnectorRow({
       </div>
       <div className="min-w-0 flex-1">
         <p className="type-label">{label}</p>
-        <p className="truncate type-caption text-muted-foreground">
-          {description}
-        </p>
+        <p className="type-caption text-muted-foreground">{description}</p>
       </div>
       {action}
     </div>

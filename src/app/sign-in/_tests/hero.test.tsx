@@ -8,25 +8,22 @@ import {
 } from "@/app/sign-in/_components/hero";
 
 describe("sign-in hero", () => {
-  it("renders the eyebrow, the headline as the h1, and the subhead", () => {
+  it("renders the greeting as the h1 without a product eyebrow", () => {
     const html = renderToStaticMarkup(
       createElement(SignInHero, {
-        eyebrow: "OpenInstinct",
-        headline: "Sign in.",
+        headline: "Hey, Jory",
         subhead: "Enter your phone number to sign in.",
       })
     );
-    expect(html).toContain("OpenInstinct");
-    expect(html).toMatch(/<h1 class="type-hero">Sign in\.<\/h1>/);
-    expect(html).toContain("type-eyebrow");
+    expect(html).toMatch(/<h1 class="type-hero">Hey, Jory<\/h1>/);
+    expect(html).not.toContain("type-eyebrow");
     expect(html).toContain("Enter your phone number to sign in.");
   });
 
   it("renders no empty paragraph without a subhead", () => {
     const html = renderToStaticMarkup(
       createElement(SignInHero, {
-        eyebrow: "OpenInstinct",
-        headline: "Sign in.",
+        headline: "Hey, Jory",
       })
     );
     expect(html).not.toMatch(/<p[ >]/);
