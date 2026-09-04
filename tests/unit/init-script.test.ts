@@ -154,6 +154,10 @@ describe("init.sh", () => {
     expect(await readFile(join(directory, "commands.log"), "utf8")).toBe(
       "pnpm dev:agentation\npnpm dev\n"
     );
+    expect(await readdir(directory)).not.toContain("agentation-ready");
+    expect(await readFile(join(directory, "agentation-stopped"), "utf8")).toBe(
+      "stopped\n"
+    );
   });
 
   it("reuses an already healthy Agentation server", async () => {
@@ -275,7 +279,7 @@ async function fixture(
   if (options.omit !== "pnpm") {
     await writeExecutable(
       join(bin, "pnpm"),
-      `#!/bin/sh\nprintf 'pnpm %s\\n' "$*" >> "$INIT_LOG"\ncase "$*" in\n  "exec eve link "*)\n    if [ "$INIT_LINK_EXIT" -ne 0 ]; then\n      printf 'PARTIAL_ENV=must-not-survive\\n' > .env.local\n      exit "$INIT_LINK_EXIT"\n    fi\n    cat "$INIT_LINK_ENV" >> .env.local\n    ;;\n  "dev:agentation")\n    if [ "$INIT_AGENTATION_EXIT" -ne 0 ]; then exit "$INIT_AGENTATION_EXIT"; fi\n    : > "$INIT_AGENTATION_MARKER"\n    ;;\nesac\n`
+      `#!/bin/sh\nprintf 'pnpm %s\\n' "$*" >> "$INIT_LOG"\ncase "$*" in\n  "exec eve link "*)\n    if [ "$INIT_LINK_EXIT" -ne 0 ]; then\n      printf 'PARTIAL_ENV=must-not-survive\\n' > .env.local\n      exit "$INIT_LINK_EXIT"\n    fi\n    cat "$INIT_LINK_ENV" >> .env.local\n    ;;\n  "dev:agentation")\n    if [ "$INIT_AGENTATION_EXIT" -ne 0 ]; then exit "$INIT_AGENTATION_EXIT"; fi\n    # A healthy server stays alive until init.sh tears it down.\n    trap 'rm -f "$INIT_AGENTATION_MARKER"; printf "stopped\\n" > "$INIT_AGENTATION_STOPPED"; exit 0' TERM INT\n    : > "$INIT_AGENTATION_MARKER"\n    while :; do sleep 0.1; done\n    ;;\nesac\n`
     );
   }
   if (options.readyEnvironment) {
@@ -308,6 +312,7 @@ async function runInit(directory: string, args: readonly string[] = []) {
     env: {
       INIT_LOG: join(directory, "commands.log"),
       INIT_AGENTATION_MARKER: join(directory, "agentation-ready"),
+      INIT_AGENTATION_STOPPED: join(directory, "agentation-stopped"),
       INIT_AGENTATION_EXIT: agentationExitCode,
       INIT_LINK_ENV: join(directory, "linked.env"),
       INIT_LINK_EXIT: linkExitCode,
