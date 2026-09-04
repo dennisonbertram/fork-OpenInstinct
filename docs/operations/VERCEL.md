@@ -472,8 +472,8 @@ Run it:
 ```bash
 # Locally. Uses the model credential in .env.local; boots the app, the fake
 # Square, and the sandbox.
-pnpm eval:square
-pnpm eval:square --list      # print the case ids without running
+pnpm eval:square --max-cost-usd 4 --estimated-cost-usd 4
+pnpm eval:square --max-cost-usd 4 --estimated-cost-usd 4 --list      # print the case ids without running
 
 # In GitHub Actions, on any branch.
 gh workflow run square-evals.yml -R dennisonbertram/fork-OpenInstinct --ref <branch>

@@ -2,14 +2,17 @@ import { defineEvalConfig } from "eve/evals";
 import { browserBenchmarkReporter } from "@/evals/browser/benchmark-reporter";
 import { evalRunManifestReporter } from "@/evals/run-manifest-reporter";
 import { squareEvalReporter } from "@/evals/square/square-reporter";
+import { evalRunDefaults } from "./eval-run-defaults";
+
+export { evalRunDefaults } from "./eval-run-defaults";
 
 export default defineEvalConfig({
-  judge: { model: "openai/gpt-5.4-mini" },
-  maxConcurrency: 8,
+  judge: { model: evalRunDefaults.judgeModel },
+  maxConcurrency: evalRunDefaults.maxConcurrency,
   reporters: [
     browserBenchmarkReporter,
     squareEvalReporter,
     evalRunManifestReporter,
   ],
-  timeoutMs: 180_000,
+  timeoutMs: evalRunDefaults.timeoutMs,
 });

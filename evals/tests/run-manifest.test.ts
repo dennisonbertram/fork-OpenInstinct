@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFile, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import type { MessageStreamEvent } from "eve/client";
 import type { EveEvalResult } from "eve/evals";
 import {
@@ -8,6 +8,8 @@ import {
   fixtureClockFromJson,
   manifestCaseFromResult,
   manifestCostStatus,
+  readEvalRunManifest,
+  recordManifestCase,
 } from "@/evals/run-manifest";
 
 describe("eval run manifest", () => {
@@ -28,25 +30,9 @@ describe("eval run manifest", () => {
           toolCalls: [],
         },
         events: [
-          event("step.started", "2026-09-04T10:00:00.100Z", {
-            modelId: "openai/gpt-5.6-sol",
-            sequence: 0,
-            stepIndex: 0,
-            turnId: "turn-1",
-          }),
-          event("step.completed", "2026-09-04T10:00:01.000Z", {
-            finishReason: "stop",
-            sequence: 0,
-            stepIndex: 0,
-            turnId: "turn-1",
-            usage: { costUsd: 0.01 },
-          }),
-          event("step.completed", "2026-09-04T10:00:02.000Z", {
-            finishReason: "stop",
-            sequence: 1,
-            stepIndex: 1,
-            turnId: "turn-1",
-          }),
+          stepStartedEvent("2026-09-04T10:00:00.100Z"),
+          stepCompletedEvent("2026-09-04T10:00:01.000Z", 0, 0.01),
+          stepCompletedEvent("2026-09-04T10:00:02.000Z", 1),
         ],
         finalMessage: "Done.",
         output: null,
@@ -58,8 +44,14 @@ describe("eval run manifest", () => {
     });
 
     expect(result.modelIds).toEqual(["openai/gpt-5.6-sol"]);
-    expect(result.costStatus).toBe("unknown");
-    expect(result.costUsd).toBeNull();
+    expect(result.cost.actor).toEqual({
+      knownCostUsd: 0.01,
+      status: "partial",
+    });
+    expect(result.cost.total).toEqual({
+      knownCostUsd: 0.01,
+      status: "unknown",
+    });
     expect(result.timing).toEqual({
       finalDeliveryMs: null,
       firstDeliveredBubbleMs: null,
@@ -71,6 +63,8 @@ describe("eval run manifest", () => {
   it("treats an attempt with no reporter result as unknown cost", async () => {
     const path = await createEvalRunManifest({
       caseDirectory: "evals/agent",
+      effectiveArguments: ["--tag", "smoke"],
+      estimatedCostUsd: 0.25,
       fixtureClock: {
         asOf: "2099-01-15T15:00:00Z",
         timezone: "America/New_York",
@@ -87,14 +81,17 @@ describe("eval run manifest", () => {
     });
     try {
       await beginManifestAttempt(path);
-      const manifest = JSON.parse(await readFile(path, "utf8")) as {
-        aggregate: { attempts: number };
-        provenance: { clock: { fixture: unknown } };
-      };
+      const manifest = await readEvalRunManifest(path);
       expect(manifest.aggregate.attempts).toBe(1);
       expect(manifest.provenance.clock.fixture).toEqual({
         asOf: "2099-01-15T15:00:00Z",
         timezone: "America/New_York",
+      });
+      expect(manifest.configuration).toMatchObject({
+        budget: { estimatedCostUsd: 0.25, maxCostUsd: 1 },
+        effectiveArguments: ["--tag", "smoke"],
+        maxConcurrency: 1,
+        timeoutMs: 180_000,
       });
       await expect(manifestCostStatus(path)).resolves.toEqual({
         knownCostUsd: 0,
@@ -118,19 +115,105 @@ describe("eval run manifest", () => {
       timezone: "America/New_York",
     });
   });
+
+  it("retains concurrent per-case completions in one attempt", async () => {
+    const path = await createEvalRunManifest({
+      caseDirectory: "evals/agent",
+      effectiveArguments: ["--tag", "smoke"],
+      estimatedCostUsd: 0.25,
+      fixtureClock: null,
+      judgeModel: "openai/gpt-5.4-mini",
+      maxConcurrency: 8,
+      maxCostUsd: 1,
+      mode: "square",
+      reasoning: "low",
+      repetitions: 1,
+      repositoryRoot: process.cwd(),
+      requestedModel: null,
+      timeoutMs: 180_000,
+    });
+    try {
+      const attemptId = await beginManifestAttempt(path);
+      await Promise.all([
+        recordManifestCase(
+          path,
+          attemptId,
+          completedResult("square/square/0000")
+        ),
+        recordManifestCase(
+          path,
+          attemptId,
+          completedResult("square/square/0001")
+        ),
+      ]);
+      const manifest = await readEvalRunManifest(path);
+      expect(
+        manifest.attempts[0]?.cases.map((item) => item.id).toSorted()
+      ).toEqual(["square/square/0000", "square/square/0001"]);
+    } finally {
+      await rm(path, { force: true });
+    }
+  });
 });
 
-function event<T extends MessageStreamEvent["type"]>(
-  type: T,
+function completedResult(id: string): EveEvalResult {
+  return {
+    assertions: [],
+    completedAt: "2026-09-04T10:00:01.000Z",
+    id,
+    result: {
+      derived: {
+        inputRequests: [],
+        messageCount: 0,
+        parked: false,
+        reasoningBlockCount: 0,
+        subagentCallCount: 0,
+        subagentCalls: [],
+        toolCallCount: 0,
+        toolCalls: [],
+      },
+      events: [],
+      finalMessage: "Done.",
+      output: null,
+      status: "completed",
+      traceContexts: [],
+    },
+    startedAt: "2026-09-04T10:00:00.000Z",
+    verdict: "passed",
+  };
+}
+
+function stepStartedEvent(
+  at: string
+): Extract<MessageStreamEvent, { type: "step.started" }> {
+  return {
+    data: {
+      modelId: "openai/gpt-5.6-sol",
+      sequence: 0,
+      stepIndex: 0,
+      turnId: "turn-1",
+    },
+    meta: { at, id: at },
+    type: "step.started",
+  };
+}
+
+function stepCompletedEvent(
   at: string,
-  data: Extract<MessageStreamEvent, { type: T }> extends infer Event
-    ? Event extends { data: infer Data }
-      ? Data
-      : never
-    : never
-) {
-  return { data, meta: { at, id: at }, type } as unknown as Extract<
-    MessageStreamEvent,
-    { type: T }
-  >;
+  sequence: number,
+  costUsd?: number
+): Extract<MessageStreamEvent, { type: "step.completed" }> {
+  const data: Extract<MessageStreamEvent, { type: "step.completed" }>["data"] =
+    {
+      finishReason: "stop",
+      sequence,
+      stepIndex: sequence,
+      turnId: "turn-1",
+    };
+  if (costUsd !== undefined) data.usage = { costUsd };
+  return {
+    data,
+    meta: { at, id: at },
+    type: "step.completed",
+  };
 }

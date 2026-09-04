@@ -46,7 +46,7 @@ jobs:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         # No --strict: tone is judged but not gated (docs/SQUARE.md), and --strict
         # fails the run on a judge miss.
-        run: pnpm eval:square --with-database --junit .eve/junit.xml
+        run: pnpm eval:square --max-cost-usd 4 --estimated-cost-usd 4 --with-database --junit .eve/junit.xml
 
       - name: Upload eval artifacts
         if: always()

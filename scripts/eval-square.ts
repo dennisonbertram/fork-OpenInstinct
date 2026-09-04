@@ -9,6 +9,16 @@ import {
   manifestCostStatus,
   readFixtureClock,
 } from "../evals/run-manifest.ts";
+import {
+  parsePositiveUsd,
+  parseRepetitions,
+  parseTimeoutMs,
+  reserveEstimatedCost,
+} from "../evals/paid-run-policy.ts";
+import { evalRunDefaults } from "../evals/eval-run-defaults.ts";
+import { rootAgentReasoning } from "../agent/agent-settings.ts";
+
+// oxlint-disable eslint/no-await-in-loop -- paid attempts must serialize reservation, execution, and recorded spend.
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 
@@ -40,6 +50,7 @@ if (appliedDefaults.length > 0) {
 }
 
 const options = parseSquareEvalOptions(process.argv.slice(2));
+reserveEstimatedCost(options, 0, false);
 const withDatabase =
   options.withDatabase || environment.EVAL_SQUARE_DATABASE === "compose";
 if (options.model && !withDatabase) {
@@ -53,11 +64,13 @@ const manifestPath = await createEvalRunManifest({
     repositoryRoot,
     "evals/square/fake/fixture.json"
   ),
-  judgeModel: "openai/gpt-5.4-mini",
-  maxConcurrency: 8,
+  effectiveArguments: options.evalArguments,
+  estimatedCostUsd: options.estimatedCostUsd,
+  judgeModel: evalRunDefaults.judgeModel,
+  maxConcurrency: evalRunDefaults.maxConcurrency,
   maxCostUsd: options.maxCostUsd,
   mode: "square",
-  reasoning: "low",
+  reasoning: rootAgentReasoning,
   repetitions: options.repetitions,
   repositoryRoot,
   requestedModel: options.model,
@@ -219,7 +232,17 @@ async function runEval() {
       const attemptId = await beginManifestAttempt(manifestPath);
       const child = spawn(
         "pnpm",
-        ["exec", "eve", "eval", "square", ...options.evalArguments],
+        [
+          "exec",
+          "eve",
+          "eval",
+          "square",
+          "--max-concurrency",
+          String(evalRunDefaults.maxConcurrency),
+          "--timeout",
+          String(options.timeoutMs),
+          ...options.evalArguments,
+        ],
         {
           cwd: repositoryRoot,
           detached: process.platform !== "win32",
@@ -243,16 +266,7 @@ async function runEval() {
       if (repetition + 1 >= options.repetitions) continue;
 
       const cost = await manifestCostStatus(manifestPath);
-      if (cost.unknown) {
-        throw new Error(
-          "Stopping paid eval repetitions because at least one attempt has unknown cost."
-        );
-      }
-      if (cost.knownCostUsd >= options.maxCostUsd) {
-        throw new Error(
-          `Stopping paid eval repetitions at $${cost.knownCostUsd.toFixed(6)} because it reached --max-cost-usd $${options.maxCostUsd.toFixed(6)}.`
-        );
-      }
+      reserveEstimatedCost(options, cost.knownCostUsd, cost.unknown);
     }
     process.exitCode = failed ? 1 : 0;
   } finally {
@@ -261,21 +275,23 @@ async function runEval() {
 }
 
 function parseSquareEvalOptions(args: string[]) {
+  let estimatedCostUsd: number | undefined;
   let maxCostUsd: number | undefined;
   let model: string | null = null;
   let repetitions = 1;
-  let withDatabase = false;
+  let includeDatabase = false;
   const evalArguments: string[] = [];
 
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === "--") continue;
     if (argument === "--with-database") {
-      withDatabase = true;
+      includeDatabase = true;
       continue;
     }
     if (
       argument === "--max-cost-usd" ||
+      argument === "--estimated-cost-usd" ||
       argument === "--model" ||
       argument === "--repetitions"
     ) {
@@ -283,7 +299,9 @@ function parseSquareEvalOptions(args: string[]) {
       if (!value || value.startsWith("-"))
         throw new Error(`${argument} requires a value.`);
       if (argument === "--max-cost-usd")
-        maxCostUsd = parsePositiveNumber(argument, value);
+        maxCostUsd = parsePositiveUsd(argument, value);
+      if (argument === "--estimated-cost-usd")
+        estimatedCostUsd = parsePositiveUsd(argument, value);
       if (argument === "--model") model = parseModelId(value);
       if (argument === "--repetitions") repetitions = parseRepetitions(value);
       continue;
@@ -295,25 +313,25 @@ function parseSquareEvalOptions(args: string[]) {
       "Paid Square evals require --max-cost-usd <USD> before they start."
     );
   }
-  const timeout = readTimeout(evalArguments);
+  if (estimatedCostUsd === undefined) {
+    throw new Error(
+      "Paid Square evals require --estimated-cost-usd <USD> before they start."
+    );
+  }
+  const validatedArguments = validateSquareEvalArguments(evalArguments);
+  const timeout = readTimeout(validatedArguments);
   return {
-    evalArguments,
+    evalArguments: withoutTimeout(validatedArguments),
+    estimatedCostUsd,
     maxCostUsd,
     model,
     repetitions,
-    timeoutMs: timeout ?? 180_000,
-    withDatabase,
+    timeoutMs:
+      timeout === undefined
+        ? evalRunDefaults.timeoutMs
+        : parseTimeoutMs(String(timeout)),
+    withDatabase: includeDatabase,
   };
-}
-
-function parsePositiveNumber(option: string, value: string) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1_000) {
-    throw new Error(
-      `${option} must be a number greater than 0 and at most 1000.`
-    );
-  }
-  return parsed;
 }
 
 function parseModelId(value: string) {
@@ -326,14 +344,6 @@ function parseModelId(value: string) {
   return model;
 }
 
-function parseRepetitions(value: string) {
-  const repetitions = Number(value);
-  if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 5) {
-    throw new Error("--repetitions must be an integer from 1 to 5.");
-  }
-  return repetitions;
-}
-
 function readTimeout(args: readonly string[]) {
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -341,6 +351,60 @@ function readTimeout(args: readonly string[]) {
     if (argument === "--timeout") return Number(args[index + 1]);
   }
   return undefined;
+}
+
+function withoutTimeout(args: readonly string[]) {
+  return args.filter(
+    (argument, index) =>
+      !argument.startsWith("--timeout=") &&
+      argument !== "--timeout" &&
+      args[index - 1] !== "--timeout"
+  );
+}
+
+function validateSquareEvalArguments(args: readonly string[]) {
+  const booleanOptions = new Set([
+    "--json",
+    "--list",
+    "--skip-report",
+    "--strict",
+    "--verbose",
+  ]);
+  const valueOptions = new Set([
+    "--exclude-tag",
+    "--junit",
+    "--tag",
+    "--timeout",
+  ]);
+  const validated: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (!argument) continue;
+    if (booleanOptions.has(argument)) {
+      validated.push(argument);
+      continue;
+    }
+    const equalsIndex = argument.indexOf("=");
+    const option =
+      equalsIndex === -1 ? argument : argument.slice(0, equalsIndex);
+    if (!valueOptions.has(option)) {
+      throw new Error(
+        `Unsupported Square eval argument "${argument}". The harness owns the eval path, target, and concurrency.`
+      );
+    }
+    if (equalsIndex !== -1) {
+      if (argument.slice(equalsIndex + 1).length === 0)
+        throw new Error(`${option} requires a value.`);
+      validated.push(argument);
+      continue;
+    }
+    const value = args[index + 1];
+    if (!value || value.startsWith("-"))
+      throw new Error(`${option} requires a value.`);
+    validated.push(argument, value);
+    index += 1;
+  }
+  return validated;
 }
 
 if (withDatabase) {
