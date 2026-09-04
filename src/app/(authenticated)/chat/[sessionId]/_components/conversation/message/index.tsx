@@ -46,7 +46,7 @@ export function AgentMessage({
       from={message.role}
     >
       {message.role === "assistant" ? (
-        <span className="type-label text-foreground">Jory</span>
+        <span className="pl-1 type-caption text-muted-foreground">Jory</span>
       ) : null}
       <MessageContent>
         {visibleParts.map((part, index) =>
