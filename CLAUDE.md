@@ -1,5 +1,13 @@
 @AGENTS.md
 
+This repository is in active development, not production. Prioritize working
+features, correctness, and automated end-to-end confidence over new
+production-grade privacy, retention, or compliance infrastructure. Development
+traces may use synthetic or designated test data; never expose secrets, vault
+plaintext, or real-user data, and never weaken authentication, tenancy, or
+approval boundaries. Complete the production privacy gates in AGENTS.md before
+any real-user or production traffic.
+
 Work only on the fork `dennisonbertram/fork-OpenInstinct`. Never target the upstream `Merit-Systems/OpenInstinct` with a PR, issue, or push. See "Repository is the fork, never upstream" in AGENTS.md.
 
 Keep `docs/agent-loop.html` current: any change under `agent/` that adds,
