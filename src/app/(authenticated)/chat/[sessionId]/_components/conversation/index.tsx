@@ -5,7 +5,11 @@ import {
   messageTimestamps,
   sentMessages,
 } from "../../_lib/message-events";
-import { messagesForTraceView, type TraceView } from "../../_lib/trace-view";
+import {
+  hasPendingBackgroundWorker,
+  messagesForTraceView,
+  type TraceView,
+} from "../../_lib/trace-view";
 import { getLatestTurnFailure } from "../../_lib/turn-failure";
 import {
   Conversation,
@@ -73,6 +77,10 @@ export function ChatConversation({
     () => sentMessages(agent.events),
     [agent.events]
   );
+  const hasPendingWorker = useMemo(
+    () => hasPendingBackgroundWorker(agent.events),
+    [agent.events]
+  );
 
   return (
     <Conversation
@@ -85,7 +93,7 @@ export function ChatConversation({
           : `eve:web-chat-scroll:${sessionId}`
       }
     >
-      <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-6 pb-36 sm:px-6">
+      <ConversationContent className="mx-auto w-full max-w-3xl gap-8 px-4 py-8 sm:px-6">
         {history?.hasOlder ? (
           <Button
             className="self-center"
@@ -149,6 +157,30 @@ export function ChatConversation({
           );
         })}
         {showPendingThinking ? <PendingThinking /> : null}
+        {traceView === "imessage" &&
+        !errorMessage &&
+        (isBusy || hasPendingWorker) ? (
+          <output className="type-supporting-body flex items-center gap-3 py-2 text-muted-foreground">
+            <LoaderCircleIcon
+              aria-hidden="true"
+              className="size-4 motion-safe:animate-spin"
+            />
+            <span>
+              {hasPendingWorker
+                ? "Working in the browser…"
+                : "Jory is working…"}
+            </span>
+          </output>
+        ) : null}
+        {traceView === "imessage" && errorMessage ? (
+          <Alert variant="destructive">
+            <AlertCircleIcon aria-hidden="true" />
+            <AlertTitle>Jory couldn’t finish this request</AlertTitle>
+            <AlertDescription>
+              Please try sending your message again.
+            </AlertDescription>
+          </Alert>
+        ) : null}
         {traceView === "trace" && errorMessage ? (
           <ErrorMessage message={errorMessage} />
         ) : null}

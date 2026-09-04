@@ -45786,7 +45786,8 @@
               "content": "The BEFORE column keeps each sample's pre-restyle radius and weight but draws with the shipped color variables; the SHIPPED column states what changed in code.",
               "lineHeight": 1.4,
               "fontFamily": "$font-oi",
-              "fontSize": 12
+              "fontSize": 12,
+              "fontWeight": "normal"
             },
             {
               "type": "frame",
@@ -50486,6 +50487,818 @@
           ]
         }
       ]
+    },
+    {
+      "type": "frame",
+      "id": "bqN9j",
+      "x": 13200,
+      "y": 6583,
+      "name": "09 Jory · Beautiful chat flow",
+      "width": 1800,
+      "fill": "$oi-card",
+      "layout": "vertical",
+      "gap": 32,
+      "padding": 48,
+      "children": [
+        {
+          "type": "text",
+          "id": "TerRD",
+          "name": "Chat flow title",
+          "fill": "$oi-foreground",
+          "textGrowth": "fixed-width",
+          "width": "fill_container",
+          "content": "09 Jory · A conversation, beautifully handled",
+          "lineHeight": 1.5,
+          "fontFamily": "$font-oi",
+          "fontSize": 32,
+          "fontWeight": "600"
+        },
+        {
+          "type": "text",
+          "id": "wFhZ1",
+          "name": "Chat flow scope",
+          "fill": "$oi-foreground",
+          "textGrowth": "fixed-width",
+          "width": "fill_container",
+          "content": "Beautiful UI inspired Chat, Prompt Bar and Loading State patterns, adapted to Jory. Implemented: welcoming composer, readable replies and honest progress. Question and result examples illustrate the next design direction, not new runtime schemas.",
+          "lineHeight": 1.5,
+          "fontFamily": "$font-oi",
+          "fontSize": 16,
+          "fontWeight": "normal"
+        },
+        {
+          "type": "frame",
+          "id": "cGk0c",
+          "name": "Conversation journey",
+          "width": "fill_container",
+          "gap": 24,
+          "children": [
+            {
+              "type": "frame",
+              "id": "vZl6W",
+              "name": "start state",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "lf2c7",
+                  "name": "start title",
+                  "fill": "$oi-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Start with an idea",
+                  "lineHeight": 1.5,
+                  "fontFamily": "$font-oi",
+                  "fontSize": 18,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "frame",
+                  "id": "swZTO",
+                  "name": "Chat / start",
+                  "width": "fill_container",
+                  "height": 740,
+                  "fill": "$oi-background",
+                  "cornerRadius": 16,
+                  "layout": "vertical",
+                  "gap": 24,
+                  "padding": 24,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "d7F9Rk",
+                      "name": "start chat heading",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Jory",
+                      "lineHeight": 1.5,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 22,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "zML8F",
+                      "name": "Welcome",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "What’s on your mind?",
+                      "lineHeight": 1.5,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 28,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "eGbxD",
+                      "name": "Welcome description",
+                      "fill": "$oi-muted-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Bring a question, a task, or the start of an idea. We’ll take it from there.",
+                      "lineHeight": 1.5,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "pGVsP",
+                      "name": "start flexible space",
+                      "width": "fill_container",
+                      "height": "fill_container"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "rQvzx",
+                      "name": "start composer",
+                      "width": "fill_container",
+                      "fill": "$oi-card",
+                      "cornerRadius": 24,
+                      "stroke": "$oi-border",
+                      "strokeWidth": 1,
+                      "layout": "vertical",
+                      "gap": 24,
+                      "padding": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ZPLlL",
+                          "name": "start input",
+                          "fill": "$oi-muted-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Send a message…",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-oi",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "TJmuV",
+                          "name": "start composer controls",
+                          "width": "fill_container",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "sbBO3",
+                              "name": "start attach",
+                              "width": 20,
+                              "height": 20,
+                              "icon": "paperclip",
+                              "library": "lucide",
+                              "fill": "$oi-muted-foreground"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "VTCYk",
+                              "name": "start send or stop",
+                              "width": 44,
+                              "height": 44,
+                              "fill": "$oi-primary",
+                              "cornerRadius": 999,
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "lgGVY",
+                                  "name": "start action icon",
+                                  "width": 18,
+                                  "height": 18,
+                                  "icon": "arrow-up",
+                                  "library": "lucide",
+                                  "fill": "$oi-primary-foreground"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "pPMx3",
+              "name": "working state",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "XYxkh",
+                  "name": "working title",
+                  "fill": "$oi-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "A little reassurance",
+                  "lineHeight": 1.5,
+                  "fontFamily": "$font-oi",
+                  "fontSize": 18,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "frame",
+                  "id": "kF255",
+                  "name": "Chat / working",
+                  "width": "fill_container",
+                  "height": 740,
+                  "fill": "$oi-background",
+                  "cornerRadius": 16,
+                  "layout": "vertical",
+                  "gap": 24,
+                  "padding": 24,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "c6RPxi",
+                      "name": "working chat heading",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Jory",
+                      "lineHeight": 1.5,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 22,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "v19Obd",
+                      "name": "working user message",
+                      "width": "fill_container",
+                      "fill": "$oi-bubble-user",
+                      "cornerRadius": "$oi-radius-bubble",
+                      "layout": "vertical",
+                      "padding": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "t2eRvR",
+                          "name": "working request",
+                          "fill": "$oi-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Help me plan a relaxed evening out.",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-oi",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "qz295",
+                      "name": "Accessible live status",
+                      "width": "fill_container",
+                      "gap": 10,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "c0ykHJ",
+                          "name": "Working indicator",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "loader-circle",
+                          "library": "lucide",
+                          "fill": "$oi-muted-foreground"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Wvlzb",
+                          "name": "Working label",
+                          "fill": "$oi-muted-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Jory is working…",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-oi",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "sW9wz",
+                      "name": "working flexible space",
+                      "width": "fill_container",
+                      "height": "fill_container"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "P4Laq",
+                      "name": "working composer",
+                      "width": "fill_container",
+                      "fill": "$oi-card",
+                      "cornerRadius": 24,
+                      "stroke": "$oi-border",
+                      "strokeWidth": 1,
+                      "layout": "vertical",
+                      "gap": 24,
+                      "padding": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "usWR3",
+                          "name": "working input",
+                          "fill": "$oi-muted-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Send a message…",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-oi",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ygemi",
+                          "name": "working composer controls",
+                          "width": "fill_container",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "yXi6U",
+                              "name": "working attach",
+                              "width": 20,
+                              "height": 20,
+                              "icon": "paperclip",
+                              "library": "lucide",
+                              "fill": "$oi-muted-foreground"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "KKfWH",
+                              "name": "working send or stop",
+                              "width": 44,
+                              "height": 44,
+                              "fill": "$oi-primary",
+                              "cornerRadius": 999,
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "RC6Kl",
+                                  "name": "working action icon",
+                                  "width": 18,
+                                  "height": 18,
+                                  "icon": "square",
+                                  "library": "lucide",
+                                  "fill": "$oi-primary-foreground"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "lEjNd",
+              "name": "question state",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "MOqAh",
+                  "name": "question title",
+                  "fill": "$oi-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Question · design direction",
+                  "lineHeight": 1.5,
+                  "fontFamily": "$font-oi",
+                  "fontSize": 18,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "frame",
+                  "id": "hg64T",
+                  "name": "Chat / question",
+                  "width": "fill_container",
+                  "height": 740,
+                  "fill": "$oi-background",
+                  "cornerRadius": 16,
+                  "layout": "vertical",
+                  "gap": 24,
+                  "padding": 24,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "bGEBS",
+                      "name": "question chat heading",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Jory",
+                      "lineHeight": 1.5,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 22,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "q3Uo79",
+                      "name": "question user message",
+                      "width": "fill_container",
+                      "fill": "$oi-bubble-user",
+                      "cornerRadius": "$oi-radius-bubble",
+                      "layout": "vertical",
+                      "padding": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "QjRtQ",
+                          "name": "question request",
+                          "fill": "$oi-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Help me plan a relaxed evening out.",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-oi",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "H2wFqd",
+                      "name": "Question author",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Jory",
+                      "lineHeight": 1.5,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "CYmca",
+                      "name": "Question prompt",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "What kind of evening sounds good?",
+                      "lineHeight": 1.5,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 18,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "t3kxLO",
+                      "name": "Dinner and a walk",
+                      "width": "fill_container",
+                      "fill": "$oi-card",
+                      "cornerRadius": 12,
+                      "stroke": "$oi-border",
+                      "strokeWidth": 1,
+                      "padding": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "D7pQpv",
+                          "name": "Dinner and a walk label",
+                          "fill": "$oi-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Dinner and a walk",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-oi",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "B38nc",
+                      "name": "Something with live music",
+                      "width": "fill_container",
+                      "fill": "$oi-card",
+                      "cornerRadius": 12,
+                      "stroke": "$oi-border",
+                      "strokeWidth": 1,
+                      "padding": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "qcy0W",
+                          "name": "Something with live music label",
+                          "fill": "$oi-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Something with live music",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-oi",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Wk74b",
+                      "name": "question flexible space",
+                      "width": "fill_container",
+                      "height": "fill_container"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "iDMl0",
+                      "name": "question composer",
+                      "width": "fill_container",
+                      "fill": "$oi-card",
+                      "cornerRadius": 24,
+                      "stroke": "$oi-border",
+                      "strokeWidth": 1,
+                      "layout": "vertical",
+                      "gap": 24,
+                      "padding": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "e2pp4E",
+                          "name": "question input",
+                          "fill": "$oi-muted-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Send a message…",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-oi",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ynceC",
+                          "name": "question composer controls",
+                          "width": "fill_container",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "vQcmI",
+                              "name": "question attach",
+                              "width": 20,
+                              "height": 20,
+                              "icon": "paperclip",
+                              "library": "lucide",
+                              "fill": "$oi-muted-foreground"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "YpERH",
+                              "name": "question send or stop",
+                              "width": 44,
+                              "height": 44,
+                              "fill": "$oi-primary",
+                              "cornerRadius": 999,
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "qGjYm",
+                                  "name": "question action icon",
+                                  "width": 18,
+                                  "height": 18,
+                                  "icon": "arrow-up",
+                                  "library": "lucide",
+                                  "fill": "$oi-primary-foreground"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "BZe78",
+              "name": "result state",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "lSp7r",
+                  "name": "result title",
+                  "fill": "$oi-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "An answer to act on",
+                  "lineHeight": 1.5,
+                  "fontFamily": "$font-oi",
+                  "fontSize": 18,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "frame",
+                  "id": "lTsNV",
+                  "name": "Chat / result",
+                  "width": "fill_container",
+                  "height": 740,
+                  "fill": "$oi-background",
+                  "cornerRadius": 16,
+                  "layout": "vertical",
+                  "gap": 24,
+                  "padding": 24,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "JIlJl",
+                      "name": "result chat heading",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Jory",
+                      "lineHeight": 1.5,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 22,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "CJ7UJ",
+                      "name": "result user message",
+                      "width": "fill_container",
+                      "fill": "$oi-bubble-user",
+                      "cornerRadius": "$oi-radius-bubble",
+                      "layout": "vertical",
+                      "padding": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "j1Dsf2",
+                          "name": "result request",
+                          "fill": "$oi-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Help me plan a relaxed evening out.",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-oi",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "eUUVH",
+                      "name": "Result author",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Jory",
+                      "lineHeight": 1.5,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "B0NuD",
+                      "name": "Result response",
+                      "fill": "$oi-foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Let’s keep it simple.\n\nStart with dinner near the waterfront, then leave time for a walk.\n\nTell me your neighborhood and budget, and I’ll find a few options.",
+                      "lineHeight": 1.5,
+                      "fontFamily": "$font-oi",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "FYcAS",
+                      "name": "result flexible space",
+                      "width": "fill_container",
+                      "height": "fill_container"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "o38iw",
+                      "name": "result composer",
+                      "width": "fill_container",
+                      "fill": "$oi-card",
+                      "cornerRadius": 24,
+                      "stroke": "$oi-border",
+                      "strokeWidth": 1,
+                      "layout": "vertical",
+                      "gap": 24,
+                      "padding": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "S0YWVW",
+                          "name": "result input",
+                          "fill": "$oi-muted-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Send a message…",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-oi",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "s5Dmi",
+                          "name": "result composer controls",
+                          "width": "fill_container",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "WWbyS",
+                              "name": "result attach",
+                              "width": 20,
+                              "height": 20,
+                              "icon": "paperclip",
+                              "library": "lucide",
+                              "fill": "$oi-muted-foreground"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "YPrUy",
+                              "name": "result send or stop",
+                              "width": 44,
+                              "height": 44,
+                              "fill": "$oi-primary",
+                              "cornerRadius": 999,
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "qSdGT",
+                                  "name": "result action icon",
+                                  "width": 18,
+                                  "height": 18,
+                                  "icon": "arrow-up",
+                                  "library": "lucide",
+                                  "fill": "$oi-primary-foreground"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "zlXYd",
+          "name": "Chat interaction contract",
+          "fill": "$oi-muted-foreground",
+          "textGrowth": "fixed-width",
+          "width": "fill_container",
+          "content": "Only real runtime activity drives progress. Show generic working text during a turn and browser activity while a delegated browser task is pending. Stop and send retain their current runtime behavior. A starter fills the draft for editing; it never sends automatically. Errors offer a retry without exposing internal traces. Example conversation text is illustrative.",
+          "lineHeight": 1.5,
+          "fontFamily": "$font-oi",
+          "fontSize": 14,
+          "fontWeight": "normal"
+        }
+      ]
     }
   ],
   "themes": {
@@ -51270,5 +52083,5 @@
       "value": 18
     }
   },
-  "fileToken": "69591926-4919-4568-babb-5dcb55b43956"
+  "fileToken": "35913570-062a-4c18-8a83-4ffe37c5314f"
 }
