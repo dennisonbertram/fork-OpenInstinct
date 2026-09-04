@@ -4,6 +4,7 @@ import {
   isAcceptedInvalidInputError,
   runMcpAdmission,
   type AdmissionExample,
+  type AdmissionToolContract,
 } from "./mcp-admission";
 import { startDemoMcp, type DemoMcpFault } from "./fixtures/demo-mcp/server";
 
@@ -34,35 +35,99 @@ afterEach(async () => {
   closeServer = undefined;
 });
 
-async function run(fault?: DemoMcpFault) {
+async function run(
+  fault?: DemoMcpFault,
+  options: {
+    examples?: readonly AdmissionExample[];
+    requestTimeoutMs?: number;
+    includeOptionalContract?: boolean;
+  } = {}
+) {
   const server = await startDemoMcp({ token, fault });
   closeServer = server.close;
+  const baseDeclaredTools = {
+    echo: {
+      description: "Echo text through the mounted MCP connection.",
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: true,
+      },
+      inputSchema: {
+        type: "object",
+        properties: {
+          text: { type: "string", description: "Text to echo" },
+        },
+        required: ["text"],
+        $schema: "http://json-schema.org/draft-07/schema#",
+      },
+      outputSchema: {
+        type: "object",
+        properties: {
+          text: { type: "string" },
+          marker: { type: "string" },
+        },
+        required: ["text", "marker"],
+        $schema: "http://json-schema.org/draft-07/schema#",
+        additionalProperties: false,
+      },
+    },
+    fail: {
+      description:
+        "Return a structured synthetic tool error for admission tests.",
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: true,
+      },
+      inputSchema: {
+        type: "object",
+        properties: {
+          reason: {
+            type: "string",
+            description: "Synthetic reason for failure",
+          },
+        },
+        required: ["reason"],
+        $schema: "http://json-schema.org/draft-07/schema#",
+      },
+    },
+  } satisfies Record<string, AdmissionToolContract>;
+  const declaredTools = options.includeOptionalContract
+    ? {
+        ...baseDeclaredTools,
+        optional: {
+          description:
+            "An optional uncalled tool outside the declared admission subset.",
+          annotations: {
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false,
+            readOnlyHint: true,
+          },
+          inputSchema: {
+            type: "object",
+            properties: {
+              value: {
+                type: "string",
+                description: "Synthetic optional value",
+              },
+            },
+            required: ["value"],
+            $schema: "http://json-schema.org/draft-07/schema#",
+          },
+        },
+      }
+    : baseDeclaredTools;
   return runMcpAdmission({
     url: server.url,
     token,
-    examples,
-    declaredTools: {
-      echo: {
-        description: "Echo text through the mounted MCP connection.",
-        annotations: {
-          destructiveHint: false,
-          idempotentHint: true,
-          openWorldHint: false,
-          readOnlyHint: true,
-        },
-      },
-      fail: {
-        description:
-          "Return a structured synthetic tool error for admission tests.",
-        annotations: {
-          destructiveHint: false,
-          idempotentHint: true,
-          openWorldHint: false,
-          readOnlyHint: true,
-        },
-      },
-    },
+    examples: options.examples ?? examples,
+    declaredTools,
     maxOutputBytes: 8192,
+    requestTimeoutMs: options.requestTimeoutMs,
   });
 }
 
@@ -89,6 +154,7 @@ describe("MCP admission subset", () => {
   it.each([
     ["description", "missing-description", "tools.echo.description"],
     ["description mismatch", "mismatched-description", "tools.echo.contract"],
+    ["changed valid schema", "changed-input-schema", "tools.echo.contract"],
     ["input schema", "invalid-input-schema", "schema.echo.input"],
     [
       "invalid input success",
@@ -120,6 +186,12 @@ describe("MCP admission subset", () => {
       "auth-accepts-invalid-token",
       "auth.invalid-token",
     ],
+    [
+      "accepted missing credential",
+      "auth-accepts-missing-token",
+      "auth.missing-token",
+    ],
+    ["redirect", "redirects", "auth.missing-token"],
     ["missing allowed tool", "missing-allowed-tool", "tools.list"],
   ] as const)(
     "rejects a server with a malformed %s",
@@ -137,6 +209,102 @@ describe("MCP admission subset", () => {
     const result = await run("reordered-output");
 
     expect(result.ok).toBe(true);
+  });
+
+  it("allows a declared listed tool when it is not explicitly called", async () => {
+    const result = await run("optional-uncalled-tool", {
+      includeOptionalContract: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.tools).toContain("optional");
+    expect(
+      result.checks.some((check) => check.name.startsWith("example.optional"))
+    ).toBe(false);
+  });
+
+  it("rejects an undeclared listed tool even when it is not called", async () => {
+    const result = await run("optional-uncalled-tool");
+
+    expect(result.ok).toBe(false);
+    expect(
+      result.checks.find((check) => check.name === "tools.optional.contract")
+        ?.ok
+    ).toBe(false);
+  });
+
+  it("requires at least one explicit example", async () => {
+    const result = await run(undefined, { examples: [] });
+
+    expect(result.ok).toBe(false);
+    expect(result.checks.find((check) => check.name === "tools.list")?.ok).toBe(
+      false
+    );
+  });
+
+  it("requires every declared tool to appear even without an example", async () => {
+    const server = await startDemoMcp({ token });
+    closeServer = server.close;
+    const result = await runMcpAdmission({
+      url: server.url,
+      token,
+      examples: examples.filter((example) => example.tool === "echo"),
+      declaredTools: {
+        echo: {
+          description: "Echo text through the mounted MCP connection.",
+          annotations: {
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false,
+            readOnlyHint: true,
+          },
+          inputSchema: {
+            type: "object",
+            properties: {
+              text: { type: "string", description: "Text to echo" },
+            },
+            required: ["text"],
+            $schema: "http://json-schema.org/draft-07/schema#",
+          },
+          outputSchema: {
+            type: "object",
+            properties: {
+              text: { type: "string" },
+              marker: { type: "string" },
+            },
+            required: ["text", "marker"],
+            $schema: "http://json-schema.org/draft-07/schema#",
+            additionalProperties: false,
+          },
+        },
+        absent: {
+          description: "A declared tool that the fixture must return.",
+          annotations: {
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false,
+            readOnlyHint: true,
+          },
+          inputSchema: { type: "object", properties: {} },
+        },
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(
+      result.checks.find((check) => check.name === "tools.absent.declared")?.ok
+    ).toBe(false);
+  });
+
+  it("bounds stalled local auth probes", async () => {
+    const started = Date.now();
+    const result = await run("stalls", { requestTimeoutMs: 25 });
+
+    expect(result.ok).toBe(false);
+    expect(
+      result.checks.find((check) => check.name === "auth.missing-token")?.ok
+    ).toBe(false);
+    expect(Date.now() - started).toBeLessThan(1000);
   });
 
   it("requires a declared contract for every example tool", async () => {

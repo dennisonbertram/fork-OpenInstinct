@@ -17,9 +17,14 @@ const addressSchema = z.object({ port: z.number().int().positive() });
 
 export type DemoMcpFault =
   | "auth-accepts-invalid-token"
+  | "auth-accepts-missing-token"
+  | "redirects"
+  | "stalls"
   | "missing-allowed-tool"
+  | "optional-uncalled-tool"
   | "missing-description"
   | "mismatched-description"
+  | "changed-input-schema"
   | "invalid-input-schema"
   | "invalid-input-success"
   | "missing-annotations"
@@ -72,9 +77,19 @@ async function handleRequest(
     return;
   }
 
+  if (fault === "stalls") return;
+  if (fault === "redirects") {
+    response.writeHead(302, { location: "/mcp" }).end();
+    return;
+  }
+
   if (
     !matchesBearerToken(request.headers.authorization, token) &&
-    fault !== "auth-accepts-invalid-token"
+    fault !== "auth-accepts-invalid-token" &&
+    !(
+      fault === "auth-accepts-missing-token" &&
+      request.headers.authorization === undefined
+    )
   ) {
     response
       .writeHead(401, { "www-authenticate": 'Bearer realm="contract-mcp"' })
@@ -145,8 +160,15 @@ async function handleRequest(
     })
   );
   if (fault === "invalid-input-schema") echoTool.inputSchema = z.any();
+  if (fault === "changed-input-schema") {
+    echoTool.inputSchema = z.object({
+      text: z.string().describe("A changed but still valid description"),
+    });
+  }
   if (fault === "invalid-input-success") {
-    echoTool.inputSchema = { text: z.any().describe("Text to echo") };
+    echoTool.inputSchema = z.object({
+      text: z.any().describe("Text to echo"),
+    });
   }
   if (fault !== "missing-allowed-tool")
     server.registerTool(
@@ -172,6 +194,27 @@ async function handleRequest(
               isError: true,
             }
     );
+  if (fault === "optional-uncalled-tool") {
+    server.registerTool(
+      "optional",
+      {
+        description:
+          "An optional uncalled tool outside the declared admission subset.",
+        inputSchema: {
+          value: z.string().describe("Synthetic optional value"),
+        },
+        annotations: {
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+          readOnlyHint: true,
+        },
+      },
+      async ({ value }) => ({
+        content: [{ type: "text", text: `optional: ${value}` }],
+      })
+    );
+  }
 
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
@@ -238,5 +281,6 @@ function close(server: Server) {
       if (error) reject(error);
       else resolve();
     });
+    server.closeAllConnections();
   });
 }

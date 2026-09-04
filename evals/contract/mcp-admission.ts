@@ -29,7 +29,7 @@ export interface AdmissionExample {
   expectError?: boolean;
 }
 
-interface AdmissionToolContract {
+export interface AdmissionToolContract {
   description: string;
   annotations: {
     destructiveHint: boolean;
@@ -37,6 +37,8 @@ interface AdmissionToolContract {
     openWorldHint: boolean;
     readOnlyHint: boolean;
   };
+  inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
 }
 
 interface AdmissionCheck {
@@ -58,6 +60,7 @@ export interface McpAdmissionOptions {
   examples: readonly AdmissionExample[];
   declaredTools: Readonly<Record<string, AdmissionToolContract>>;
   maxOutputBytes?: number;
+  requestTimeoutMs?: number;
 }
 
 /**
@@ -73,6 +76,7 @@ export async function runMcpAdmission({
   examples,
   declaredTools,
   maxOutputBytes = 8 * 1024,
+  requestTimeoutMs = 5_000,
 }: McpAdmissionOptions): Promise<McpAdmissionResult> {
   const checks: AdmissionCheck[] = [];
   const check = (name: string, ok: boolean, detail?: string) => {
@@ -91,13 +95,27 @@ export async function runMcpAdmission({
   }
   check("target.loopback", true, "local loopback endpoint");
 
-  await checkUnauthorizedRequests(url, token, check);
+  const authOk = await checkUnauthorizedRequests(
+    url,
+    token,
+    check,
+    requestTimeoutMs
+  );
+  if (!authOk) {
+    check(
+      "protocol.initialize",
+      false,
+      "authorization probes did not establish the required bearer boundary"
+    );
+    return { ok: false, checks };
+  }
 
   const client = new Client({ name: "jory-mcp-admission", version: "0.0.0" });
   const transport = new StreamableHTTPClientTransport(new URL(url), {
     requestInit: {
       headers: { Authorization: `Bearer ${token}` },
       redirect: "error",
+      signal: AbortSignal.timeout(requestTimeoutMs),
     },
   });
 
@@ -120,13 +138,27 @@ export async function runMcpAdmission({
     check(
       "tools.list",
       tools.length > 0 &&
+        examples.length > 0 &&
+        Object.keys(declaredTools).every((name) =>
+          tools.some((tool) => tool.name === name)
+        ) &&
         examples.every((example) =>
           tools.some((tool) => tool.name === example.tool)
         ),
       tools.length > 0
-        ? `listed ${String(tools.length)} tool(s)`
+        ? examples.length > 0
+          ? `listed ${String(tools.length)} tool(s)`
+          : "at least one explicit synthetic example is required"
         : "server listed no tools"
     );
+
+    for (const [name] of Object.entries(declaredTools)) {
+      check(
+        `tools.${name}.declared`,
+        tools.some((tool) => tool.name === name),
+        "declared tool was not returned by tools/list"
+      );
+    }
 
     const validator = new AjvJsonSchemaValidator();
     for (const tool of tools) {
@@ -146,9 +178,11 @@ export async function runMcpAdmission({
         `tools.${tool.name}.contract`,
         declared !== undefined &&
           tool.description === declared.description &&
-          annotationsEqual(tool, declared.annotations),
+          annotationsEqual(tool, declared.annotations) &&
+          deepEqual(tool.inputSchema, declared.inputSchema) &&
+          optionalSchemaEqual(tool.outputSchema, declared.outputSchema),
         declared
-          ? "listed description or annotations differ from the declared contract"
+          ? "listed description, annotations, or schemas differ from the declared contract"
           : "no declared contract was supplied for this listed tool"
       );
       checkSchema(
@@ -171,6 +205,14 @@ export async function runMcpAdmission({
         );
       }
       validateInputExamples(tool, examples, validator, check);
+    }
+
+    for (const example of examples) {
+      check(
+        `tools.${example.tool}.contract-declared`,
+        declaredTools[example.tool] !== undefined,
+        "every invoked example must have a declared tool contract"
+      );
     }
 
     for (const example of examples) {
@@ -292,8 +334,10 @@ async function callTool(
 async function checkUnauthorizedRequests(
   url: string,
   token: string,
-  check: (name: string, ok: boolean, detail?: string) => void
-) {
+  check: (name: string, ok: boolean, detail?: string) => void,
+  requestTimeoutMs: number
+): Promise<boolean> {
+  let authOk = true;
   const body = JSON.stringify({ id: 1, jsonrpc: "2.0", method: "tools/list" });
   for (const [name, authorization] of [
     ["auth.missing-token", undefined],
@@ -307,15 +351,20 @@ async function checkUnauthorizedRequests(
         headers,
         body,
         redirect: "error",
+        signal: AbortSignal.timeout(requestTimeoutMs),
       });
+      const accepted =
+        response.status === 401 &&
+        response.headers.get("www-authenticate")?.includes("Bearer") === true;
       check(
         name,
-        response.status === 401 &&
-          response.headers.get("www-authenticate")?.includes("Bearer") === true,
+        accepted,
         `expected 401 with WWW-Authenticate: Bearer, got ${String(response.status)}`
       );
+      authOk = authOk && accepted;
     } catch (error) {
       check(name, false, errorMessage(error));
+      authOk = false;
     }
   }
   if (token.length === 0) {
@@ -324,7 +373,9 @@ async function checkUnauthorizedRequests(
       false,
       "an explicit synthetic credential is required"
     );
+    authOk = false;
   }
+  return authOk;
 }
 
 function validateInputExamples(
@@ -457,6 +508,15 @@ function annotationsEqual(
     annotations.openWorldHint === expected.openWorldHint &&
     annotations.readOnlyHint === expected.readOnlyHint
   );
+}
+
+function optionalSchemaEqual(
+  actual: Record<string, unknown> | undefined,
+  expected: Record<string, unknown> | undefined
+) {
+  return expected === undefined
+    ? actual === undefined
+    : actual !== undefined && deepEqual(actual, expected);
 }
 
 function slug(name: string) {
