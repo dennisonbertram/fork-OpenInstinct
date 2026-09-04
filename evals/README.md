@@ -75,14 +75,17 @@ lockfile identity, a content hash and paths for the case tree, fixture clock
 context when present, wall-clock mode, requested filters/model, configured
 reasoning/judge, effective timeout/concurrency, reserved estimate, all
 attempts, verdict counts, and per-case observed `step.started` model IDs.
-The `aggregate` block retains pass/fail/error/skip counts from every attempt
-and p50/p95 whole-eval duration; it never filters failed repetitions out of a
-successful-looking summary.
+The `aggregate.cases` block retains pass/fail/scored/error/skip counts from
+every completed attempt, while `aggregate.incompleteAttempts` counts attempts
+that did not produce a run summary; it never filters failed repetitions out of
+a successful-looking summary.
 Observed actor model IDs are the evidence of the concrete model actually selected;
-the requested setting is retained only as configuration. Eve 0.49 does not
-emit applied reasoning effort or message-channel delivery acknowledgement in
-eval events, so those fields are explicitly `not-observable-from-eve-events`
-rather than guessed. Costs retain known partial actor spend but mark the total
+the requested setting is retained only as configuration. Judge execution and
+cost are not observable in Eve events, so configured judge models never become
+observed actor IDs. Eve 0.49 does not emit applied reasoning effort or
+message-channel delivery acknowledgement in eval events, so those fields are
+explicitly `not-observable-from-eve-events` rather than guessed. Costs retain
+known partial actor spend but mark the total
 `unknown` for an incomplete step or a judge call, whose spend Eve does not
 report.
 

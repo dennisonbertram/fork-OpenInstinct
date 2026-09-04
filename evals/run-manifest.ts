@@ -62,7 +62,8 @@ const manifestAttemptSchema = z.object({
 const manifestSchema = z.object({
   aggregate: z.object({
     attempts: z.number().int().nonnegative(),
-    cases: summarySchema.extend({ incomplete: z.number().int().nonnegative() }),
+    cases: summarySchema,
+    incompleteAttempts: z.number().int().nonnegative(),
     cost: z.object({
       knownCostUsd: z.number().nonnegative(),
       status: z.enum(["measured", "unknown"]),
@@ -111,7 +112,7 @@ const manifestSchema = z.object({
       node: z.string(),
     }),
   }),
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(3),
   startedAt: z.string(),
 });
 type ManifestCase = z.infer<typeof manifestCaseSchema>;
@@ -182,7 +183,7 @@ export async function createEvalRunManifest(
         node: process.version,
       },
     },
-    schemaVersion: 2,
+    schemaVersion: 3,
     startedAt,
   };
   const directory = join(options.repositoryRoot, ".eve", "eval-runs");
@@ -406,9 +407,8 @@ function withAttempts(
       ...manifest.configuration,
       judge: {
         ...manifest.configuration.judge,
-        observedModelIds: [
-          ...new Set(allCases.flatMap((item) => item.modelIds)),
-        ],
+        // Eve events identify actor steps only; judge execution is not observable.
+        observedModelIds: manifest.configuration.judge.observedModelIds,
       },
       selection: {
         ...manifest.configuration.selection,
@@ -541,11 +541,12 @@ function aggregateFor(attempts: readonly ManifestAttempt[]) {
     cases: {
       errored: summaries.reduce((total, item) => total + item.errored, 0),
       failed: summaries.reduce((total, item) => total + item.failed, 0),
-      incomplete: attempts.filter((attempt) => attempt.summary === null).length,
       passed: summaries.reduce((total, item) => total + item.passed, 0),
       scored: summaries.reduce((total, item) => total + item.scored, 0),
       skipped: summaries.reduce((total, item) => total + item.skipped, 0),
     },
+    incompleteAttempts: attempts.filter((attempt) => attempt.summary === null)
+      .length,
     cost: {
       knownCostUsd: cases.reduce(
         (total, item) => total + item.cost.total.knownCostUsd,

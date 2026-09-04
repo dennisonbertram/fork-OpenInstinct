@@ -154,6 +154,21 @@ describe("eval run manifest", () => {
       expect(
         manifest.attempts[0]?.cases.map((item) => item.id).toSorted()
       ).toEqual(["square/square/0000", "square/square/0001"]);
+      expect(manifest.attempts[0]?.cases[0]?.modelIds).toEqual([
+        "openai/gpt-5.6-sol",
+      ]);
+      expect(manifest.configuration.judge.observedModelIds).toEqual([]);
+      expect(manifest.aggregate).toMatchObject({
+        attempts: 1,
+        incompleteAttempts: 1,
+        cases: {
+          errored: 0,
+          failed: 0,
+          passed: 0,
+          scored: 0,
+          skipped: 0,
+        },
+      });
     } finally {
       await rm(path, { force: true });
     }
@@ -202,13 +217,16 @@ describe("eval run manifest", () => {
 
       const manifest = await readEvalRunManifest(path);
       expect(manifest.attempts[0]?.cases).toHaveLength(13);
-      expect(manifest.aggregate.cases).toEqual({
-        errored: 0,
-        failed: 0,
-        incomplete: 0,
-        passed: 13,
-        scored: 2,
-        skipped: 0,
+      expect(manifest.aggregate).toMatchObject({
+        attempts: 2,
+        incompleteAttempts: 0,
+        cases: {
+          errored: 0,
+          failed: 0,
+          passed: 13,
+          scored: 2,
+          skipped: 0,
+        },
       });
     } finally {
       await rm(path, { force: true });
@@ -256,7 +274,10 @@ function completedResult(
         toolCallCount: 0,
         toolCalls: [],
       },
-      events: [],
+      events: [
+        stepStartedEvent("2026-09-04T10:00:00.100Z"),
+        stepCompletedEvent("2026-09-04T10:00:01.000Z", 0, 0.01),
+      ],
       finalMessage: "Done.",
       output: null,
       status: "completed",
