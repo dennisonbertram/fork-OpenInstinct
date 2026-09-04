@@ -63,7 +63,7 @@ jobs:
 
       - name: Upload contract eval artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: contract-eval-artifacts
           path: |
@@ -103,7 +103,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: playwright-report/
@@ -150,7 +150,7 @@ jobs:
         run: node scripts/test-real-postgres.ts
       - name: Upload real Postgres results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: real-postgres-results
           path: .eve/ci/real-postgres.xml
