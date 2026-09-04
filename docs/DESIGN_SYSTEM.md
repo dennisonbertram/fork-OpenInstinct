@@ -285,16 +285,16 @@ also defines the `code-card` command and argument colors.
 
 `src/components/ai-elements` holds the chat surface, built on the primitives:
 
-| File                 | Role                                                                                                                                                                                 |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `conversation.tsx`   | Scrolling message list with stick-to-bottom and a scroll-to-bottom button                                                                                                            |
-| `message.tsx`        | User bubble in `bubble-user`; assistant replies use open prose with a Jory label. Markdown through `streamdown`, readable line spacing, scrollable code, and `type-supporting-body`. |
-| `prompt-input.tsx`   | Composer with command palette, menu, and hover card                                                                                                                                  |
-| `model-selector.tsx` | Model picker in a `Command` dialog                                                                                                                                                   |
-| `question.tsx`       | Inline question form                                                                                                                                                                 |
-| `reasoning.tsx`      | Collapsible reasoning panel                                                                                                                                                          |
-| `tool.tsx`           | Collapsible tool call with status icons                                                                                                                                              |
-| `shimmer.tsx`        | Text shimmer for streaming, uses `motion/react`                                                                                                                                      |
+| File                 | Role                                                                                                                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `conversation.tsx`   | Scrolling message list with stick-to-bottom and a scroll-to-bottom button                                                                                                                              |
+| `message.tsx`        | Content-sized user and Jory bubbles in `bubble-user` and `bubble-assistant`, with `rounded-bubble`. Markdown through `streamdown`, readable line spacing, scrollable code, and `type-supporting-body`. |
+| `prompt-input.tsx`   | Composer with command palette, menu, and hover card                                                                                                                                                    |
+| `model-selector.tsx` | Model picker in a `Command` dialog                                                                                                                                                                     |
+| `question.tsx`       | Inline question form                                                                                                                                                                                   |
+| `reasoning.tsx`      | Collapsible reasoning panel                                                                                                                                                                            |
+| `tool.tsx`           | Collapsible tool call with status icons                                                                                                                                                                |
+| `shimmer.tsx`        | Text shimmer for streaming, uses `motion/react`                                                                                                                                                        |
 
 `src/components/browser/activity-duration-breakdown.tsx` is the color legend
 for browser worker activity kinds; it reads the nine `activity-*` tokens.
@@ -329,13 +329,16 @@ or foundation styles are installed.
   a navy send control. The session composer stays in normal flex layout so
   growing drafts never cover the conversation. Existing send, steer and stop
   behavior is preserved.
-- **Replies:** a `max-w-3xl` reading column with space between messages;
-  user text retains its bubble, while assistant markdown reads as open prose
-  below a Jory label. Long code blocks scroll within the available width.
-- **Progress:** a polite live status says “Jory is working…” during a real
-  turn, or “Working in the browser…” while a browser task is pending. It is
-  independent of the developer Activity flag and shows no raw tool data or
-  internal narration. Reduced motion disables the spinner animation.
+- **Replies:** a `max-w-3xl` reading column with compact message spacing.
+  Both sides use content-sized bubbles, capped at 90% of the reading column.
+  Jory uses the soft `bubble-assistant` tint, a smaller bottom-left corner,
+  and a quiet caption label. Long code blocks scroll within the bubble.
+- **Progress:** an iMessage-style three-dot bubble appears during a real
+  turn or pending browser task. Its polite screen-reader status says
+  “Jory is working…” or “Working in the browser…”. It is independent of the
+  developer Activity flag and shows no raw tool data or internal narration.
+  The locally scoped 1.4s dot animation uses 160ms staggering; reduced motion
+  leaves three static dots. Completion, cancellation and errors remove it.
 - **Failure:** the normal conversation shows a generic retry message; detailed
   runtime errors remain in the developer trace.
 
@@ -350,9 +353,9 @@ Source: `src/app/(authenticated)/layout.tsx` and `_components`.
 
 - `SidebarProvider` wraps a `Sidebar` (default variant, offcanvas collapse)
   and a `SidebarInset` that scrolls (`h-svh overflow-y-auto`).
-- The sidebar header is the `Logo` and the product name in a
-  `SidebarMenuButton`. The content is the navigation. The footer is the
-  account control.
+- The sidebar header is the colorful Jory wordmark in a large
+  `SidebarMenuButton`; its home link has the accessible name `Jory`. The
+  content is the navigation. The footer is the account control.
 - Below `md`, a 48px header with a `SidebarTrigger` and a `type-label` page
   name replaces the sidebar.
 - The root layout loads the two fonts and applies no theme class.

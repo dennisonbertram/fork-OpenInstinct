@@ -22,6 +22,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AgentMessage } from "./message";
 import type { ChatAgent } from "../chat-agent";
+import styles from "./typing-indicator.module.css";
 
 export function ChatConversation({
   agent,
@@ -93,7 +94,7 @@ export function ChatConversation({
           : `eve:web-chat-scroll:${sessionId}`
       }
     >
-      <ConversationContent className="mx-auto w-full max-w-3xl gap-8 px-4 py-8 sm:px-6">
+      <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 py-8 sm:px-6">
         {history?.hasOlder ? (
           <Button
             className="self-center"
@@ -160,16 +161,23 @@ export function ChatConversation({
         {traceView === "imessage" &&
         !errorMessage &&
         (isBusy || hasPendingWorker) ? (
-          <output className="type-supporting-body flex items-center gap-3 py-2 text-muted-foreground">
-            <LoaderCircleIcon
-              aria-hidden="true"
-              className="size-4 motion-safe:animate-spin"
-            />
-            <span>
+          <output
+            className="flex w-fit items-center gap-1.5 rounded-bubble rounded-bl-md bg-bubble-assistant px-5 py-4 text-muted-foreground"
+            data-slot="typing-indicator"
+          >
+            <span className="sr-only">
               {hasPendingWorker
                 ? "Working in the browser…"
                 : "Jory is working…"}
             </span>
+            {[0, 1, 2].map((dot) => (
+              <span
+                aria-hidden="true"
+                className={styles.dot}
+                data-slot="typing-dot"
+                key={dot}
+              />
+            ))}
           </output>
         ) : null}
         {traceView === "imessage" && errorMessage ? (

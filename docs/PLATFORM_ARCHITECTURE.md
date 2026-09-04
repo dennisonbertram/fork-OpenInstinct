@@ -19,6 +19,25 @@ The model may choose among capabilities that trusted code already authorized.
 It never chooses the caller identity, workspace, credential, provider endpoint,
 or approval policy.
 
+## First-party capability decision
+
+**Accepted direction (2026-09-04), not an implemented feature:** default to
+native Eve tools for product capabilities we own when Eve is their only
+concrete consumer. Use OpenAPI for suitable existing provider APIs, and MCP
+when an existing server fits or a real consumer/service requirement justifies
+it. Reuse across Eve agents can use an extension without an MCP server.
+
+Native tools retain the feature's business logic and safety requirements while
+avoiding an unnecessary protocol endpoint and separate service operation.
+This can reduce work; it is not a universal cost or performance claim. Keep
+behavior with its owner so a future API or MCP adapter can reuse it without
+building speculative abstractions today. Native tools are trusted application
+code, not a security sandbox.
+
+See the [decision and tradeoffs](PLUGINS.md#decision-native-tools-first-for-our-own-product-capabilities)
+for exceptions, a labeled example, and the feature questions to answer before
+implementation. This decision does not migrate Square or enable customer servers.
+
 ## Ownership boundaries
 
 | Concern                                               | Owner                                   | Rule                                                                                     |

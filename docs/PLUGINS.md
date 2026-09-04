@@ -39,6 +39,60 @@ extension mounts. The reference extension is mounted only in the test harness.
 Do not build a core plugin loader, registry, catalog service, or licensing
 system as a prerequisite for our next integration.
 
+### Decision: native tools first for our own product capabilities
+
+**Accepted direction, 2026-09-04; no new feature implemented by this decision.**
+When we own a capability's behavior and Eve is its only concrete consumer,
+start with a small native Eve tool surface. Design tools around user tasks,
+with explicit inputs, bounded results, permissions, approval, and failure
+behavior. Do not start by building an MCP server or publishing a general API.
+OpenAPI is an API-description format, not an OpenAI service.
+
+| Situation                                                              | Starting choice                                | Reason to choose another approach                                                   |
+| ---------------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------- |
+| First-party feature with product-specific behavior                     | Native Eve tool                                | A real external consumer or separate service boundary needs another interface       |
+| Existing provider with a suitable API specification                    | OpenAPI connection                             | Generated operations need substantial task-specific orchestration or result shaping |
+| Existing reviewed MCP server that meets the task and auth requirements | MCP connection                                 | Its transport, permissions, results, or deployment do not fit this product          |
+| Capability shared with a named non-Eve agent application               | Consider an MCP service                        | A conventional API may better fit the actual consumers; evaluate their contracts    |
+| Capability reused across our Eve agents/apps                           | Eve extension with native tools or connections | Use MCP only if a service/protocol boundary is also needed                          |
+
+**Why native can be less work.** Both approaches still require the feature's
+business logic, data access, validation, authorization, and tests. A native
+Eve tool can call the owning application service or provider SDK directly.
+A newly operated MCP server additionally needs an HTTP/protocol endpoint,
+credential handling across that boundary, deployment/lifecycle ownership, and
+client/server integration tests. For an Eve-only feature that fits the app
+runtime, avoiding those pieces can reduce initial work and maintenance.
+
+This is an architectural judgment, not a measured effort or performance claim.
+An existing MCP server may be less work than implementing its operations.
+Native tools run in the application's trusted runtime; they are not an
+isolation boundary. Separate compute, resource limits, release ownership, or
+other operational requirements can justify a service, but a separate service
+does not automatically need MCP. Choose its interface for its consumers.
+
+**Illustrative example, not a planned feature:** a `get_daily_sales_summary`
+native tool could call an owning service that handles date ranges, pagination,
+and totals, then return the compact result the agent needs. The model would
+not need to assemble that procedure from many general API operations. This
+does not propose replacing Square's current OpenAPI connection or adding that
+tool now; an existing connection can remain alongside a narrowly justified
+native tool.
+
+Keep domain behavior with its owner and avoid putting Eve session objects or
+model-specific formatting into reusable business logic. Do not introduce a
+second adapter, interface hierarchy, or service merely for hypothetical reuse.
+If another consumer later needs access, add an API or MCP adapter around the
+existing behavior and recheck authorization, identity, and error semantics at
+that boundary. Reuse is possible; converting to MCP is not guaranteed to be
+free or automatic.
+
+For each proposed feature, record the user task, consumers, owning code/data,
+read/write operations, auth/approval rules, result/error contract, and smallest
+acceptance test. State why the selected interface fits. Choose native by
+default when the only reason for MCP is that an agent will call the feature.
+Select the feature before selecting new infrastructure.
+
 ## 2. Square: the existing OpenAPI example
 
 **Implemented.** `agent/connections/square.ts` calls

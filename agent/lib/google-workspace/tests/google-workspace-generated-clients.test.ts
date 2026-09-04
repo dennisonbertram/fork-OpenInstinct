@@ -7,7 +7,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCalendarEvent } from "@/agent/lib/google-workspace/calendar";
 import { withGoogleAuth } from "@/agent/lib/google-workspace/client";
 import { searchGoogleContacts } from "@/agent/lib/google-workspace/contacts";
-import { sendGmail } from "@/agent/lib/google-workspace/gmail";
+import {
+  ensureGmailConnection,
+  sendGmail,
+} from "@/agent/lib/google-workspace/gmail";
 
 interface RequestOptions {
   signal: AbortSignal;
@@ -31,6 +34,41 @@ const setCredentialsMock = vi.spyOn(
 afterEach(() => vi.clearAllMocks());
 
 describe("generated Google Workspace clients", () => {
+  it("checks the Gmail API before reporting a connected account", async () => {
+    const ctx = toolContext();
+    const client = GmailApi.gmail({ version: "v1" });
+    const getProfile = vi
+      .fn<() => Promise<{ data: GmailApi.gmail_v1.Schema$Profile }>>()
+      .mockResolvedValue({ data: { emailAddress: "test@example.com" } });
+    Object.defineProperty(client.users, "getProfile", {
+      value: getProfile,
+      configurable: true,
+    });
+    googleClients({ gmail: client });
+
+    await ensureGmailConnection(ctx);
+
+    expect(getProfile).toHaveBeenCalledExactlyOnceWith(
+      { userId: "me", fields: "emailAddress" },
+      { signal: ctx.abortSignal }
+    );
+  });
+
+  it("does not report connected when Google rejects Gmail access", async () => {
+    const ctx = toolContext();
+    const client = GmailApi.gmail({ version: "v1" });
+    const error = new GoogleApiError(403);
+    const getProfile = vi.fn<() => Promise<never>>().mockRejectedValue(error);
+    Object.defineProperty(client.users, "getProfile", {
+      value: getProfile,
+      configurable: true,
+    });
+    googleClients({ gmail: client });
+
+    await expect(ensureGmailConnection(ctx)).rejects.toBe(error);
+    expect(ctx.requireAuth).not.toHaveBeenCalled();
+  });
+
   it("hands the Connect token to Google and requests reauthorization on 401", async () => {
     const ctx = toolContext();
     const error = new GoogleApiError(401);

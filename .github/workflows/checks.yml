@@ -62,11 +62,16 @@ jobs:
         run: pnpm eval:contract -- --junit .eve/contract-junit.xml
 
       - name: Upload contract eval artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
           name: contract-eval-artifacts
-          path: .eve/
+          path: |
+            .eve/evals/
+            .eve/contract*.xml
+            evals/contract/mount-harness/.eve/evals/
+            evals/contract/mount-harness/.eve/contract*.xml
+          include-hidden-files: true
           if-no-files-found: ignore
 
   e2e:
@@ -97,9 +102,57 @@ jobs:
         run: pnpm test:e2e
 
       - name: Upload Playwright report
-        if: failure()
-        uses: actions/upload-artifact@v4
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: playwright-report/
+          if-no-files-found: ignore
+
+  build:
+    name: Build
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:9/open_instinct
+      KERNEL_API_KEY: ci-kernel-key
+      BETTER_AUTH_SECRET: ci-auth-secret-synthetic-0123456789
+      BETTER_AUTH_URL: http://127.0.0.1:3000
+      SECRET_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Production build with synthetic configuration
+        run: pnpm build
+
+  real-postgres:
+    name: Real Postgres
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Required isolated Postgres tests and teardown
+        run: node scripts/test-real-postgres.ts
+      - name: Upload real Postgres results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: real-postgres-results
+          path: .eve/ci/real-postgres.xml
+          include-hidden-files: true
           if-no-files-found: ignore

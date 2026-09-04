@@ -50076,7 +50076,7 @@
           "children": [
             {
               "type": "icon",
-              "id": "oXpnJ",
+              "id": "V7b2qb",
               "name": "Logo Icon",
               "width": 20,
               "height": 20,
@@ -50086,7 +50086,7 @@
             },
             {
               "type": "text",
-              "id": "nbOAc",
+              "id": "LO9GH",
               "name": "Logo Text",
               "fill": "$oi-sidebar-foreground",
               "content": "OpenInstinct",
@@ -50760,34 +50760,44 @@
                     },
                     {
                       "type": "frame",
-                      "id": "qz295",
-                      "name": "Accessible live status",
-                      "width": "fill_container",
-                      "gap": 10,
+                      "id": "ieQdJ",
+                      "name": "Jory typing bubble",
+                      "width": 76,
+                      "height": 40,
+                      "fill": "$oi-bubble-assistant",
+                      "cornerRadius": 18,
+                      "gap": 6,
+                      "justifyContent": "center",
                       "alignItems": "center",
                       "children": [
                         {
-                          "type": "icon",
-                          "id": "c0ykHJ",
-                          "name": "Working indicator",
-                          "width": 16,
-                          "height": 16,
-                          "icon": "loader-circle",
-                          "library": "lucide",
-                          "fill": "$oi-muted-foreground"
+                          "type": "frame",
+                          "id": "oBsWp",
+                          "name": "Typing dot 1",
+                          "opacity": 0.45,
+                          "width": 8,
+                          "height": 8,
+                          "fill": "$oi-muted-foreground",
+                          "cornerRadius": 4
                         },
                         {
-                          "type": "text",
-                          "id": "Wvlzb",
-                          "name": "Working label",
+                          "type": "frame",
+                          "id": "BLTvL",
+                          "name": "Typing dot 2",
+                          "width": 8,
+                          "height": 8,
                           "fill": "$oi-muted-foreground",
-                          "textGrowth": "fixed-width",
-                          "width": "fill_container",
-                          "content": "Jory is working…",
-                          "lineHeight": 1.5,
-                          "fontFamily": "$font-oi",
-                          "fontSize": 14,
-                          "fontWeight": "normal"
+                          "cornerRadius": 4
+                        },
+                        {
+                          "type": "frame",
+                          "id": "yvIcM",
+                          "name": "Typing dot 3",
+                          "opacity": 0.45,
+                          "width": 8,
+                          "height": 8,
+                          "fill": "$oi-muted-foreground",
+                          "cornerRadius": 4
                         }
                       ]
                     },
@@ -50948,13 +50958,13 @@
                       "type": "text",
                       "id": "H2wFqd",
                       "name": "Question author",
-                      "fill": "$oi-foreground",
+                      "fill": "$oi-muted-foreground",
                       "textGrowth": "fixed-width",
                       "width": "fill_container",
                       "content": "Jory",
                       "lineHeight": 1.5,
                       "fontFamily": "$font-oi",
-                      "fontSize": 14,
+                      "fontSize": 12,
                       "fontWeight": "600"
                     },
                     {
@@ -51179,27 +51189,42 @@
                       "type": "text",
                       "id": "eUUVH",
                       "name": "Result author",
-                      "fill": "$oi-foreground",
+                      "fill": "$oi-muted-foreground",
                       "textGrowth": "fixed-width",
                       "width": "fill_container",
                       "content": "Jory",
                       "lineHeight": 1.5,
                       "fontFamily": "$font-oi",
-                      "fontSize": 14,
+                      "fontSize": 12,
                       "fontWeight": "600"
                     },
                     {
-                      "type": "text",
-                      "id": "B0NuD",
-                      "name": "Result response",
-                      "fill": "$oi-foreground",
-                      "textGrowth": "fixed-width",
+                      "type": "frame",
+                      "id": "J0Ut7",
+                      "name": "Jory response bubble",
                       "width": "fill_container",
-                      "content": "Let’s keep it simple.\n\nStart with dinner near the waterfront, then leave time for a walk.\n\nTell me your neighborhood and budget, and I’ll find a few options.",
-                      "lineHeight": 1.5,
-                      "fontFamily": "$font-oi",
-                      "fontSize": 14,
-                      "fontWeight": "normal"
+                      "fill": "$oi-bubble-assistant",
+                      "cornerRadius": 18,
+                      "layout": "vertical",
+                      "padding": [
+                        12,
+                        16
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "SSJwA",
+                          "name": "Result response",
+                          "fill": "$oi-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Let’s keep it simple.\n\nStart with dinner near the waterfront, then leave time for a walk.\n\nTell me your neighborhood and budget, and I’ll find a few options.",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$font-oi",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
                     },
                     {
                       "type": "frame",
@@ -51292,7 +51317,7 @@
           "fill": "$oi-muted-foreground",
           "textGrowth": "fixed-width",
           "width": "fill_container",
-          "content": "Only real runtime activity drives progress. Show generic working text during a turn and browser activity while a delegated browser task is pending. Stop and send retain their current runtime behavior. A starter fills the draft for editing; it never sends automatically. Errors offer a retry without exposing internal traces. Example conversation text is illustrative.",
+          "content": "Jory replies use soft-tinted content-sized bubbles. Three dots show real runtime activity, with 1.4s motion and 160ms staggering; reduced motion leaves static dots. Screen readers receive a polite working status. Completion, cancellation and errors remove the indicator. Stop and send preserve existing behavior. Starters fill an editable draft, never auto-send. Question/result examples remain illustrative.",
           "lineHeight": 1.5,
           "fontFamily": "$font-oi",
           "fontSize": 14,
