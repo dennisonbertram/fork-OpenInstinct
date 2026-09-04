@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { rm } from "node:fs/promises";
 import type { MessageStreamEvent } from "eve/client";
-import type { EveEvalResult } from "eve/evals";
+import type { EveEvalResult, EveEvalRunSummary } from "eve/evals";
 import {
   beginManifestAttempt,
   createEvalRunManifest,
@@ -10,6 +10,7 @@ import {
   manifestCostStatus,
   readEvalRunManifest,
   recordManifestCase,
+  recordManifestRun,
 } from "@/evals/run-manifest";
 
 describe("eval run manifest", () => {
@@ -157,9 +158,89 @@ describe("eval run manifest", () => {
       await rm(path, { force: true });
     }
   });
+
+  it("counts scored verdicts for every retained case across attempts", async () => {
+    const path = await createEvalRunManifest({
+      caseDirectory: "evals/agent",
+      effectiveArguments: ["--tag", "smoke"],
+      estimatedCostUsd: 0.25,
+      fixtureClock: null,
+      judgeModel: "openai/gpt-5.4-mini",
+      maxConcurrency: 1,
+      maxCostUsd: 1,
+      mode: "agent",
+      reasoning: "low",
+      repetitions: 2,
+      repositoryRoot: process.cwd(),
+      requestedModel: null,
+      timeoutMs: 180_000,
+    });
+    try {
+      const firstAttempt = await beginManifestAttempt(path);
+      const firstResults = [
+        ...Array.from({ length: 12 }, (_, index) =>
+          completedResult(`agent/smoke/${String(index).padStart(4, "0")}`)
+        ),
+        completedResult("agent/smoke/0012", "scored"),
+      ];
+      await recordManifestRun(
+        path,
+        firstAttempt,
+        completedSummary(firstResults, { passed: 12, scored: 1 })
+      );
+
+      const secondAttempt = await beginManifestAttempt(path);
+      const secondResults = [
+        completedResult("agent/next/0000"),
+        completedResult("agent/next/0001", "scored"),
+      ];
+      await recordManifestRun(
+        path,
+        secondAttempt,
+        completedSummary(secondResults, { passed: 1, scored: 1 })
+      );
+
+      const manifest = await readEvalRunManifest(path);
+      expect(manifest.attempts[0]?.cases).toHaveLength(13);
+      expect(manifest.aggregate.cases).toEqual({
+        errored: 0,
+        failed: 0,
+        incomplete: 0,
+        passed: 13,
+        scored: 2,
+        skipped: 0,
+      });
+    } finally {
+      await rm(path, { force: true });
+    }
+  });
 });
 
-function completedResult(id: string): EveEvalResult {
+function completedSummary(
+  results: readonly EveEvalResult[],
+  counts: { readonly passed: number; readonly scored: number }
+): EveEvalRunSummary {
+  return {
+    completedAt: "2026-09-04T10:00:02.000Z",
+    errored: 0,
+    failed: 0,
+    passed: counts.passed,
+    results,
+    scored: counts.scored,
+    skipped: 0,
+    startedAt: "2026-09-04T10:00:00.000Z",
+    target: {
+      capabilities: { devRoutes: true },
+      kind: "local",
+      url: "http://127.0.0.1:3000",
+    },
+  };
+}
+
+function completedResult(
+  id: string,
+  verdict: EveEvalResult["verdict"] = "passed"
+): EveEvalResult {
   return {
     assertions: [],
     completedAt: "2026-09-04T10:00:01.000Z",
@@ -182,7 +263,7 @@ function completedResult(id: string): EveEvalResult {
       traceContexts: [],
     },
     startedAt: "2026-09-04T10:00:00.000Z",
-    verdict: "passed",
+    verdict,
   };
 }
 

@@ -20,6 +20,7 @@ const summarySchema = z.object({
   errored: z.number().int().nonnegative(),
   failed: z.number().int().nonnegative(),
   passed: z.number().int().nonnegative(),
+  scored: z.number().int().nonnegative(),
   skipped: z.number().int().nonnegative(),
 });
 const manifestCaseSchema = z.object({
@@ -278,6 +279,7 @@ export async function recordManifestRun(
             errored: summary.errored,
             failed: summary.failed,
             passed: summary.passed,
+            scored: summary.scored,
             skipped: summary.skipped,
           },
           terminal:
@@ -541,6 +543,7 @@ function aggregateFor(attempts: readonly ManifestAttempt[]) {
       failed: summaries.reduce((total, item) => total + item.failed, 0),
       incomplete: attempts.filter((attempt) => attempt.summary === null).length,
       passed: summaries.reduce((total, item) => total + item.passed, 0),
+      scored: summaries.reduce((total, item) => total + item.scored, 0),
       skipped: summaries.reduce((total, item) => total + item.skipped, 0),
     },
     cost: {

@@ -322,7 +322,7 @@ attempt.cases = [{
   timing: { finalDeliveryMs: null, firstDeliveredBubbleMs: null, status: "not-observable-from-eve-events", totalEvalMs: 1000 },
   verdict: count === 1 ? "failed" : "passed",
 }];
-attempt.summary = count === 1 ? { errored: 0, failed: 1, passed: 0, skipped: 0 } : { errored: 0, failed: 0, passed: 1, skipped: 0 };
+attempt.summary = count === 1 ? { errored: 0, failed: 1, passed: 0, scored: 0, skipped: 0 } : { errored: 0, failed: 0, passed: 1, scored: 0, skipped: 0 };
 fs.writeFileSync(path, JSON.stringify(manifest));
 if (process.env.EVAL_TEST_MANIFEST_OUTPUT) fs.copyFileSync(path, process.env.EVAL_TEST_MANIFEST_OUTPUT);
 `
