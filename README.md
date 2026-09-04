@@ -170,7 +170,7 @@ Gotchas:
 
 The **Deploy with Vercel** flow above is the simplest way to run OpenInstinct. It
 provisions the required services and credentials automatically. Local
-development is a manual path and requires:
+development requires:
 
 - Node.js 24 and pnpm 11.24.0
 - Docker Desktop or another running Docker Compose installation
@@ -178,44 +178,53 @@ development is a manual path and requires:
   Vercel Marketplace resource
 - AI Gateway access from an API key or a linked Vercel project's OIDC token
 
-First clone and install the application:
+Clone the fork and start the complete local design stack with one command:
 
 ```bash
-git clone https://github.com/Merit-Systems/OpenInstinct.git
-cd OpenInstinct
-pnpm install --frozen-lockfile
+git clone https://github.com/dennisonbertram/fork-OpenInstinct.git
+cd fork-OpenInstinct
+./init.sh
 ```
 
-For fully manual setup, copy the environment template and add your Kernel and AI
-Gateway keys:
+You must be authorized for the fork's `open-instinct` Vercel project. If the
+first run reports that authentication is missing, sign in and rerun it:
 
 ```bash
-cp .env.example .env.local
-
-# Set KERNEL_API_KEY and AI_GATEWAY_API_KEY in .env.local.
+pnpm exec vercel login
+./init.sh
 ```
 
-If you already use a Vercel project, link it to pull AI Gateway access. If that
-project does not have Kernel yet, the Marketplace CLI provisions the free
-Developer plan, connects it to the project, and pulls its environment variables:
+Signing in grants access; it does not require manual project configuration.
+
+`./init.sh` checks the toolchain, installs the locked dependencies, and pulls
+the development environment through Eve only when a fresh or untouched env
+needs credentials. It then starts or reuses Agentation at
+`http://localhost:4747` and starts PostgreSQL, migrations, Next.js, and Eve at
+`http://localhost:3000`. Press `Ctrl-C` to stop the services that the script
+started.
+
+The canonical project and team are built in. An authorized alternate project
+can be selected without editing the script:
 
 ```bash
-pnpm exec eve link --project <your-vercel-project> --non-interactive
-pnpm exec vercel integration add kernel --plan FREE
+OPENINSTINCT_VERCEL_PROJECT=<project> \
+OPENINSTINCT_VERCEL_TEAM=<team> \
+./init.sh
 ```
 
-Then start OpenInstinct:
+Useful setup modes are:
 
 ```bash
-pnpm dev
+./init.sh --check       # prerequisites only; no files or services change
+./init.sh --setup-only  # install and prepare credentials without starting
+./init.sh --skip-install
 ```
 
-For visual design feedback, start the local Agentation server in a second
-terminal:
-
-```bash
-pnpm dev:agentation
-```
+If you do not have access to the canonical project, copy `.env.example` to
+`.env.local` and set `KERNEL_API_KEY` plus either `AI_GATEWAY_API_KEY` or
+`VERCEL_OIDC_TOKEN`. The script never prints credential values and keeps the
+file at mode `0600`. It also refuses to replace a customized, incomplete
+`.env.local`; complete it manually or move it aside before retrying.
 
 The Agentation toolbar is lazy-loaded only in development and connects to the
 local server at `http://localhost:4747`. It is not rendered in production.
@@ -224,9 +233,11 @@ local server at `http://localhost:4747`. It is not rendered in production.
 migrations, and starts the application. Stopping the development process also
 stops and removes the PostgreSQL container; its data remains in the
 `postgres-data` volume for the next run. Run `pnpm dev:app` when intentionally
-using an externally managed database instead. If `KERNEL_API_KEY` is missing,
-`pnpm dev` stops before starting Docker and points back to the recommended
-Vercel flow or the manual `.env.local` setup.
+using an externally managed database instead. `./init.sh` stops before starting
+Docker when Kernel or inference credentials are unavailable and points back to
+the Vercel login or manual `.env.local` path. `pnpm dev` remains the app-only
+stack entry point for contributors who intentionally manage Agentation
+separately.
 
 Local development otherwise uses the same vault, Kernel browser, and AI Gateway
 path as the Vercel deployment. Better Auth and vault encryption use stable

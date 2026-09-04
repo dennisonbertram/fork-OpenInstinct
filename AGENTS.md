@@ -54,6 +54,25 @@ A setup may report `eve link` as a prerequisite; run it, then retry the continua
 
 Run the validation the task requests. When it does not establish the behavior you changed, run the narrowest relevant check.
 
+## Keep local startup reproducible
+
+`./init.sh` is the canonical zero-configuration entry point for the complete
+local development stack: credentials, Agentation, Compose Postgres, migrations,
+Next.js, and Eve. When a change affects a prerequisite, environment variable,
+credential source, port, health route, package script, startup order, signal,
+or teardown behavior, update all owning surfaces in the same pull request:
+
+- `init.sh` and `tests/unit/init-script.test.ts`;
+- the README local-development quickstart;
+- the command matrix in `docs/AGENT_GUIDE.md`;
+- the local runbook and acceptance path in `docs/operations/VERCEL.md`.
+
+Run the focused init-script tests, `./init.sh --check`, `pnpm check`, and
+`pnpm build`. For a startup or UI change, also run `./init.sh` and verify the
+real browser path, one inference turn, Agentation health and annotations, server
+logs, and clean `Ctrl-C` teardown. Do not introduce an undocumented second
+manual startup path or print credentials while diagnosing bootstrap.
+
 At the end of every completed task, give the user a concise, plain-English
 summary of what you did.
 

@@ -66,7 +66,7 @@ session ownership before using Kernel or the vault.
   scoped. The artifact route also validates UUIDs and emits restrictive headers.
 - Postgres is pooled at request time; migration commands use the direct
   `DATABASE_URL_UNPOOLED` connection. Local development owns a Docker Compose
-  Postgres lifecycle through `scripts/dev.mjs`.
+  Postgres lifecycle through `scripts/dev.ts`.
 - Local Eve workflow state is process/disk dependent. Vercel production uses
   Vercel workflow infrastructure; task-history code currently assumes the
   Vercel world directly.
