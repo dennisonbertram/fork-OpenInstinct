@@ -44,15 +44,19 @@ const fixtureSchema = z.object({
     })
   ),
   location: z.object({ currency: z.string(), id: z.string() }),
-  orders: z.array(
-    z.object({
-      customerId: z.string(),
-      id: z.string(),
-      itemIndexes: z.tuple([z.number(), z.number()]),
-      quantity: z.number(),
-      state: z.enum(["COMPLETED", "OPEN"]),
-    })
-  ),
+  orders: z
+    .array(
+      z.object({
+        customerId: z.string(),
+        id: z.string(),
+        itemIndexes: z.tuple([z.number(), z.number()]),
+        quantity: z.number(),
+        seed: z.boolean().optional(),
+        state: z.enum(["COMPLETED", "OPEN", "CANCELED"]),
+      })
+    )
+    // Fixture-only boundary rows must never widen the manual sandbox seed.
+    .transform((orders) => orders.filter((order) => order.seed !== false)),
 });
 
 const fixture = fixtureSchema.parse(fixtureJson);

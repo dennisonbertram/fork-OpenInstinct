@@ -1,6 +1,6 @@
 # Square eval gym
 
-Twelve scored cases grade the agent's Square replies against a deterministic
+Thirteen scored cases grade the agent's Square replies against a deterministic
 fake Square server, backed by `evals/square/fake/fixture.json`: correctness
 (facts derived from the fixture, never hand-typed), tool discipline (no write
 tool called), cost, and iMessage bubble shape.
@@ -25,9 +25,26 @@ operations (for example `SearchCustomers` or `ListCustomers`), the case
 declares a group -- `[["square__SearchCustomers", "square__ListCustomers"]]`
 -- and passes if any tool in the group was called.
 
-The suite passes 12 of 12 with the Square skill (`agent/skills/square.md`).
-See [`docs/SQUARE.md`](../../docs/SQUARE.md) for the red baseline runs, the
-defects they exposed, and the green run.
+The prior 12-case suite passed with the Square skill (`agent/skills/square.md`).
+See [`docs/SQUARE.md`](../../docs/SQUARE.md) for its red baseline runs, the
+defects they exposed, and the green run; the added time/location cases still
+need their separately authorized paid evaluation.
+
+## Fixture boundaries
+
+The fake is deliberately narrow, not a Square emulator. Its fixture pins an
+`asOf` clock of `2026-11-01T17:00:00Z` and `America/New_York` business
+timezone; date-sensitive case prompts repeat those values so results do not
+depend on the machine clock. It has two locations, completed/open/canceled
+orders, one completed refund, and boundary orders for both 2026 New York DST
+transitions.
+
+For the selected `SearchOrders` paths it supports `location_ids`,
+`state_filter.states`, `date_time_filter.created_at`, and cursor pagination
+when a `limit` is supplied. The time range is start-inclusive and end-exclusive.
+`ListPaymentRefunds` supports `location_id`, `begin_time`, and `end_time` for
+the selected refund case. Unsupported Square filters and endpoints are not
+evidence of provider fidelity.
 
 ## Tier B: seeding the real sandbox
 
@@ -42,3 +59,7 @@ data shape. Orders and payments cannot be deleted through the Square API, so
 they accumulate across runs; the script prints the created ids and the seed
 timestamp. See `docs/SQUARE.md` for the operator step (creating the `eval`
 sandbox test account).
+
+The seed path remains single-location and is not a live reproduction of the
+date/location/refund fixture; live Square seeding is outside this fake-only
+coverage slice.

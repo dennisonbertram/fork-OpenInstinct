@@ -31,20 +31,27 @@ const fixtureItemSchema = z.object({
 const fixtureOrderSchema = z.object({
   id: z.string(),
   customerId: z.string(),
-  state: z.enum(["COMPLETED", "OPEN"]),
+  locationId: z.string(),
+  state: z.enum(["COMPLETED", "OPEN", "CANCELED"]),
   quantity: z.number(),
   itemIndexes: z.tuple([z.number(), z.number()]),
   createdAt: z.string(),
 });
 
+const fixtureLocationSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  currency: z.string(),
+  status: z.string(),
+  timezone: z.string(),
+  created_at: z.string(),
+});
+
 const fixtureSchema = z.object({
-  location: z.object({
-    id: z.string(),
-    name: z.string(),
-    currency: z.string(),
-    status: z.string(),
-    created_at: z.string(),
-  }),
+  // `location` remains the legacy/default location used by the sandbox seeder.
+  location: fixtureLocationSchema,
+  locations: z.array(fixtureLocationSchema).min(2),
+  clock: z.object({ asOf: z.iso.datetime(), timezone: z.string() }),
   categories: z.array(z.object({ id: z.string(), name: z.string() })),
   items: z.array(fixtureItemSchema),
   customers: z.array(
@@ -59,6 +66,15 @@ const fixtureSchema = z.object({
   orders: z.array(fixtureOrderSchema),
   payments: z.array(
     z.object({ id: z.string(), orderId: z.string(), createdAt: z.string() })
+  ),
+  refunds: z.array(
+    z.object({
+      id: z.string(),
+      paymentId: z.string(),
+      orderId: z.string(),
+      amountCents: z.number().int().positive(),
+      createdAt: z.string(),
+    })
   ),
   invoices: z.array(
     z.object({
@@ -80,6 +96,7 @@ export type FixtureOrder = z.infer<typeof fixtureOrderSchema>;
 type FixtureCustomer = Fixture["customers"][number];
 type FixturePayment = Fixture["payments"][number];
 type FixtureInvoice = Fixture["invoices"][number];
+type FixtureRefund = Fixture["refunds"][number];
 
 const searchCustomersBodySchema = z.object({
   query: z
@@ -99,6 +116,8 @@ const searchCustomersBodySchema = z.object({
 });
 
 const searchOrdersBodySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.number().int().min(1).max(500).optional(),
   location_ids: z.array(z.string()).optional(),
   query: z
     .object({
@@ -109,6 +128,16 @@ const searchOrdersBodySchema = z.object({
             .optional(),
           state_filter: z
             .object({ states: z.array(z.string()).optional() })
+            .optional(),
+          date_time_filter: z
+            .object({
+              created_at: z
+                .object({
+                  start_at: z.iso.datetime().optional(),
+                  end_at: z.iso.datetime().optional(),
+                })
+                .optional(),
+            })
             .optional(),
         })
         .optional(),
@@ -147,6 +176,12 @@ export function itemAt(fixture: Fixture, index: number): FixtureItem {
   return item;
 }
 
+function locationFor(fixture: Fixture, id: string) {
+  const location = fixture.locations.find((candidate) => candidate.id === id);
+  if (!location) throw new Error(`Fixture location ${id} not found.`);
+  return location;
+}
+
 function orderForPayment(
   fixture: Fixture,
   payment: FixturePayment
@@ -175,6 +210,21 @@ function orderForInvoice(
     );
   }
   return order;
+}
+
+function paymentForRefund(
+  fixture: Fixture,
+  refund: FixtureRefund
+): FixturePayment {
+  const payment = fixture.payments.find(
+    (candidate) => candidate.id === refund.paymentId
+  );
+  if (!payment) {
+    throw new Error(
+      `Fixture payment ${refund.paymentId} not found for refund ${refund.id}.`
+    );
+  }
+  return payment;
 }
 
 function catalogItemObject(fixture: Fixture, item: FixtureItem) {
@@ -228,16 +278,17 @@ export function orderTotal(fixture: Fixture, order: FixtureOrder) {
 }
 
 function orderObject(fixture: Fixture, order: FixtureOrder) {
+  const location = locationFor(fixture, order.locationId);
   const lineItems = order.itemIndexes.map((index) =>
     orderLineItem(fixture, itemAt(fixture, index), order.quantity)
   );
   return {
     id: order.id,
-    location_id: fixture.location.id,
+    location_id: order.locationId,
     customer_id: order.customerId,
     state: order.state,
     line_items: lineItems,
-    total_money: money(orderTotal(fixture, order), fixture.location.currency),
+    total_money: money(orderTotal(fixture, order), location.currency),
     created_at: order.createdAt,
     updated_at: order.createdAt,
   };
@@ -245,17 +296,33 @@ function orderObject(fixture: Fixture, order: FixtureOrder) {
 
 function paymentObject(fixture: Fixture, payment: FixturePayment) {
   const order = orderForPayment(fixture, payment);
+  const location = locationFor(fixture, order.locationId);
   return {
     id: payment.id,
     created_at: payment.createdAt,
     updated_at: payment.createdAt,
     order_id: order.id,
     customer_id: order.customerId,
-    location_id: fixture.location.id,
+    location_id: order.locationId,
     status: "COMPLETED",
     source_type: "CARD",
-    total_money: money(orderTotal(fixture, order), fixture.location.currency),
-    amount_money: money(orderTotal(fixture, order), fixture.location.currency),
+    total_money: money(orderTotal(fixture, order), location.currency),
+    amount_money: money(orderTotal(fixture, order), location.currency),
+  };
+}
+
+function refundObject(fixture: Fixture, refund: FixtureRefund) {
+  const payment = paymentForRefund(fixture, refund);
+  const order = orderForPayment(fixture, payment);
+  const location = locationFor(fixture, order.locationId);
+  return {
+    id: refund.id,
+    payment_id: refund.paymentId,
+    order_id: refund.orderId,
+    location_id: order.locationId,
+    status: "COMPLETED",
+    amount_money: money(refund.amountCents, location.currency),
+    created_at: refund.createdAt,
   };
 }
 
@@ -313,7 +380,7 @@ async function readJsonBody<T>(
 }
 
 function handleLocations(fixture: Fixture, res: ServerResponse) {
-  sendJson(res, 200, { locations: [fixture.location] });
+  sendJson(res, 200, { locations: fixture.locations });
 }
 
 function handleListCustomers(fixture: Fixture, url: URL, res: ServerResponse) {
@@ -425,15 +492,36 @@ function handleSearchOrders(
 ) {
   const customerIds = body.query?.filter?.customer_filter?.customer_ids;
   const states = body.query?.filter?.state_filter?.states;
+  const createdAt = body.query?.filter?.date_time_filter?.created_at;
   let matches = fixture.orders;
+  if (body.location_ids && body.location_ids.length > 0) {
+    matches = matches.filter((o) => body.location_ids?.includes(o.locationId));
+  }
   if (customerIds && customerIds.length > 0) {
     matches = matches.filter((o) => customerIds.includes(o.customerId));
   }
   if (states && states.length > 0) {
     matches = matches.filter((o) => states.includes(o.state));
   }
-  const orders = matches.map((o) => orderObject(fixture, o));
-  sendJson(res, 200, { orders });
+  if (createdAt?.start_at) {
+    const startAt = createdAt.start_at;
+    matches = matches.filter((o) => o.createdAt >= startAt);
+  }
+  if (createdAt?.end_at) {
+    // Square time ranges are start-inclusive/end-exclusive, so adjacent local
+    // days do not double-count the midnight order.
+    const endAt = createdAt.end_at;
+    matches = matches.filter((o) => o.createdAt < endAt);
+  }
+  const start = body.cursor ? Number(body.cursor) : 0;
+  const page = body.limit ? matches.slice(start, start + body.limit) : matches;
+  const result = { orders: page.map((o) => orderObject(fixture, o)) };
+  const nextStart = start + page.length;
+  if (body.limit && nextStart < matches.length) {
+    sendJson(res, 200, { ...result, cursor: String(nextStart) });
+    return;
+  }
+  sendJson(res, 200, result);
 }
 
 function handleListPayments(fixture: Fixture, url: URL, res: ServerResponse) {
@@ -445,8 +533,24 @@ function handleListPayments(fixture: Fixture, url: URL, res: ServerResponse) {
   sendJson(res, 200, { payments });
 }
 
-function handleListRefunds(res: ServerResponse) {
-  sendJson(res, 200, { refunds: [] });
+function handleListRefunds(fixture: Fixture, url: URL, res: ServerResponse) {
+  const locationId = url.searchParams.get("location_id");
+  const beginTime = url.searchParams.get("begin_time");
+  const endTime = url.searchParams.get("end_time");
+  const refunds = fixture.refunds.filter((refund) => {
+    const order = fixture.orders.find(
+      (candidate) => candidate.id === refund.orderId
+    );
+    if (!order) return false;
+    return (
+      (!locationId || order.locationId === locationId) &&
+      (!beginTime || refund.createdAt >= beginTime) &&
+      (!endTime || refund.createdAt < endTime)
+    );
+  });
+  sendJson(res, 200, {
+    refunds: refunds.map((refund) => refundObject(fixture, refund)),
+  });
 }
 
 function handleListInvoices(fixture: Fixture, url: URL, res: ServerResponse) {
@@ -568,7 +672,7 @@ async function route(
     return;
   }
   if (method === "GET" && path === "/v2/refunds") {
-    handleListRefunds(res);
+    handleListRefunds(fixture, url, res);
     return;
   }
   if (method === "GET" && path === "/v2/invoices") {
