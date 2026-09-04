@@ -96,6 +96,14 @@ The selected model is written only to the isolated Compose workspace through
 the existing settings service. Review the manifest's observed IDs after the
 run; a requested model name alone is not proof of provider selection.
 
+For a one-off hosted reproduction, manually dispatch `square-evals.yml` with
+the `agent-smoke` target. It executes exactly the selected-model command above
+with one 1 USD estimated reservation and one repetition; the `square` target
+remains the default and is mutually exclusive, so a dispatch cannot launch
+both paid commands. The workflow artifact is named `paid-eval-<target>` and
+retains `.eve/evals/` plus `.eve/eval-runs/`; the estimate ceiling is not a
+provider billing cap.
+
 Run the browser benchmark separately because it uses Kernel, real websites,
 and a longer completion loop:
 
