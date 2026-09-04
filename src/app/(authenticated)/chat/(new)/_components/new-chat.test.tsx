@@ -11,6 +11,8 @@ interface MockAgent {
 }
 
 interface Mocks {
+  setInput: Mock<(value: string) => void>;
+  starterClicks: (() => void)[];
   agent: MockAgent;
   options: AgentOptions | undefined;
   promptSubmit:
@@ -23,6 +25,8 @@ interface Mocks {
 }
 
 const mocks = vi.hoisted<Mocks>(() => ({
+  setInput: vi.fn<(value: string) => void>(),
+  starterClicks: [],
   agent: {
     send: vi.fn<() => Promise<void>>(),
   },
@@ -53,6 +57,12 @@ vi.mock("@/trpc/client", () => ({
 }));
 
 vi.mock("@/components/ai-elements/prompt-input", () => ({
+  PromptInputProvider: ({ children }: { children: ReactNode }) => children,
+  usePromptInputController: () => ({ textInput: { setInput: mocks.setInput } }),
+  usePromptInputAttachments: () => ({
+    files: [],
+    openFileDialog: vi.fn<() => void>(),
+  }),
   PromptInput: ({
     children,
     onSubmit,
@@ -64,21 +74,52 @@ vi.mock("@/components/ai-elements/prompt-input", () => ({
     return <form>{children}</form>;
   },
   PromptInputBody: ({ children }: { children: ReactNode }) => children,
+  PromptInputButton: ({ children }: { children: ReactNode }) => (
+    <button type="button">{children}</button>
+  ),
   PromptInputFooter: ({ children }: { children: ReactNode }) => children,
   PromptInputSubmit: () => <button type="submit">Send</button>,
   PromptInputTextarea: () => <textarea />,
   PromptInputTools: () => null,
 }));
 
+vi.mock("@/components/ui/button", () => ({
+  Button: ({
+    children,
+    onClick,
+  }: {
+    children: ReactNode;
+    onClick: () => void;
+  }) => {
+    mocks.starterClicks.push(onClick);
+    return <button type="button">{children}</button>;
+  },
+}));
+
 import { NewChat } from "./new-chat";
 
 describe("new chat", () => {
   beforeEach(() => {
+    mocks.setInput.mockReset();
+    mocks.starterClicks = [];
     mocks.agent.send.mockReset().mockResolvedValue(undefined);
     mocks.options = undefined;
     mocks.promptSubmit = undefined;
     mocks.saveChat.mockReset().mockResolvedValue(undefined);
     mocks.routerReplace.mockReset();
+  });
+
+  it("puts starter prompts in the editable draft without sending a message", () => {
+    renderToStaticMarkup(<NewChat />);
+    expect(mocks.starterClicks).toHaveLength(3);
+    for (const click of mocks.starterClicks) click();
+    expect(mocks.setInput.mock.calls.map(([value]) => value)).toEqual([
+      "Help me research a topic and compare the best options.",
+      "Help me plan my day and decide what to tackle first.",
+      "Help me turn an idea into a clear, actionable plan.",
+    ]);
+    expect(mocks.agent.send).not.toHaveBeenCalled();
+    expect(mocks.saveChat).not.toHaveBeenCalled();
   });
 
   it("navigates the first prompt into its session route once", async () => {
