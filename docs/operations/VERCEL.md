@@ -19,6 +19,25 @@ premium channel. That resolver, agent, API, and webhook design is proposed in
 [`../PRODUCT_DIRECTION.md`](../PRODUCT_DIRECTION.md); it is not implemented by
 this runbook.
 
+## Deterministic pull-request evidence
+
+The `Checks` workflow has stable jobs `Checks`, `Build`, `Real Postgres`,
+`Contract evals`, and `E2E`. It uses synthetic configuration and no paid model
+credentials. Run `node scripts/test-real-postgres.ts` to reproduce the required
+database lane: it creates a random owned Compose project, forces `REAL_PG=1`
+with that project, runs the existing real-Postgres concurrency suite, writes
+`.eve/ci/real-postgres.xml`, and removes its containers and volumes on exit.
+It never adopts the local development project's database. It is a test runner,
+not a second app startup procedure; `./init.sh` remains the app entry point.
+
+Inspect the run's exact commit SHA and each job result, not only the overall
+summary. Test failure, unavailable Docker/Postgres, cancellation, and teardown
+failure must not pass. Always-run uploads retain available real-Postgres JUnit,
+root and nested mount contract results, and the Playwright report. A killed
+runner or cancellation before report creation may have only job logs; missing
+evidence does not establish success. GitHub branch-rule enforcement and paid
+Square evidence remain separate gates, as does live provider acceptance.
+
 ## Verified reference deployment
 
 The following non-secret state was rechecked on 2026-08-29. Treat it as a

@@ -133,8 +133,14 @@ target can exercise the real Linq delivery adapter; observing a generic
 ## Pull-request gate
 
 `.github/workflows/checks.yml` runs `pnpm eval:contract` after the ordinary
-checks job and uploads `.eve/evals` on failure. Contract evals use no judge and
-no provider credential. A sync PR cannot merge while this job is red.
+checks job. Its always-run artifact step collects `.eve/evals/`, root contract
+JUnit files, and the corresponding files under
+`evals/contract/mount-harness/.eve/`, including hidden directories. This retains
+available evidence on success, failure, and cancellation; cancellation before
+report creation cannot produce a report. No model/provider credentials are
+supplied. A sync PR cannot merge while this job is red. The same workflow also
+runs the separate `Build`, `Real Postgres`, and `E2E` checks. Adding journeys to
+the existing contract or mount suites automatically includes them in this lane.
 
 During implementation, temporarily restoring upstream's disabling stubs for
 `load_skill` and `connection_search` made the root-boundary unit test fail and
