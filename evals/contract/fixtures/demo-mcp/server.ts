@@ -16,11 +16,21 @@ import { z } from "zod";
 const addressSchema = z.object({ port: z.number().int().positive() });
 
 export type DemoMcpFault =
+  | "auth-accepts-invalid-token"
+  | "missing-allowed-tool"
   | "missing-description"
+  | "mismatched-description"
   | "invalid-input-schema"
+  | "invalid-input-success"
   | "missing-annotations"
+  | "mismatched-annotations"
   | "malformed-output"
-  | "oversized-output";
+  | "reordered-output"
+  | "oversized-structured-output"
+  | "oversized-output"
+  | "unsupported-image"
+  | "malformed-tool-error"
+  | "http-500";
 
 export async function startDemoMcp({
   token,
@@ -62,7 +72,10 @@ async function handleRequest(
     return;
   }
 
-  if (!matchesBearerToken(request.headers.authorization, token)) {
+  if (
+    !matchesBearerToken(request.headers.authorization, token) &&
+    fault !== "auth-accepts-invalid-token"
+  ) {
     response
       .writeHead(401, { "www-authenticate": 'Bearer realm="contract-mcp"' })
       .end();
@@ -80,51 +93,85 @@ async function handleRequest(
       description:
         fault === "missing-description"
           ? undefined
-          : "Echo text through the mounted MCP connection.",
+          : fault === "mismatched-description"
+            ? "A different description than the declared contract."
+            : "Echo text through the mounted MCP connection.",
       inputSchema: echoInputSchema,
-      outputSchema: { text: z.string() },
+      outputSchema: { text: z.string(), marker: z.string() },
       annotations:
         fault === "missing-annotations"
           ? undefined
-          : {
-              destructiveHint: false,
-              idempotentHint: true,
-              openWorldHint: false,
-              readOnlyHint: true,
-            },
+          : fault === "mismatched-annotations"
+            ? {
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true,
+                readOnlyHint: true,
+              }
+            : {
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+                readOnlyHint: true,
+              },
     },
     async ({ text }: { text: string }) => ({
-      content: [
-        {
-          type: "text",
-          text:
-            fault === "oversized-output" ? `${text}${"x".repeat(8192)}` : text,
-        },
-      ],
-      structuredContent: fault === "malformed-output" ? { text: 42 } : { text },
+      content:
+        fault === "unsupported-image"
+          ? [
+              {
+                type: "image",
+                data: "c3ludGhldGljLWltYWdl",
+                mimeType: "image/png",
+              },
+            ]
+          : [
+              {
+                type: "text",
+                text:
+                  fault === "oversized-output"
+                    ? `${text}${"x".repeat(8192)}`
+                    : text,
+              },
+            ],
+      structuredContent:
+        fault === "malformed-output"
+          ? { text: 42 }
+          : fault === "reordered-output"
+            ? { marker: "synthetic", text }
+            : fault === "oversized-structured-output"
+              ? { marker: "synthetic", text: `${text}${"x".repeat(8192)}` }
+              : { text, marker: "synthetic" },
     })
   );
   if (fault === "invalid-input-schema") echoTool.inputSchema = z.any();
-  server.registerTool(
-    "fail",
-    {
-      description:
-        "Return a structured synthetic tool error for admission tests.",
-      inputSchema: {
-        reason: z.string().describe("Synthetic reason for failure"),
+  if (fault === "invalid-input-success") {
+    echoTool.inputSchema = { text: z.any().describe("Text to echo") };
+  }
+  if (fault !== "missing-allowed-tool")
+    server.registerTool(
+      "fail",
+      {
+        description:
+          "Return a structured synthetic tool error for admission tests.",
+        inputSchema: {
+          reason: z.string().describe("Synthetic reason for failure"),
+        },
+        annotations: {
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+          readOnlyHint: true,
+        },
       },
-      annotations: {
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false,
-        readOnlyHint: true,
-      },
-    },
-    async ({ reason }) => ({
-      content: [{ type: "text", text: `synthetic error: ${reason}` }],
-      isError: true,
-    })
-  );
+      async ({ reason }) =>
+        fault === "malformed-tool-error"
+          ? { content: [] }
+          : {
+              content: [{ type: "text", text: `synthetic error: ${reason}` }],
+              isError: true,
+            }
+    );
 
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
@@ -138,7 +185,18 @@ async function handleRequest(
   response.once("close", () => void cleanup());
   try {
     await server.connect(transport);
-    await transport.handleRequest(request, response, await readJson(request));
+    const message = await readJson(request);
+    if (
+      fault === "http-500" &&
+      "method" in message &&
+      message.method === "tools/call"
+    ) {
+      response.writeHead(500, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "synthetic HTTP 500" }));
+      await cleanup();
+      return;
+    }
+    await transport.handleRequest(request, response, message);
   } catch (error) {
     await cleanup();
     throw error;

@@ -1,5 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { runMcpAdmission, type AdmissionExample } from "./mcp-admission";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  isAcceptedInvalidInputError,
+  runMcpAdmission,
+  type AdmissionExample,
+} from "./mcp-admission";
 import { startDemoMcp, type DemoMcpFault } from "./fixtures/demo-mcp/server";
 
 const token = "contract-mcp-credential";
@@ -8,7 +13,10 @@ const examples: readonly AdmissionExample[] = [
     name: "echo valid",
     tool: "echo",
     input: { text: "synthetic hello" },
-    expectedStructuredContent: { text: "synthetic hello" },
+    expectedStructuredContent: {
+      text: "synthetic hello",
+      marker: "synthetic",
+    },
     invalidInput: { text: 42 },
   },
   {
@@ -80,10 +88,39 @@ describe("MCP admission subset", () => {
 
   it.each([
     ["description", "missing-description", "tools.echo.description"],
+    ["description mismatch", "mismatched-description", "tools.echo.contract"],
     ["input schema", "invalid-input-schema", "schema.echo.input"],
+    [
+      "invalid input success",
+      "invalid-input-success",
+      "schema.echo.input.echo-valid.invalid",
+    ],
     ["annotations", "missing-annotations", "tools.echo.annotations"],
+    ["annotation mismatch", "mismatched-annotations", "tools.echo.contract"],
     ["structured output", "malformed-output", "example.echo-valid"],
     ["output size", "oversized-output", "bounds.echo-valid"],
+    [
+      "structured output size",
+      "oversized-structured-output",
+      "bounds.echo-valid.structured-content",
+    ],
+    [
+      "unsupported content",
+      "unsupported-image",
+      "bounds.echo-valid.content-type",
+    ],
+    [
+      "malformed tool error",
+      "malformed-tool-error",
+      "example.fail-structured-error.error-shape",
+    ],
+    ["HTTP 500", "http-500", "example.echo-valid.invalid-input"],
+    [
+      "accepted invalid credential",
+      "auth-accepts-invalid-token",
+      "auth.invalid-token",
+    ],
+    ["missing allowed tool", "missing-allowed-tool", "tools.list"],
   ] as const)(
     "rejects a server with a malformed %s",
     async (_label, fault, checkName) => {
@@ -95,4 +132,79 @@ describe("MCP admission subset", () => {
       );
     }
   );
+
+  it("compares equivalent structured objects independent of key order", async () => {
+    const result = await run("reordered-output");
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("requires a declared contract for every example tool", async () => {
+    const server = await startDemoMcp({ token });
+    closeServer = server.close;
+    const result = await runMcpAdmission({
+      url: server.url,
+      token,
+      examples,
+      declaredTools: {},
+    });
+
+    expect(result.ok).toBe(false);
+    expect(
+      result.checks.find((check) => check.name === "tools.echo.contract")?.ok
+    ).toBe(false);
+  });
+
+  it("rejects a network failure rather than accepting it as an invalid-input error", async () => {
+    const result = await runMcpAdmission({
+      url: "http://127.0.0.1:9/mcp",
+      token,
+      examples,
+      declaredTools: {},
+    });
+
+    expect(result.ok).toBe(false);
+    expect(
+      result.checks.find((check) => check.name === "protocol.initialize")?.ok
+    ).toBe(false);
+  });
+
+  it("rejects non-loopback targets before making a request", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const result = await runMcpAdmission({
+      url: "http://192.0.2.1/mcp",
+      token,
+      examples,
+      declaredTools: {},
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.checks).toEqual([
+      {
+        name: "target.loopback",
+        ok: false,
+        detail: "admission accepts only local loopback HTTP(S) endpoints",
+      },
+    ]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("accepts only the SDK InvalidParams code for protocol invalid-input errors", () => {
+    expect(
+      isAcceptedInvalidInputError(
+        new McpError(ErrorCode.InvalidParams, "synthetic invalid input")
+      )
+    ).toBe(true);
+    expect(
+      isAcceptedInvalidInputError(
+        new McpError(ErrorCode.InternalError, "synthetic server failure")
+      )
+    ).toBe(false);
+    expect(isAcceptedInvalidInputError(new Error("fetch failed"))).toBe(false);
+    expect(isAcceptedInvalidInputError(new Error("HTTP 500"))).toBe(false);
+    expect(isAcceptedInvalidInputError({ code: ErrorCode.InvalidParams })).toBe(
+      false
+    );
+  });
 });

@@ -158,11 +158,15 @@ pnpm exec vitest run evals/contract/mcp-admission.test.ts
 SDK initialization and the four Jory-supported protocol versions, tool list
 membership, descriptions, input/output JSON Schema compilation, complete
 read/write annotations, declared metadata, structured success output, and
-bounded UTF-8 text output. Invalid inputs and explicitly supplied tool errors
-must produce structured MCP errors. It invokes only the examples supplied by
-the caller; it never fuzzes or automatically calls listed tools. A plugin
-repository can copy this helper and provide synthetic `examples` plus its
-declared tool metadata without importing production core.
+bounded UTF-8 text and structured output. Non-text content is outside this
+subset and fails admission. Invalid inputs and explicitly supplied tool errors
+must produce structured MCP errors; a protocol-level invalid-input error is
+accepted only when the SDK reports `McpError` with `ErrorCode.InvalidParams`.
+The target must be a loopback HTTP(S) URL, redirects are rejected, and the
+helper invokes only the examples supplied by the caller; it never fuzzes or
+automatically calls listed tools. A plugin repository can copy this helper and
+provide synthetic `examples` plus its declared tool metadata without importing
+production core.
 
 The demo fixture includes deliberately malformed description, schema,
 annotation, structured output, and oversized-output modes. Those modes are

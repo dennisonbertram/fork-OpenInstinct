@@ -1,11 +1,14 @@
 /* oxlint-disable eslint/no-await-in-loop, anti-slop/no-runtime-typeof, anti-slop/no-unsafe-dictionary-type, anti-slop/no-unknown-parameters -- This test-only adapter inspects intentionally dynamic MCP wire JSON and serially exercises the one negotiated client session. */
 
+import { isDeepStrictEqual } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
   SUPPORTED_PROTOCOL_VERSIONS,
   type CallToolResult,
   CallToolResultSchema,
+  ErrorCode,
+  McpError,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
@@ -53,7 +56,7 @@ export interface McpAdmissionOptions {
   url: string;
   token: string;
   examples: readonly AdmissionExample[];
-  declaredTools?: Readonly<Record<string, AdmissionToolContract>>;
+  declaredTools: Readonly<Record<string, AdmissionToolContract>>;
   maxOutputBytes?: number;
 }
 
@@ -78,12 +81,23 @@ export async function runMcpAdmission({
     checks.push(entry);
   };
 
+  if (!isLoopbackUrl(url)) {
+    check(
+      "target.loopback",
+      false,
+      "admission accepts only local loopback HTTP(S) endpoints"
+    );
+    return { ok: false, checks };
+  }
+  check("target.loopback", true, "local loopback endpoint");
+
   await checkUnauthorizedRequests(url, token, check);
 
   const client = new Client({ name: "jory-mcp-admission", version: "0.0.0" });
   const transport = new StreamableHTTPClientTransport(new URL(url), {
     requestInit: {
       headers: { Authorization: `Bearer ${token}` },
+      redirect: "error",
     },
   });
 
@@ -127,15 +141,16 @@ export async function runMcpAdmission({
         hasCompleteAnnotations(tool),
         "readOnlyHint, destructiveHint, idempotentHint, and openWorldHint must be booleans"
       );
-      const declared = declaredTools?.[tool.name];
-      if (declared) {
-        check(
-          `tools.${tool.name}.contract`,
+      const declared = declaredTools[tool.name];
+      check(
+        `tools.${tool.name}.contract`,
+        declared !== undefined &&
           tool.description === declared.description &&
-            annotationsEqual(tool, declared.annotations),
-          "listed description or annotations differ from the declared contract"
-        );
-      }
+          annotationsEqual(tool, declared.annotations),
+        declared
+          ? "listed description or annotations differ from the declared contract"
+          : "no declared contract was supplied for this listed tool"
+      );
       checkSchema(
         validator,
         `schema.${tool.name}.input`,
@@ -155,6 +170,7 @@ export async function runMcpAdmission({
           false
         );
       }
+      validateInputExamples(tool, examples, validator, check);
     }
 
     for (const example of examples) {
@@ -238,7 +254,13 @@ export async function runMcpAdmission({
             check
           );
         } catch (error) {
-          check(invalidName, isProtocolError(error), errorMessage(error));
+          check(
+            invalidName,
+            isAcceptedInvalidInputError(error),
+            isAcceptedInvalidInputError(error)
+              ? "JSON-RPC InvalidParams error"
+              : `invalid input failed with an unexpected error: ${errorMessage(error)}`
+          );
         }
       }
     }
@@ -280,7 +302,12 @@ async function checkUnauthorizedRequests(
     try {
       const headers = new Headers({ "content-type": "application/json" });
       if (authorization) headers.set("authorization", authorization);
-      const response = await fetch(url, { method: "POST", headers, body });
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        body,
+        redirect: "error",
+      });
       check(
         name,
         response.status === 401 &&
@@ -296,6 +323,45 @@ async function checkUnauthorizedRequests(
       "auth.credential",
       false,
       "an explicit synthetic credential is required"
+    );
+  }
+}
+
+function validateInputExamples(
+  tool: Tool,
+  examples: readonly AdmissionExample[],
+  validator: AjvJsonSchemaValidator,
+  check: (name: string, ok: boolean, detail?: string) => void
+) {
+  try {
+    const validate = validator.getValidator(tool.inputSchema);
+    for (const example of examples.filter(
+      (candidate) => candidate.tool === tool.name
+    )) {
+      const validResult = validate(example.input);
+      check(
+        `schema.${tool.name}.input.${slug(example.name)}.valid`,
+        validResult.valid,
+        validResult.valid
+          ? "explicit valid example matches inputSchema"
+          : validResult.errorMessage
+      );
+      if (example.invalidInput) {
+        const invalidResult = validate(example.invalidInput);
+        check(
+          `schema.${tool.name}.input.${slug(example.name)}.invalid`,
+          !invalidResult.valid,
+          invalidResult.valid
+            ? "explicit invalid example unexpectedly matches inputSchema"
+            : "explicit invalid example is rejected by inputSchema"
+        );
+      }
+    }
+  } catch (error) {
+    check(
+      `schema.${tool.name}.input.examples`,
+      false,
+      `could not validate explicit examples: ${errorMessage(error)}`
     );
   }
 }
@@ -340,6 +406,14 @@ function checkOutputSize(
   maxOutputBytes: number,
   check: (name: string, ok: boolean, detail?: string) => void
 ) {
+  const unsupportedPart = result.content.find((part) => part.type !== "text");
+  check(
+    `${name}.content-type`,
+    unsupportedPart === undefined,
+    unsupportedPart
+      ? `unsupported ${unsupportedPart.type} content part; this subset admits text only`
+      : "all content parts are text"
+  );
   const textBytes = result.content.reduce((size, part) => {
     if (part.type !== "text") return size;
     return size + Buffer.byteLength(part.text, "utf8");
@@ -348,6 +422,15 @@ function checkOutputSize(
     name,
     textBytes <= maxOutputBytes,
     `text content is ${String(textBytes)} bytes (limit ${String(maxOutputBytes)})`
+  );
+  const structuredBytes = Buffer.byteLength(
+    JSON.stringify(result.structuredContent ?? {}),
+    "utf8"
+  );
+  check(
+    `${name}.structured-content`,
+    structuredBytes <= maxOutputBytes,
+    `structured content is ${String(structuredBytes)} bytes (limit ${String(maxOutputBytes)})`
   );
 }
 
@@ -388,13 +471,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function deepEqual(left: unknown, right: unknown) {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function isProtocolError(error: unknown) {
-  return error instanceof Error && !/\b5\d{2}\b/.test(error.message);
+  return isDeepStrictEqual(left, right);
 }
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+export function isAcceptedInvalidInputError(error: unknown) {
+  // oxlint-disable-next-line typescript/no-unsafe-enum-comparison -- McpError exposes the JSON-RPC code as a number while ErrorCode is the SDK's documented enum.
+  return error instanceof McpError && error.code === ErrorCode.InvalidParams;
+}
+
+function isLoopbackUrl(value: string) {
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.replace(/^\[|\]$/g, "");
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (hostname === "localhost" ||
+        hostname === "127.0.0.1" ||
+        hostname === "::1")
+    );
+  } catch {
+    return false;
+  }
 }
