@@ -47,6 +47,17 @@ describe("root and worker capability boundaries", () => {
         "disableTool()"
       );
     }
+    expect(
+      toolFiles(rootTools).filter((file) =>
+        readFileSync(`${rootTools}/${file}`, "utf8").includes("disableTool()")
+      )
+    ).toEqual([
+      "agent.ts",
+      "bash.ts",
+      "read_file.ts",
+      "todo.ts",
+      "write_file.ts",
+    ]);
     const rootInstructions = readFileSync(
       "agent/instructions/content/role/interactive.md",
       "utf8"

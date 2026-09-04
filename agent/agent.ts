@@ -3,6 +3,8 @@ import { scheduledRunIdentity } from "@/agent/lib/schedules/identity";
 import { isScheduledAgentRunLeaseActive } from "@/db/services/scheduled-agent-run-leases";
 import { getGatewayModel } from "@/db/services/settings";
 import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
+import { contractFixtureModel } from "@/evals/contract/fixture-model";
+import { isContractFixtureEnabled } from "@/env";
 
 export default defineAgent({
   experimental: {
@@ -23,6 +25,12 @@ export default defineAgent({
         }
         const caller = ctx.session.auth.current ?? ctx.session.auth.initiator;
         if (!caller) throw new Error("An authenticated user is required.");
+        if (isContractFixtureEnabled()) {
+          return {
+            model: contractFixtureModel,
+            modelContextWindowTokens: 128_000,
+          };
+        }
         return getGatewayModel(scopeFromPrincipal(caller));
       },
     },

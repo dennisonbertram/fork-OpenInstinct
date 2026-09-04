@@ -1,25 +1,38 @@
 import type { KnipConfig } from "knip";
 
 export default {
-  entry: [
-    "agent/channels/**/*.ts",
-    "agent/hooks/**/*.ts",
-    "agent/instructions/**/*.ts",
-    "agent/memory/**/*.ts",
-    "agent/subagents/**/*.ts",
-    "agent/schedules/**/*.ts",
-    "agent/tools/**/*.ts",
-    "db/drizzle.config.ts",
-    // Drizzle consumes every table and relation exported by this schema barrel.
-    "db/schema/index.ts",
-    "evals/**/*.eval.ts",
-    "evals/evals.config.ts",
-    // Spawned by the Square eval harness after its Compose database migrates.
-    "evals/square/setup-access.ts",
-    // Playwright discovers e2e specs and the auth setup via testMatch, not imports.
-    "tests/e2e/**/*.ts",
-    "taze.config.ts",
-  ],
+  workspaces: {
+    ".": {
+      entry: [
+        "agent/channels/**/*.ts",
+        "agent/hooks/**/*.ts",
+        "agent/instructions/**/*.ts",
+        "agent/memory/**/*.ts",
+        "agent/subagents/**/*.ts",
+        "agent/schedules/**/*.ts",
+        "agent/tools/**/*.ts",
+        "db/drizzle.config.ts",
+        // Drizzle consumes every table and relation exported by this schema barrel.
+        "db/schema/index.ts",
+        "evals/**/*.eval.ts",
+        "evals/evals.config.ts",
+        // Spawned by the Square eval harness after its Compose database migrates.
+        "evals/square/setup-access.ts",
+        // Playwright discovers e2e specs and the auth setup via testMatch, not imports.
+        "tests/e2e/**/*.ts",
+        "taze.config.ts",
+      ],
+      project: ["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"],
+    },
+    "evals/contract/fixtures/demo-extension": {
+      entry: ["extension/**/*.ts"],
+      project: ["extension/**/*.ts"],
+    },
+    "evals/contract/mount-harness": {
+      entry: ["agent/**/*.ts", "evals/**/*.ts"],
+      project: ["agent/**/*.ts", "env.ts", "evals/**/*.ts"],
+    },
+  },
   ignoreDependencies: [
     // Type owners referenced by the Eve declaration patch, which Knip does not parse.
     // Imported through the owning Tailwind stylesheet rather than TypeScript.
@@ -56,5 +69,4 @@ export default {
     "src/components/ai-elements/**/*.tsx": ["exports", "files", "types"],
     "src/components/ui/**/*.tsx": ["exports", "files", "types"],
   },
-  project: ["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"],
 } satisfies KnipConfig;

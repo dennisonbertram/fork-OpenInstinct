@@ -1,252 +1,137 @@
-# Fork contract evals: pin the behavior upstream does not know about
+# Fork contract evals: pin behavior upstream does not know about
 
-This document is the plan for a set of evals that fail when an upstream merge
-breaks a behavior only this fork cares about. It exists because the
-2026-09-03 sync (PR #52) changed three such behaviors and no test went red:
-upstream disabled the two built-in tools that Square depends on, moved the
-iMessage reply into the `send_message` tool, and changed timestamp columns to
-a native type. Each was found by a person reading logs, not by a gate.
+This suite fails when an upstream merge breaks behavior only this fork owns.
+It was introduced after the 2026-09-03 sync changed root tools and message
+delivery without an automated fork-level gate.
 
-Labels follow [`README.md`](README.md). **Verified** facts were read in the
-repository on 2026-09-04. **Proposed** parts do not exist yet.
+Labels follow [`README.md`](README.md). **Implemented** means the repository
+contains the behavior and a model-free check. **Covered elsewhere** names a
+durable test that is a better fit than an Eve eval. **Proposed** remains future
+work.
 
-Related: [`PLUGIN_TESTING.md`](PLUGIN_TESTING.md) (layer 3 is the plugin
-mount contract), [`SQUARE.md`](SQUARE.md) (the paid Square gym).
+Related: [`PLUGIN_TESTING.md`](PLUGIN_TESTING.md) for the plugin test ladder and
+[`SQUARE.md`](SQUARE.md) for the paid Square behavior gym.
 
----
+## Two tiers
 
-## 1. What exists today (Verified)
+| Tier            | Command                         | Model                                     | Gate                                         |
+| --------------- | ------------------------------- | ----------------------------------------- | -------------------------------------------- |
+| Contract wiring | `pnpm eval:contract`            | scripted `mockModel`                      | every pull request and every upstream sync   |
+| Behavior gyms   | `pnpm eval:square`, agent evals | real model and, where configured, a judge | on demand and for paths named in `AGENTS.md` |
 
-| Surface                                       | What runs                                                                                                               | Model calls                                                                  | When                                                    |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------- |
-| Unit and integration tests, `pnpm check`      | 126 files, 964 tests, PGlite                                                                                            | none                                                                         | every PR (`checks.yml`)                                 |
-| Playwright e2e                                | browser journeys with the phone-auth bypass                                                                             | none                                                                         | every PR                                                |
-| Upstream agent evals, `evals/agent/*.eval.ts` | 8 files: routing, safety, memory, personal info, schedules, scheduled lifecycle, browser-agent delegation, conversation | real model, `AI_GATEWAY_API_KEY` required (`scripts/run-agent-evals.ts:152`) | never in CI                                             |
-| Square gym, `evals/square/`                   | 12 cases against a fake Square server                                                                                   | real model plus a judge                                                      | on demand, `square-evals.yml`, `workflow_dispatch` only |
+The contract suite proves wiring, tool availability, scope, and mount names.
+The paid gyms prove model judgment. Neither substitutes for the other.
 
-Nothing in the repository uses `mockModel` from `eve/evals`. Every eval calls
-a real model. No eval runs on a pull request.
+## Implemented harness
 
-The model is chosen per step in `agent/agent.ts` by a `defineDynamic`
-resolver that reads the workspace's gateway model from settings. The eval
-runner authenticates through the local-dev branch of the eve channel as one
-fixed principal, `better-auth:browser-benchmark`
-(`agent/channels/eve.ts:45`).
+`EVAL_CONTRACT_FIXTURE=1` selects
+`evals/contract/fixture-model.ts` from the existing `step.started` resolver in
+`agent/agent.ts`. Eve 0.49 requires a dynamic direct-model selection to include
+`modelContextWindowTokens`; the resolver returns 128,000 for this fixture.
 
-Existing deterministic coverage per contract area:
+The flag is validated in `src/env.ts` and is accepted only in local development
+with no Vercel environment. The production model path is unchanged. The
+resolver still checks the authenticated caller and scheduled-run lease before
+it selects the fixture.
 
-- **iMessage delivery**: `tests/agent/channels/linq-message-delivery.test.ts`
-  proves one `send_message` call is one bubble with its images, link
-  previews, Tapback removal, generic user-facing approval rendering,
-  idempotency on retry, and proactive sends. `linq-inbound-auth.test.ts`
-  proves unverified senders are dropped. `tests/unit/linq-channel-scope.test.ts`
-  proves a duplicate inbound message starts no second turn.
-- **Workspace scope**: `tests/integration/scope-enforcement.test.ts`,
-  `workspace-tenancy.test.ts`, `tests/agent/channels/eve-channel-auth.test.ts`,
-  `tests/agent/hooks/session-owner.test.ts`, `agent/lib/tests/principal-scope.test.ts`.
-- **Square**: `agent/lib/square/tests/{auth,operations}.test.ts` (the
-  read-only allow-list of 145 operations), `evals/square/tests/*` (the gym's
-  own helpers).
-- **Root tool surface**: `tests/unit/agent-tool-boundaries.test.ts` pins the
-  exact root tool files and which are disabled, and since PR #52 records that
-  `load_skill` and `connection_search` stay enabled.
+The fixture understands a small command language:
 
-What these do not prove: that the agent, as wired, reaches the Square
-connection through `connection_search`, loads the skill through `load_skill`,
-answers through `send_message`, and does all of that as one authenticated
-workspace caller. Each unit test mocks the neighbor it depends on. Only a
-session through the real agent proves the wiring, and today every such
-session costs a model call.
-
----
-
-## 2. The design (Proposed)
-
-### 2.1 Two tiers
-
-| Tier | Name                                                       | Model                | Cost | Gate                                                                    |
-| ---- | ---------------------------------------------------------- | -------------------- | ---- | ----------------------------------------------------------------------- |
-| 1    | Contract evals, `evals/contract/*.eval.ts`, tag `contract` | scripted `mockModel` | none | every PR, including every upstream sync PR                              |
-| 2    | Behavior gyms, `evals/square/` and `evals/agent/`          | real model           | paid | on demand, before a release, and on every sync PR that touches `agent/` |
-
-Tier 1 proves wiring. Tier 2 proves judgment. A sync PR needs tier 1 green
-to merge and tier 2 pasted in the body when `agent/` changed.
-
-### 2.2 The scripted model
-
-`mockModel` must be the agent's `model`, so the fixture is a branch in the
-existing resolver in `agent/agent.ts`, not a second agent:
-
-```ts
-// agent/agent.ts, inside the "step.started" resolver, before getGatewayModel
-if (contractFixtureEnabled()) return contractFixtureModel;
+```text
+say <text> | <text>       call send_message once per segment
+react heart               call react_to_message
+load square               call load_skill
+attach https://...        send a URL-backed image attachment
+inspect <tool>            report whether a tool is present
+call <tool> <json>        discover a connection tool when needed, call it,
+                          then deliver its result through send_message
 ```
 
-`contractFixtureEnabled()` returns true only when `EVAL_CONTRACT_FIXTURE=1`
-and the environment is local development, the same guard shape as the
-phone-auth bypass in `src/env.ts`. Production never sees the fixture.
+The supervisor in `scripts/run-contract-evals.ts`:
 
-`contractFixtureModel` lives in `evals/contract/fixture-model.ts` and is a
-`mockModel` callback keyed on the user message. The eval prompt is a small
-command language, so one script serves every contract eval:
+1. removes `AI_GATEWAY_API_KEY`, `VERCEL_OIDC_TOKEN`, and `VERCEL_ENV`;
+2. starts an isolated Compose PostgreSQL database, the fake Square server, and
+   a loopback stateless MCP server;
+3. migrates and seeds the fixed authenticated caller;
+4. builds the demo Eve extension;
+5. runs the product-agent contract evals, then the isolated mount harness; and
+6. stops both servers and removes the database volume on success, failure, or
+   an interrupt.
 
-```
-call <tool> <json>            call the tool with that input, then send the
-                              result through send_message
-call <tool> <json> ; react heart
-load <skill>                  call load_skill with that skill name
-say <text>                    send_message with exactly that text
-say <text> | <text>           two send_message calls, two bubbles
-```
+The supervisor owns strict mode, targets, tags, reporters, and concurrency.
+Only bounded output options such as `--junit`, `--json`, `--list`, `--verbose`,
+and `--timeout` may pass through.
 
-The callback reads `lastUserMessage`, and on the first step returns
-`{ toolCalls: [...] }`; when `toolResults` is non-empty it returns the
-`send_message` call with the result serialized, then the text
-`DELIVERY_COMPLETE`. That is the exact protocol the real instructions
-require (`agent/instructions/content/role/interactive.md:57`), so the
-channel code sees the same shape it sees in production.
+## Contract matrix
 
-### 2.3 Where the evals run
+### Product agent: `evals/contract`
 
-`pnpm eval:contract` is a new script that runs
-`eve eval contract --strict --tag contract` with `EVAL_CONTRACT_FIXTURE=1`,
-`WORKSPACE_SCOPE_ENFORCEMENT=enforce`, and a Compose Postgres, the same boot
-`scripts/run-agent-evals.ts` uses. The fake Square server from
-`evals/square/fake/` starts first, the way `scripts/eval-square.ts` starts
-it. No `AI_GATEWAY_API_KEY`.
+| Eval                       | Implemented contract                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `delivery-one-bubble`      | The agent delivers a reply through exactly one `send_message` call and leaves only `DELIVERY_COMPLETE` as assistant text. |
+| `delivery-two-bubbles`     | Two requested messages produce two ordered `send_message` calls.                                                          |
+| `delivery-reaction`        | A Tapback uses `react_to_message` and sends no text bubble.                                                               |
+| `delivery-image-url`       | An image is passed as a URL attachment, never inline base64.                                                              |
+| `delivery-no-markdown`     | A Square result delivered through `send_message` satisfies the plain-text delivery contract.                              |
+| `scope-enforce-on`         | The suite runs with enforcement on and a Square read succeeds for the seeded user principal.                              |
+| `square-skill-loads`       | The enabled root `load_skill` tool loads `square`.                                                                        |
+| `square-connection-found`  | The enabled root `connection_search` tool discovers Square using its `{ keywords }` input contract.                       |
+| `square-read-tool-works`   | Discovery exposes `square__ListCustomers`, which reaches the fake server as the authenticated workspace caller.           |
+| `square-write-tool-absent` | `square__CreateCustomer` is absent from the model-visible tool surface.                                                   |
 
-`checks.yml` gets one more job, `contract-evals`, after `checks` passes.
-Budget: under 3 minutes. The judge in `evals/evals.config.ts` is unused by
-tier 1; no `t.judge` call is allowed in a `contract` eval.
+The fixture-only Square sandbox token path still derives and verifies the
+user's workspace scope. The ordinary sandbox and production auth paths are not
+weakened to make the eval work.
 
-### 2.4 Rules for a contract eval
+### Extension seam: isolated mount harness
 
-1. One eval proves one sentence from the contract table below. The eval
-   `description` is that sentence.
-2. Every assertion is a gate: `t.succeeded()`, `t.calledTool`,
-   `t.notCalledTool`, `t.loadedSkill`, `t.check(..., includes(...))`,
-   `t.eventsSatisfy`. No soft assertions, no judge.
-3. The delivered text is read with `requireDeliveredText` from
-   `evals/agent/shared.ts`, never from `t.reply`.
-4. An eval that needs a second principal is out of reach today (section 4)
-   and stays an integration test.
+`evals/contract/mount-harness` is a separate Eve app. It mounts the built
+workspace fixture package from
+`evals/contract/fixtures/demo-extension`; the product agent never imports or
+mounts that test extension.
 
----
+| Eval                    | Implemented contract                                                                                            |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `mount-demo-tool`       | A native extension tool is callable as `demo__ping`.                                                            |
+| `mount-demo-connection` | `connection_search` discovers the mounted `demo__echo` connection and calls its MCP tool as `demo__echo__echo`. |
 
-## 3. The contracts (Proposed)
+The MCP server uses `@modelcontextprotocol/sdk@1.30.0`, matching Eve's supported
+2025-11-25 protocol generation, and returns bounded structured content.
 
-Each row is one eval. The "Broke on" column names the 2026-09-03 finding
-that motivates it, when there is one.
+## Covered elsewhere
 
-### 3.1 iMessage delivery
+The Eve eval channel does not post a real Linq webhook. Transport-specific
+contracts remain in `tests/agent/channels/linq-message-delivery.test.ts`, where
+the repository proves user-facing approval prompts hide tool internals and
+accept clear natural confirmations, plus one tool call per native bubble,
+native attachments, retries, galleries, and Tapbacks. Inbound signature,
+duplicate-claim, and unverified-sender behavior also remains in channel tests.
 
-| Id                         | Contract sentence                                                                          | Drive                                             | Assert                                                                                                                     | Broke on              |
-| -------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| delivery-one-bubble        | A reply is delivered through `send_message`; the final assistant text is only the marker.  | `say hi there`                                    | `calledTool("send_message", { count: 1 })`; `requireDeliveredText` equals "hi there"; `t.reply` equals `DELIVERY_COMPLETE` | gym graded the marker |
-| delivery-two-bubbles       | Two `send_message` calls are two bubbles in order.                                         | `say first \| second`                             | `calledTool("send_message", { count: 2 })`; delivered text joins in order                                                  | splitter retired      |
-| delivery-reaction          | A Tapback is a complete reply with no text.                                                | `say  ; react heart` (empty say)                  | `calledTool("react_to_message", { input: { operation: "add", type: "heart" } })`; `notCalledTool("send_message")`          | thanks case           |
-| delivery-approval-language | Every pending tool approval hides tool internals and accepts a clear natural confirmation. | `call gmail-send {...}` on an approval-gated tool | `eventsSatisfy`: the rendered input contains no internal tool name; `yes`, `go ahead`, or `send it` resolves to approval   | Gmail feedback        |
-| delivery-image-url         | An image result is delivered as an attachment, not as base64 text.                         | `call <tool that returns an image artifact>`      | delivered text has no `data:` prefix; the send_message input carries a file                                                | plugin rule           |
-| delivery-no-markdown       | Delivered text has no Markdown headings, bullets, or bold.                                 | `call square__ListCustomers {}`                   | `assertPlainTextDelivery`                                                                                                  | upstream #113         |
+Cross-workspace denial and fail-closed no-user behavior remain integration and
+auth unit tests. The model-free eval channel currently authenticates one fixed
+principal, so an eval cannot honestly prove a two-principal journey.
 
-The Linq webhook path itself, inbound signature, duplicate claim, and
-unverified senders stay in the channel unit tests. The eval target is the
-eve channel; it cannot post a Linq webhook.
+`tests/unit/agent-tool-boundaries.test.ts` pins the exact allowed set of root
+tool stubs. An upstream addition that disables `load_skill` or
+`connection_search` fails before the eval job.
 
-### 3.2 Workspace scope
+## Proposed follow-up
 
-| Id                           | Contract sentence                                                                                                        | Drive                                                           | Assert                                                                                        | Broke on                   |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------- |
-| scope-caller-present         | Every tool call in a session carries the authenticated caller's workspace.                                               | `call square__ListLocations {}`                                 | `eventsSatisfy`: the connection auth resolver ran with `principalType: "user"`; `succeeded()` |                            |
-| scope-connection-needs-user  | A connection with `principalType: "user"` fails closed with `principal_required` when no user principal exists.          | integration test, not an eval (needs a scheduled-run principal) | `tests/integration/scope-enforcement.test.ts` gains the case                                  |                            |
-| scope-enforce-on             | The contract suite runs with `WORKSPACE_SCOPE_ENFORCEMENT=enforce` and the bootstrap membership admits the fixed caller. | any eval                                                        | the runner sets the flag; `session-owner` records the scope                                   | flag was off in every eval |
-| scope-cross-workspace-denied | A caller cannot read another workspace's rows.                                                                           | integration test (two principals)                               | already `scope-enforcement.test.ts`; keep                                                     |                            |
+Add an eval-only authenticated caller selector before moving any
+two-principal scope case into this suite. It must remain guarded by the same
+local-only fixture flag and must not become a production authentication path.
 
-Limit: the eval runner authenticates one fixed principal. Two-principal
-contracts stay in integration tests until the local-dev channel auth accepts
-a principal header for evals (section 4).
+Approval rendering should stay in the Linq channel test unless a future eval
+target can exercise the real Linq delivery adapter; observing a generic
+`input.requested` event would not prove the text the user actually receives.
 
-### 3.3 Square
+## Pull-request gate
 
-| Id                                | Contract sentence                                                             | Drive                                       | Assert                                                                                                 | Broke on      |
-| --------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------- |
-| square-skill-loads                | `load_skill` is enabled at the root and loads the `square` skill.             | `load square`                               | `loadedSkill("square")`                                                                                | PR #106 stubs |
-| square-connection-found           | `connection_search` is enabled at the root and returns the Square connection. | `call connection_search {"query":"square"}` | `calledTool("connection_search")`; delivered text contains `square`                                    | PR #106 stubs |
-| square-read-tool-works            | A Square read tool reaches the fake server as the caller and returns rows.    | `call square__ListCustomers {}`             | `calledTool("square__ListCustomers", { status: "completed" })`; delivered text contains a fixture name |               |
-| square-write-tool-absent          | No Square write tool is exposed.                                              | `call square__CreateCustomer {}`            | `calledTool("square__CreateCustomer", { status: "failed" })` or the call is rejected as unknown        | allow-list    |
-| square-skill-not-loaded-off-topic | The skill is not loaded for a non-Square ask.                                 | tier 2 only (model judgment)                | Square gym case                                                                                        |               |
+`.github/workflows/checks.yml` runs `pnpm eval:contract` after the ordinary
+checks job and uploads `.eve/evals` on failure. Contract evals use no judge and
+no provider credential. A sync PR cannot merge while this job is red.
 
-### 3.4 Plugin mounts
-
-These are layer 3 of [`PLUGIN_TESTING.md`](PLUGIN_TESTING.md). They live in
-the plugin repository's harness host, not here, but the fork's own suite
-carries one smoke so the mount mechanism itself is covered:
-
-| Id                    | Contract sentence                                             | Drive                                                                                                       | Assert                                                                                   |
-| --------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| mount-demo-tool       | A mounted extension's tool is callable as `<mount>__<tool>`.  | `call demo__ping {"name":"x"}` with `agent/extensions/demo.ts` mounted only under `EVAL_CONTRACT_FIXTURE=1` | `calledTool("demo__ping", { output: /pong x/ })`                                         |
-| mount-demo-connection | A mounted MCP connection's tool is discoverable and callable. | `call demo__echo {"text":"x"}` against a local stateless server started by the runner                       | `calledTool("demo__echo", { status: "completed" })`; `structuredContent.text` equals "x" |
-
-The demo extension is the one from `PLUGINS.md` section 5, checked in under
-`evals/contract/fixtures/demo-extension/` and mounted through a dynamic
-extension file so production builds never include it.
-
-### 3.5 Root tool surface
-
-Already a unit test (`tests/unit/agent-tool-boundaries.test.ts`). Add one
-assertion: the set of built-in tools the root may disable is exactly
-`agent.ts`, `bash.ts`, `read_file.ts`, `todo.ts`, `write_file.ts`, and any new
-stub from upstream fails the test until a person decides.
-
----
-
-## 4. Known gaps and the order to close them (Proposed)
-
-1. **Single fixed principal in evals.** The local-dev eve channel auth
-   returns one caller. Add an eval-only header, honored under
-   `EVAL_CONTRACT_FIXTURE=1`, that selects a second seeded user. Until then,
-   two-principal contracts stay integration tests.
-2. **`mockModel` inside a `defineDynamic` resolver.** The eve docs show
-   `mockModel` as a static `model:` value. Returning it from the
-   `step.started` resolver is undocumented. Verify it with the first eval;
-   if it fails, the fallback is a second agent directory
-   (`agents/contract/agent/`), which eve 0.51 supports and eve 0.49 does not.
-3. **Approval-gated evals.** `delivery-approval-language` needs an
-   approval-gated tool and the `input.requested` event. Check that the eval
-   runner surfaces that event through `t.events` before writing the eval.
-4. **MCP fixture server in CI.** `mount-demo-connection` needs the demo server
-   from `PLUGIN_TESTING.md` section 1 started by the runner. Reuse the
-   fake-Square start pattern.
-
----
-
-## 5. Build order (Proposed)
-
-1. Fixture model and the `agent.ts` branch. Prove `delivery-one-bubble`
-   green and prove it red by making the script skip `send_message`.
-2. `pnpm eval:contract` runner and the CI job. Budget check.
-3. Square rows (3.3). Then revert the two root stubs locally and watch
-   `square-skill-loads` and `square-connection-found` go red. That is the
-   proof the suite catches the PR #106 case.
-4. Delivery rows (3.1).
-5. Scope rows that need no second principal (3.2).
-6. Mount rows (3.4) with the demo extension.
-7. Gap 1, then move the two-principal contracts into evals.
-
-Definition of done for the suite: every row above is green or explicitly
-listed under section 4, `pnpm eval:contract` runs on every PR under 3
-minutes with no model key, and the sync procedure in
-[`AGENTS.md`](../AGENTS.md) names it as a required gate.
-
----
-
-## 6. What was verified and what was not
-
-| Item                                                                        | State                                                                  |
-| --------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Tables in section 1                                                         | Verified in the repository on 2026-09-04                               |
-| `mockModel` callback shape, `t.calledTool` matchers, `requireDeliveredText` | Verified in `node_modules/eve/docs/evals/` and `evals/agent/shared.ts` |
-| The three 2026-09-03 findings                                               | Verified in PR #52 and its gym runs                                    |
-| Fixture model through `defineDynamic`                                       | Not verified (gap 2)                                                   |
-| Eval access to `input.requested` events                                     | Not verified (gap 3)                                                   |
-| Everything under section 2, 3, 5                                            | Proposed, nothing built                                                |
+During implementation, temporarily restoring upstream's disabling stubs for
+`load_skill` and `connection_search` made the root-boundary unit test fail and
+made four product contract evals fail, including the Square skill and read-tool
+rows. Removing the stubs restored the green suite. This mutation is not part of
+the committed tree.
