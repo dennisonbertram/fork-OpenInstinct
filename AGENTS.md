@@ -54,6 +54,9 @@ A setup may report `eve link` as a prerequisite; run it, then retry the continua
 
 Run the validation the task requests. When it does not establish the behavior you changed, run the narrowest relevant check.
 
+At the end of every completed task, give the user a concise, plain-English
+summary of what you did.
+
 ## Development-stage prioritization
 
 This repository is in active development and is not production-ready. Prioritize
