@@ -60,10 +60,14 @@ start. The estimate is reserved before any eval child starts; it is an
 operator-approved preflight bound for the attempt series, not a provider
 price lookup or enforceable provider billing cap. No price service is
 consulted. One attempt is the
-default; `--repetitions <1-5>` is opt-in. After an attempt, the supervisor
-stops before another one when cumulative reported cost reaches the ceiling or
-when any cost is unknown. A single attempt can still exceed the supplied value
-because providers report cost only after a call completes.
+default; `--repetitions <1-5>` is opt-in. Each attempt reserves the supplied
+all-in estimate before launch; a known actor overshoot replaces that attempt's
+reservation conservatively. The supervisor stops before another one when the
+next reservation exceeds the ceiling or an actor attempt is incomplete or
+unaccountable. Unobservable judge billing leaves the total labeled `unknown`,
+but does not by itself prevent an explicitly reserved repetition. A single
+attempt can still exceed the supplied value because providers report cost only
+after a call completes.
 
 Each supervisor writes `.eve/eval-runs/<timestamp>-<mode>-<id>.json` before it
 starts work. The manifest records exact Git SHA/dirty state, Node, Eve, and

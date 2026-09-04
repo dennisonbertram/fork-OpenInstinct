@@ -50,7 +50,11 @@ if (appliedDefaults.length > 0) {
 }
 
 const options = parseSquareEvalOptions(process.argv.slice(2));
-reserveEstimatedCost(options, 0, false);
+reserveEstimatedCost(options, {
+  actorCostUnaccountable: false,
+  attemptsStarted: 0,
+  knownActorCostUsd: 0,
+});
 const withDatabase =
   options.withDatabase || environment.EVAL_SQUARE_DATABASE === "compose";
 if (options.model && !withDatabase) {
@@ -266,7 +270,7 @@ async function runEval() {
       if (repetition + 1 >= options.repetitions) continue;
 
       const cost = await manifestCostStatus(manifestPath);
-      reserveEstimatedCost(options, cost.knownCostUsd, cost.unknown);
+      reserveEstimatedCost(options, cost);
     }
     process.exitCode = failed ? 1 : 0;
   } finally {

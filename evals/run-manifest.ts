@@ -290,7 +290,19 @@ export async function recordManifestRun(
 export async function manifestCostStatus(path: string) {
   const manifest = await readManifest(path);
   const cases = manifest.attempts.flatMap((attempt) => attempt.cases);
+  const knownActorCostUsd = cases.reduce(
+    (total, item) => total + item.cost.actor.knownCostUsd,
+    0
+  );
   return {
+    actorCostUnaccountable: manifest.attempts.some(
+      (attempt) =>
+        attempt.terminal === "running" ||
+        attempt.summary === null ||
+        attempt.cases.some((item) => item.cost.actor.status !== "measured")
+    ),
+    attemptsStarted: manifest.attempts.length,
+    knownActorCostUsd,
     knownCostUsd: cases.reduce(
       (total, item) => total + item.cost.total.knownCostUsd,
       0
@@ -320,7 +332,8 @@ export function manifestCaseFromResult(result: EveEvalResult): ManifestCase {
   const actorStatus =
     completed.length === 0
       ? "unknown"
-      : reportedCosts.length === completed.length
+      : started.length === completed.length &&
+          reportedCosts.length === completed.length
         ? "measured"
         : "partial";
   const judgeUsed = result.assertions.some((assertion) =>

@@ -3,20 +3,29 @@ export interface PaidRunBudget {
   readonly maxCostUsd: number;
 }
 
+export interface PaidRunCostState {
+  readonly actorCostUnaccountable: boolean;
+  readonly attemptsStarted: number;
+  readonly knownActorCostUsd: number;
+}
+
 export function reserveEstimatedCost(
   budget: PaidRunBudget,
-  knownMeasuredCostUsd: number,
-  totalCostUnknown: boolean
+  state: PaidRunCostState
 ) {
-  if (totalCostUnknown) {
+  if (state.actorCostUnaccountable) {
     throw new Error(
-      "Cannot start another paid eval attempt because a prior attempt has unknown total cost."
+      "Cannot start another paid eval attempt because a prior attempt has unaccountable actor cost."
     );
   }
   if (budget.estimatedCostUsd > budget.maxCostUsd) {
     throw new Error("--estimated-cost-usd must not exceed --max-cost-usd.");
   }
-  if (knownMeasuredCostUsd + budget.estimatedCostUsd > budget.maxCostUsd) {
+  const reservedCostUsd = Math.max(
+    state.knownActorCostUsd,
+    state.attemptsStarted * budget.estimatedCostUsd
+  );
+  if (reservedCostUsd + budget.estimatedCostUsd > budget.maxCostUsd) {
     throw new Error("The next estimated attempt would exceed --max-cost-usd.");
   }
 }

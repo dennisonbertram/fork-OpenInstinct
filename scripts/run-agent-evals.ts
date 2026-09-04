@@ -51,7 +51,11 @@ async function runAgentEvals() {
   try {
     requireModelCredentials();
     const options = parseAgentEvalOptions(process.argv.slice(2));
-    reserveEstimatedCost(options, 0, false);
+    reserveEstimatedCost(options, {
+      actorCostUnaccountable: false,
+      attemptsStarted: 0,
+      knownActorCostUsd: 0,
+    });
     const manifestPath = await createEvalRunManifest({
       caseDirectory: "evals/agent",
       fixtureClock: null,
@@ -133,7 +137,7 @@ async function runAgentEvals() {
       if (repetition + 1 >= options.repetitions) continue;
 
       const cost = await manifestCostStatus(manifestPath);
-      reserveEstimatedCost(options, cost.knownCostUsd, cost.unknown);
+      reserveEstimatedCost(options, cost);
     }
     if (!interrupted) process.exitCode = failed ? 1 : 0;
   } finally {

@@ -31,8 +31,8 @@ describe("eval run manifest", () => {
         },
         events: [
           stepStartedEvent("2026-09-04T10:00:00.100Z"),
+          stepStartedEvent("2026-09-04T10:00:00.200Z", 1),
           stepCompletedEvent("2026-09-04T10:00:01.000Z", 0, 0.01),
-          stepCompletedEvent("2026-09-04T10:00:02.000Z", 1),
         ],
         finalMessage: "Done.",
         output: null,
@@ -94,6 +94,9 @@ describe("eval run manifest", () => {
         timeoutMs: 180_000,
       });
       await expect(manifestCostStatus(path)).resolves.toEqual({
+        actorCostUnaccountable: true,
+        attemptsStarted: 1,
+        knownActorCostUsd: 0,
         knownCostUsd: 0,
         unknown: true,
       });
@@ -184,13 +187,14 @@ function completedResult(id: string): EveEvalResult {
 }
 
 function stepStartedEvent(
-  at: string
+  at: string,
+  stepIndex = 0
 ): Extract<MessageStreamEvent, { type: "step.started" }> {
   return {
     data: {
       modelId: "openai/gpt-5.6-sol",
-      sequence: 0,
-      stepIndex: 0,
+      sequence: stepIndex,
+      stepIndex,
       turnId: "turn-1",
     },
     meta: { at, id: at },

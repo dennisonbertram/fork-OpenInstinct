@@ -145,11 +145,12 @@ describe("agent eval supervisor", supervisorTestOptions, () => {
     );
   });
 
-  it("retains a failed repetition before a later successful repetition", async () => {
+  it("retains a failed judged repetition before a successful judged repetition", async () => {
     const result = await runSupervisor(
       {
         AI_GATEWAY_API_KEY: "test-gateway-key",
         EVAL_EXIT_CODES: "1,0",
+        EVAL_JUDGE_UNKNOWN: "1",
         EVAL_REPORT_MANIFEST: "1",
       },
       [
@@ -166,6 +167,33 @@ describe("agent eval supervisor", supervisorTestOptions, () => {
 
     expect(result.code).toBe(1);
     expect(result.commands.match(/pnpm exec eve eval agent/g)?.length).toBe(2);
+    expect(result.manifest).toContain('"verdict":"failed"');
+    expect(result.manifest).toContain('"verdict":"passed"');
+    expect(result.manifest).toContain('"status":"unknown"');
+  });
+
+  it("does not launch a second attempt when reservations exceed the ceiling", async () => {
+    const result = await runSupervisor(
+      {
+        AI_GATEWAY_API_KEY: "test-gateway-key",
+        EVAL_JUDGE_UNKNOWN: "1",
+        EVAL_REPORT_MANIFEST: "1",
+      },
+      [
+        "--max-cost-usd",
+        "0.3",
+        "--estimated-cost-usd",
+        "0.25",
+        "--repetitions",
+        "2",
+        "--tag",
+        "smoke",
+      ]
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.commands.match(/pnpm exec eve eval agent/g)?.length).toBe(1);
+    expect(result.stderr).toContain("next estimated attempt would exceed");
   });
 
   it("returns a signal exit code after cleaning up interrupted startup", async () => {
@@ -230,6 +258,7 @@ async function runSupervisor(
   const dockerPath = join(directory, "docker");
   const pnpmPath = join(directory, "pnpm");
   const manifestReporterPath = join(directory, "report-manifest.cjs");
+  const manifestOutputPath = join(directory, "manifest.json");
   await Promise.all([
     writeFile(
       dockerPath,
@@ -281,17 +310,21 @@ fi
 const [path, attemptId] = process.argv.slice(2);
 const manifest = JSON.parse(fs.readFileSync(path, "utf8"));
 const attempt = manifest.attempts.find((item) => item.id === attemptId);
+const countPath = process.env.EVAL_SUPERVISOR_LOG + ".count";
+const count = Number(fs.existsSync(countPath) ? fs.readFileSync(countPath, "utf8") : 0) + 1;
+const judged = process.env.EVAL_JUDGE_UNKNOWN === "1";
 attempt.cases = [{
   completedAt: "2026-09-04T10:00:01.000Z",
-  cost: { actor: { knownCostUsd: 0.01, status: "measured" }, judge: { knownCostUsd: null, status: "not-used" }, total: { knownCostUsd: 0.01, status: "measured" } },
-  id: "agent/conversation/mock",
+  cost: { actor: { knownCostUsd: 0.01, status: "measured" }, judge: { knownCostUsd: null, status: judged ? "not-observable-from-eve-events" : "not-used" }, total: { knownCostUsd: 0.01, status: judged ? "unknown" : "measured" } },
+  id: "agent/conversation/mock-" + count,
   modelIds: ["openai/test-model"],
   startedAt: "2026-09-04T10:00:00.000Z",
   timing: { finalDeliveryMs: null, firstDeliveredBubbleMs: null, status: "not-observable-from-eve-events", totalEvalMs: 1000 },
-  verdict: "passed",
+  verdict: count === 1 ? "failed" : "passed",
 }];
-attempt.summary = { errored: 0, failed: 0, passed: 1, skipped: 0 };
+attempt.summary = count === 1 ? { errored: 0, failed: 1, passed: 0, skipped: 0 } : { errored: 0, failed: 0, passed: 1, skipped: 0 };
 fs.writeFileSync(path, JSON.stringify(manifest));
+if (process.env.EVAL_TEST_MANIFEST_OUTPUT) fs.copyFileSync(path, process.env.EVAL_TEST_MANIFEST_OUTPUT);
 `
     ),
   ]);
@@ -309,6 +342,7 @@ fs.writeFileSync(path, JSON.stringify(manifest));
         EVAL_MANIFEST_REPORTER: manifestReporterPath,
         EVAL_NODE: process.execPath,
         NODE_ENV: "test",
+        EVAL_TEST_MANIFEST_OUTPUT: manifestOutputPath,
         PATH: directory,
         ...environment,
       },
@@ -332,6 +366,7 @@ fs.writeFileSync(path, JSON.stringify(manifest));
   return {
     code: await exitCode,
     commands: await readFile(logPath, "utf8").catch(() => ""),
+    manifest: await readFile(manifestOutputPath, "utf8").catch(() => ""),
     stderr,
   };
 }
