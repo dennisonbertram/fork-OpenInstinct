@@ -45,6 +45,9 @@ export function AgentMessage({
       data-optimistic={message.metadata?.optimistic ? "true" : undefined}
       from={message.role}
     >
+      {message.role === "assistant" ? (
+        <span className="type-label text-foreground">Jory</span>
+      ) : null}
       <MessageContent>
         {visibleParts.map((part, index) =>
           hasAssistantText && part.type === "reasoning" ? null : (
