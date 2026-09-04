@@ -1,0 +1,34 @@
+.dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dot {
+    animation: typing 1.4s ease-in-out infinite;
+  }
+
+  .dot:nth-of-type(3) {
+    animation-delay: 160ms;
+  }
+
+  .dot:nth-of-type(4) {
+    animation-delay: 320ms;
+  }
+}
+
+@keyframes typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.45;
+    transform: translateY(0);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-0.2rem);
+  }
+}

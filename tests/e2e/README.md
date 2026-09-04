@@ -30,3 +30,9 @@ Failures retain a trace in `test-results/`; open it with
 `pnpm playwright show-trace test-results/<test-result>/trace.zip`. The HTML
 report is written to `playwright-report/` and can be viewed with
 `pnpm playwright show-report`.
+
+CI retains the HTML report through an always-run artifact step, including on
+failure or cancellation when a report was produced. The stable `E2E` check is
+separate from `Checks`, `Build`, `Real Postgres`, and `Contract evals`; a passing
+build or model-free contract suite is not a substitute for these browser paths.
+New specs are picked up by the existing `pnpm test:e2e` entry point.

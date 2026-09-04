@@ -25,8 +25,12 @@ There is no requirement to merge all upstream commits.
    merge is allowed only when its complete diff is deliberately in scope.
 3. Keep intake batches cohesive and review the resulting fork diff, not only
    upstream commit messages. Never merge upstream blindly.
-4. Gate every batch: `pnpm check`, synthetic-env `pnpm build`, and
-   `pnpm test:e2e` (7 specs, enforce posture). Do not pipe test output through
+4. Gate every batch: `pnpm check`, synthetic-env `pnpm build`,
+   `node scripts/test-real-postgres.ts`, `pnpm eval:contract`, and
+   `pnpm test:e2e` (enforce posture). Their stable CI names are `Checks`, `Build`,
+   `Real Postgres`, `Contract evals`, and `E2E`. The real-Postgres runner owns an
+   isolated disposable Compose project and forces the database suite to run;
+   an optional/skipped local suite is not equivalent evidence. Do not pipe test output through
    `tail`/`grep` in a `&&` chain — pipes mask exit codes.
 5. Clear `.next` before dev-server boots after any intake that moves files;
    stale dev caches silently disable `src/proxy.ts` (observed 2026-09-01).
