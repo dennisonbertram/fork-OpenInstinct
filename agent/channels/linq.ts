@@ -1,13 +1,15 @@
 import { connectLinqCredentials } from "@vercel/connect/eve";
+import { createPostgresState } from "@chat-adapter/state-pg";
+import { createLinqAdapter } from "@linqapp/chat-sdk-adapter";
 import { LinqAPIV3 } from "@linqapp/sdk";
 import type { AdapterPostableMessage } from "chat";
 import {
   defaultLinqAuth,
-  linqChannel,
   type LinqChannelConfig,
   type LinqChannelCredentials,
 } from "eve/channels/linq";
 import { vercelOidc } from "eve/channels/auth";
+import { chatSdkChannel, messageToUserContent } from "eve/channels/chat-sdk";
 import { z } from "zod";
 import { getAuth } from "@/auth";
 import { reactToMessageToolResultSchema } from "@/agent/lib/react-to-message";
@@ -73,9 +75,46 @@ const credentials = (
       }
 ) satisfies LinqChannelCredentials;
 
+const pendingLinqInputSchema = z.object({
+  requests: z.array(
+    z.object({
+      allowFreeform: z.boolean().optional(),
+      options: z
+        .array(z.object({ id: z.string(), label: z.string() }))
+        .optional(),
+      requestId: z.string(),
+    })
+  ),
+  workspaceId: z.string().min(1),
+});
+const pendingInputTtlMs = 86_400_000;
+const linqState = createPostgresState({
+  keyPrefix: "openinstinct-linq",
+  url: env.DATABASE_URL,
+});
+
 type LinqInputRequest = Parameters<
   NonNullable<NonNullable<LinqChannelConfig["events"]>["input.requested"]>
 >[0]["requests"][number];
+type LinqOnMessage = NonNullable<LinqChannelConfig["onMessage"]>;
+type LinqInboundMessage = Parameters<LinqOnMessage>[1];
+type BaseLinqInboundResult = Exclude<Awaited<ReturnType<LinqOnMessage>>, null>;
+interface LinqInputResponse {
+  readonly optionId?: string;
+  readonly requestId: string;
+  readonly text?: string;
+}
+type OpenInstinctLinqInboundResult =
+  | (BaseLinqInboundResult & {
+      readonly inputResponseStateKey?: string;
+      readonly inputResponses?: readonly LinqInputResponse[];
+    })
+  | null;
+type OpenInstinctLinqChannelConfig = Omit<LinqChannelConfig, "onMessage"> & {
+  readonly onMessage: (
+    ...args: Parameters<LinqOnMessage>
+  ) => OpenInstinctLinqInboundResult | Promise<OpenInstinctLinqInboundResult>;
+};
 
 /**
  * Renders one pending approval or question as plain text. eve renders HITL
@@ -110,8 +149,30 @@ function renderLinqInputRequest(request: LinqInputRequest) {
 export const linqChannelConfig = {
   credentials,
   events: {
-    async "input.requested"(event, context) {
+    async "input.requested"(event, context, session) {
       if (!context.thread || event.requests.length === 0) return;
+      const caller =
+        session.session.auth.current ?? session.session.auth.initiator;
+      if (caller) {
+        const scope = scopeFromPrincipal(caller);
+        const threadId = z.string().safeParse(context.thread.id);
+        if (!threadId.success) return;
+        await linqState.set(
+          pendingInputKey(threadId.data),
+          {
+            requests: event.requests.map((request) => ({
+              allowFreeform: request.allowFreeform,
+              options: request.options?.map((option) => ({
+                id: option.id,
+                label: option.label,
+              })),
+              requestId: request.requestId,
+            })),
+            workspaceId: scope.workspaceId,
+          },
+          pendingInputTtlMs
+        );
+      }
       await context.thread.post({
         raw: event.requests.map(renderLinqInputRequest).join("\n\n"),
       });
@@ -291,7 +352,7 @@ export const linqChannelConfig = {
       await releaseScheduledReportDelivery(session, event.message);
     },
   },
-  async onMessage(context, message) {
+  async onMessage(context, message): Promise<OpenInstinctLinqInboundResult> {
     if (message.author.isBot) return null;
 
     const auth = defaultLinqAuth(message);
@@ -365,6 +426,12 @@ export const linqChannelConfig = {
       }
     }
 
+    const pendingInputResponse = await resolvePendingInputResponses({
+      message,
+      threadId: providerConversationId,
+      workspaceId: verifiedScope.workspaceId,
+    });
+
     return {
       auth: {
         ...auth,
@@ -378,11 +445,133 @@ export const linqChannelConfig = {
         },
         principalId,
       },
+      ...pendingInputResponse,
     };
   },
-} satisfies LinqChannelConfig;
+} satisfies OpenInstinctLinqChannelConfig;
 
-export default linqChannel(linqChannelConfig);
+const bridge = chatSdkChannel({
+  adapters: {
+    linq: createLinqAdapter({
+      credentials: async () => ({ apiKey: await credentials.apiKey() }),
+      webhookVerifier: credentials.webhookVerifier,
+    }),
+  },
+  concurrency: "concurrent",
+  events: linqChannelConfig.events,
+  routes: { linq: "/eve/v1/linq" },
+  state: linqState,
+  streaming: false,
+  userName: "eve",
+});
+
+bridge.bot.onDirectMessage(
+  async (
+    thread: Parameters<LinqOnMessage>[0]["thread"],
+    message: LinqInboundMessage
+  ) => {
+    await dispatchLinqMessage(thread, message);
+  }
+);
+bridge.bot.onNewMessage(
+  /[\s\S]*/u,
+  async (
+    thread: Parameters<LinqOnMessage>[0]["thread"],
+    message: LinqInboundMessage
+  ) => {
+    await dispatchLinqMessage(thread, message);
+  }
+);
+
+export default bridge.channel;
+
+async function dispatchLinqMessage(
+  thread: Parameters<LinqOnMessage>[0]["thread"],
+  message: LinqInboundMessage
+) {
+  const result = await linqChannelConfig.onMessage({ thread }, message);
+  if (!result) return;
+
+  try {
+    await bridge.bot.getAdapter("linq").markRead(thread.id, message.id);
+  } catch {
+    // Marking read is cosmetic and must not prevent the user turn.
+  }
+
+  if (result.inputResponses) {
+    await bridge.send(
+      { inputResponses: result.inputResponses },
+      { auth: result.auth, thread, title: result.title }
+    );
+    if (result.inputResponseStateKey) {
+      try {
+        await linqState.delete(result.inputResponseStateKey);
+      } catch {
+        console.warn("[linq] resolved input state cleanup failed");
+      }
+    }
+    return;
+  }
+
+  const content = messageToUserContent(message);
+  if (Array.isArray(content)) {
+    if (content.length === 0) return;
+  } else if (content.trim().length === 0) return;
+  await bridge.send(
+    { context: [...(result.context ?? [])], message: content },
+    { auth: result.auth, thread, title: result.title }
+  );
+}
+
+function pendingInputKey(threadId: string) {
+  return `pending-input:${threadId}`;
+}
+
+async function resolvePendingInputResponses({
+  message,
+  threadId,
+  workspaceId,
+}: {
+  readonly message: LinqInboundMessage;
+  readonly threadId: string;
+  readonly workspaceId: string;
+}): Promise<
+  | {
+      readonly inputResponses: readonly LinqInputResponse[];
+      readonly inputResponseStateKey: string;
+    }
+  | undefined
+> {
+  const text = message.text.trim();
+  if (!text) return undefined;
+  const key = pendingInputKey(threadId);
+  const parsed = pendingLinqInputSchema.safeParse(await linqState.get(key));
+  if (!parsed.success || parsed.data.workspaceId !== workspaceId) {
+    return undefined;
+  }
+  if (parsed.data.requests.length !== 1) return undefined;
+
+  const [request] = parsed.data.requests;
+  if (!request) return undefined;
+  const normalized = text.toLocaleLowerCase();
+  const options = request.options ?? [];
+  const option = options.find(
+    (candidate, index) =>
+      candidate.id.toLocaleLowerCase() === normalized ||
+      candidate.label.toLocaleLowerCase() === normalized ||
+      String(index + 1) === normalized
+  );
+  const response = option
+    ? { optionId: option.id, requestId: request.requestId }
+    : request.allowFreeform
+      ? { requestId: request.requestId, text }
+      : undefined;
+  if (!response) return undefined;
+  return {
+    inputResponses: [response],
+    inputResponseStateKey: key,
+  };
+}
 
 /**
  * Posts one send_message reply, budgeted and ledgered when the caller has a

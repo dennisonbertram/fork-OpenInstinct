@@ -22,8 +22,6 @@ export default {
   ],
   ignoreDependencies: [
     // Type owners referenced by the Eve declaration patch, which Knip does not parse.
-    "@linqapp/chat-sdk-adapter",
-    "chat",
     // Imported through the owning Tailwind stylesheet rather than TypeScript.
     "shadcn",
     "tailwindcss",

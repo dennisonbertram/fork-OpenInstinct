@@ -1,4 +1,3 @@
-import type { LinqChannelConfig } from "eve/channels/linq";
 import type { LinqSendOptions } from "@linqapp/chat-sdk-adapter";
 import type { LinqAPIV3 } from "@linqapp/sdk";
 import type { AdapterPostableMessage } from "chat";
@@ -13,14 +12,24 @@ import type {
   finalizeScheduledReport,
   releaseScheduledReport,
 } from "@/db/services/scheduled-agent-jobs";
-// oxlint-disable-next-line import/no-unassigned-import -- Loads the production module so the mocked channel factory can capture its configuration.
-import "@/agent/channels/linq";
 
 interface BrowserImage {
   bytes: Uint8Array;
   filename: string;
   id: string;
   mediaType: string;
+}
+
+interface PendingInputStateFixture {
+  readonly requests: readonly {
+    readonly allowFreeform?: boolean;
+    readonly options?: readonly {
+      readonly id: string;
+      readonly label: string;
+    }[];
+    readonly requestId: string;
+  }[];
+  readonly workspaceId: string;
 }
 
 type NativeMessageBody = Parameters<LinqAPIV3["chats"]["messages"]["send"]>[1];
@@ -44,8 +53,8 @@ vi.mock("@/db/services/usage", async (importOriginal) => ({
 const linqChannelCapture = vi.hoisted(() => ({
   // SAFETY: This mutable test capture stores only API keys from the typed SDK constructor mock.
   clientApiKeys: [] as string[],
-  // SAFETY: The mocked channel factory replaces this value during module loading.
-  config: undefined as LinqChannelConfig | undefined,
+  deleteState: vi.fn<(key: string) => Promise<void>>(),
+  getState: vi.fn<(key: string) => Promise<PendingInputStateFixture | null>>(),
   images: new Map<string, BrowserImage>(),
   readImage: vi.fn<
     (
@@ -78,6 +87,14 @@ const linqChannelCapture = vi.hoisted(() => ({
       ) => Promise<void>
     >()
     .mockResolvedValue(undefined),
+  setState:
+    vi.fn<
+      (
+        key: string,
+        value: PendingInputStateFixture,
+        ttlMs?: number
+      ) => Promise<void>
+    >(),
 }));
 const scheduleDeliveryCapture = vi.hoisted(() => ({
   finalize: vi.fn<typeof finalizeScheduledReport>(),
@@ -97,6 +114,14 @@ vi.mock("@/env", async (importOriginal) => {
 vi.mock("@vercel/connect/eve", () => ({
   connectLinqCredentials: () => ({
     apiKey: linqChannelCapture.resolveApiKey,
+    webhookVerifier: vi.fn<() => true>(),
+  }),
+}));
+vi.mock("@chat-adapter/state-pg", () => ({
+  createPostgresState: () => ({
+    delete: linqChannelCapture.deleteState,
+    get: linqChannelCapture.getState,
+    set: linqChannelCapture.setState,
   }),
 }));
 vi.mock("@linqapp/sdk", () => ({
@@ -110,16 +135,6 @@ vi.mock("@linqapp/sdk", () => ({
     };
   },
 }));
-vi.mock(import("eve/channels/linq"), async (importOriginal) => {
-  const original = await importOriginal();
-  return {
-    ...original,
-    linqChannel(config: LinqChannelConfig) {
-      linqChannelCapture.config = config;
-      return original.linqChannel(config);
-    },
-  };
-});
 vi.mock("@/db/services/browser-images", () => ({
   async readReadyBrowserImageArtifact(
     scope: AccessScope,
@@ -157,12 +172,9 @@ vi.mock("@vercel/blob", async (importOriginal) => {
     },
   };
 });
-const handleActionResult = linqChannelCapture.config?.events?.["action.result"];
-const deliverInputRequest =
-  linqChannelCapture.config?.events?.["input.requested"];
-if (!handleActionResult) {
-  throw new Error("The Linq channel must configure action result delivery.");
-}
+const { linqChannelConfig } = await import("@/agent/channels/linq");
+const handleActionResult = linqChannelConfig.events["action.result"];
+const deliverInputRequest = linqChannelConfig.events["input.requested"];
 
 type ActionHandlerParameters = Parameters<typeof handleActionResult>;
 
@@ -184,6 +196,9 @@ interface LinqTestMessage {
 describe("Linq message delivery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    linqChannelCapture.deleteState.mockResolvedValue(undefined);
+    linqChannelCapture.getState.mockResolvedValue(null);
+    linqChannelCapture.setState.mockResolvedValue(undefined);
     usageCapture.recordUsageEvent.mockResolvedValue(undefined);
     scheduleDeliveryCapture.finalize.mockResolvedValue(true);
     scheduleDeliveryCapture.release.mockResolvedValue(true);
@@ -191,8 +206,6 @@ describe("Linq message delivery", () => {
 
   it("renders tool approval as exact plain-text replies", async () => {
     expect(deliverInputRequest).toBeTypeOf("function");
-    if (!deliverInputRequest)
-      throw new Error("Linq input delivery is missing.");
     const { context, post } = handlerContext();
 
     await deliverInputRequest(
@@ -227,12 +240,27 @@ describe("Linq message delivery", () => {
     expect(post).toHaveBeenCalledExactlyOnceWith({
       raw: 'Approve tool call: google_workspace_write\n\nReply exactly "approve" or "cancel".',
     });
+    expect(linqChannelCapture.setState).toHaveBeenCalledExactlyOnceWith(
+      "pending-input:linq:dm:chat-1",
+      {
+        requests: [
+          {
+            allowFreeform: false,
+            options: [
+              { id: "approve", label: "Approve" },
+              { id: "cancel", label: "Cancel" },
+            ],
+            requestId: "approval-1",
+          },
+        ],
+        workspaceId: "workspace-1",
+      },
+      86_400_000
+    );
   });
 
   it("keeps selectable and freeform questions usable over text", async () => {
     expect(deliverInputRequest).toBeTypeOf("function");
-    if (!deliverInputRequest)
-      throw new Error("Linq input delivery is missing.");
     const { context, post } = handlerContext();
 
     await deliverInputRequest(
@@ -284,7 +312,7 @@ describe("Linq message delivery", () => {
   });
 
   it("does not register automatic assistant text posting", () => {
-    expect(linqChannelCapture.config?.events?.["message.completed"]).toBeTypeOf(
+    expect(linqChannelConfig.events["message.completed"]).toBeTypeOf(
       "function"
     );
   });

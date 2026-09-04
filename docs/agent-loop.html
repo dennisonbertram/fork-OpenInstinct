@@ -536,11 +536,13 @@
       One turn end to end. Both channels resolve to the same principal and
       verified workspace scope before eve sees the message; Linq also resolves
       an owned conversation binding and atomically claims each inbound provider
-      message ID. The session, vault, Square grant, and usage ledger all key on
-      that scope. The turn runs as a Workflow SDK durable workflow; the accent
-      path is the reply leaving the turn. On iMessage a reply becomes as many
-      bubbles as it has paragraphs and bullets, which is why the eval gym gates
-      bubble count.
+      message ID. Its Chat SDK locks and pending input IDs live in Postgres, so
+      an exact text reply resumes the parked Eve request rather than starting a
+      new model turn. The session, vault, Square grant, and usage ledger all key
+      on that scope. The turn runs as a Workflow SDK durable workflow; the
+      accent path is the reply leaving the turn. On iMessage a reply becomes as
+      many bubbles as it has paragraphs and bullets, which is why the eval gym
+      gates bubble count.
     </figcaption>
   </figure>
 
@@ -741,7 +743,7 @@
           Turn parks, holds no compute
         </text>
         <text x="32" y="264" font-size="12">
-          iMessage approval: reply approve · cancel
+          iMessage approval: durable pending ID → approve · cancel
         </text>
         <text x="32" y="280" font-size="12">
           submit · delete · OAuth callback
@@ -837,8 +839,9 @@
           <tr>
             <td>input.requested</td>
             <td>
-              Linq: post deterministic plain-text choices; tool approvals say to
-              reply exactly <code>approve</code> or <code>cancel</code>.
+              Linq: persist workspace-bound request IDs, then post deterministic
+              plain-text choices; an exact <code>approve</code> or
+              <code>cancel</code> becomes Eve's input response.
               <code>agent/channels/linq.ts</code>
             </td>
           </tr>
