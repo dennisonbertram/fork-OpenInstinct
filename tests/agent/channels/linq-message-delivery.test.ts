@@ -53,6 +53,7 @@ vi.mock("@/db/services/usage", async (importOriginal) => ({
 const linqChannelCapture = vi.hoisted(() => ({
   // SAFETY: This mutable test capture stores only API keys from the typed SDK constructor mock.
   clientApiKeys: [] as string[],
+  connectState: vi.fn<() => Promise<void>>(),
   deleteState: vi.fn<(key: string) => Promise<void>>(),
   getState: vi.fn<(key: string) => Promise<PendingInputStateFixture | null>>(),
   images: new Map<string, BrowserImage>(),
@@ -119,6 +120,7 @@ vi.mock("@vercel/connect/eve", () => ({
 }));
 vi.mock("@chat-adapter/state-pg", () => ({
   createPostgresState: () => ({
+    connect: linqChannelCapture.connectState,
     delete: linqChannelCapture.deleteState,
     get: linqChannelCapture.getState,
     set: linqChannelCapture.setState,
@@ -196,6 +198,7 @@ interface LinqTestMessage {
 describe("Linq message delivery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    linqChannelCapture.connectState.mockResolvedValue(undefined);
     linqChannelCapture.deleteState.mockResolvedValue(undefined);
     linqChannelCapture.getState.mockResolvedValue(null);
     linqChannelCapture.setState.mockResolvedValue(undefined);
@@ -240,6 +243,7 @@ describe("Linq message delivery", () => {
     expect(post).toHaveBeenCalledExactlyOnceWith({
       raw: 'Approve tool call: google_workspace_write\n\nReply exactly "approve" or "cancel".',
     });
+    expect(linqChannelCapture.connectState).toHaveBeenCalledOnce();
     expect(linqChannelCapture.setState).toHaveBeenCalledExactlyOnceWith(
       "pending-input:linq:dm:chat-1",
       {

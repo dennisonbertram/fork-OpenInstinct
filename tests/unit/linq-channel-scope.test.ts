@@ -37,11 +37,13 @@ const mocks = vi.hoisted(() => ({
     vi.fn<() => Promise<{ readonly workspaceId: string } | undefined>>(),
   verifyScope:
     vi.fn<() => Promise<{ readonly workspaceId: string } | undefined>>(),
+  connectState: vi.fn<() => Promise<void>>(),
   deleteState: vi.fn<(key: string) => Promise<void>>(),
   getState: vi.fn<(key: string) => Promise<PendingInputStateFixture | null>>(),
 }));
 vi.mock("@chat-adapter/state-pg", () => ({
   createPostgresState: () => ({
+    connect: mocks.connectState,
     delete: mocks.deleteState,
     get: mocks.getState,
     set: vi.fn<() => void>(),
@@ -124,6 +126,7 @@ beforeEach(() => {
   mocks.createBinding.mockResolvedValue(undefined);
   mocks.claimInboundMessage.mockResolvedValue(true);
   mocks.recordInstallation.mockResolvedValue(undefined);
+  mocks.connectState.mockResolvedValue(undefined);
   mocks.deleteState.mockResolvedValue(undefined);
   mocks.getState.mockResolvedValue(null);
 });
@@ -230,6 +233,7 @@ describe("Linq channel scope", () => {
       inputResponseStateKey: "pending-input:linq:chat-1:dm",
       inputResponses: [{ optionId: "approve", requestId: "approval-1" }],
     });
+    expect(mocks.connectState).toHaveBeenCalledOnce();
     expect(mocks.deleteState).not.toHaveBeenCalled();
   });
   it("does not consume pending input owned by another workspace", async () => {
