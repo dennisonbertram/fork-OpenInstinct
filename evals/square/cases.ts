@@ -116,14 +116,14 @@ export const squareCases: readonly SquareCase[] = [
     id: "todays-sales-total",
     layout: "normal",
     prompt:
-      "As of 2026-11-01T17:00:00Z, what were today's gross completed sales at Default Test Account in America/New_York? Treat today as 2026-11-01 local time, include all pages, and do not subtract refunds.",
+      "As of 2026-11-02T04:59:59.999Z, what were today's gross completed sales at Default Test Account in America/New_York? Treat today as 2026-11-01 local time, include all pages, and do not subtract refunds.",
     sales: {
       exclusions:
         "canceled, open, yesterday, and other-location orders; refunds are not subtracted",
       location: "Default Test Account (LQK1QAMZG63BM)",
       measure: "gross completed sales",
       period:
-        "2026-11-01 America/New_York: [2026-11-01T04:00:00Z, 2026-11-02T05:00:00Z)",
+        "2026-11-01 America/New_York inclusive: [2026-11-01T04:00:00.000Z, 2026-11-02T04:59:59.999Z]",
     },
     tone: directTone,
   },
@@ -134,14 +134,14 @@ export const squareCases: readonly SquareCase[] = [
     id: "todays-net-sales-total",
     layout: "normal",
     prompt:
-      "As of 2026-11-01T17:00:00Z, what were today's net sales after refunds at Default Test Account in America/New_York? Treat today as 2026-11-01 local time and include all pages.",
+      "As of 2026-11-02T04:59:59.999Z, what were today's net sales after refunds at Default Test Account in America/New_York? Treat today as 2026-11-01 local time and include all pages.",
     sales: {
       exclusions:
         "canceled, open, yesterday, and other-location orders; subtract completed refunds in the same period",
       location: "Default Test Account (LQK1QAMZG63BM)",
       measure: "net sales after refunds",
       period:
-        "2026-11-01 America/New_York: [2026-11-01T04:00:00Z, 2026-11-02T05:00:00Z)",
+        "2026-11-01 America/New_York inclusive: [2026-11-01T04:00:00.000Z, 2026-11-02T04:59:59.999Z]",
     },
     tone: directTone,
   },
@@ -227,7 +227,7 @@ export const squareCases: readonly SquareCase[] = [
     id: "refunds-this-week",
     layout: "normal",
     prompt:
-      "As of 2026-11-01T17:00:00Z, how much was refunded this week at Default Test Account in America/New_York? Report the refund total, not net sales.",
+      "As of 2026-11-02T04:59:59.999Z, how much was refunded this week at Default Test Account in America/New_York? Report the refund total, not net sales.",
     sales: {
       exclusions:
         "refunds outside the stated week and all orders; this is not a net-sales measure",

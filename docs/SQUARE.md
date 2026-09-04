@@ -138,10 +138,11 @@ the changes that require a run before the pull request opens.
 
 - `evals/square/fake/server.ts` is a hand-written fake of selected Square read
   endpoints, backed by the committed fixture `evals/square/fake/fixture.json`
-  (2 locations, 6 catalog items, 4 customers, 9 orders, 3 payments, 1 refund,
-  and 1 invoice). It pins a fixture clock (`2026-11-01T17:00:00Z`) and New York
+  (2 locations, 6 catalog items, 4 customers, 12 orders, 7 payments, 3 refunds,
+  and 1 invoice). It pins a fixture clock (`2026-11-02T04:59:59.999Z`) and New York
   business timezone, and supports only the selected `SearchOrders` location,
-  state, created-at range, and cursor filters plus selected refund filters.
+  state, created-at range, and cursor filters plus selected payment and refund
+  location/time filters.
   It is not a general Square simulator. It returns a Square-shaped 403 for any
   write endpoint.
 - `scripts/eval-square.ts` starts the fake on a free loopback port, sets

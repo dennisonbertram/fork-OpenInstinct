@@ -90,7 +90,7 @@ describe("fake Square agrees with case facts", () => {
           date_time_filter: {
             created_at: {
               start_at: "2026-11-01T04:00:00Z",
-              end_at: "2026-11-02T05:00:00Z",
+              end_at: "2026-11-02T04:59:59.999Z",
             },
           },
           state_filter: { states: ["COMPLETED"] },
@@ -130,7 +130,7 @@ describe("fake Square agrees with case facts", () => {
           date_time_filter: {
             created_at: {
               start_at: "2026-11-01T04:00:00Z",
-              end_at: "2026-11-02T05:00:00Z",
+              end_at: "2026-11-02T04:59:59.999Z",
             },
           },
           state_filter: { states: ["COMPLETED"] },

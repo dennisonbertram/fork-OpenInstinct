@@ -27,8 +27,23 @@ const ordersResponseSchema = z.object({
 const countsResponseSchema = z.object({
   counts: z.array(z.object({ quantity: z.string() })),
 });
+const paymentsResponseSchema = z.object({
+  payments: z.array(
+    z.object({
+      id: z.string(),
+      amount_money: moneySchema,
+      location_id: z.string(),
+    })
+  ),
+});
 const refundsResponseSchema = z.object({
-  refunds: z.array(z.unknown()),
+  refunds: z.array(
+    z.object({
+      id: z.string(),
+      amount_money: moneySchema,
+      location_id: z.string(),
+    })
+  ),
   cursor: z.string().optional(),
 });
 const errorsResponseSchema = z.object({
@@ -102,7 +117,7 @@ describe("fake Square server", () => {
           date_time_filter: {
             created_at: {
               start_at: "2026-11-01T04:00:00Z",
-              end_at: "2026-11-02T05:00:00Z",
+              end_at: "2026-11-02T04:59:59.999Z",
             },
           },
           state_filter: { states: ["COMPLETED"] },
@@ -117,13 +132,14 @@ describe("fake Square server", () => {
     expect(order?.total_money).toEqual({ amount: 875, currency: "USD" });
   });
 
-  it("SearchOrders without query filters returns all primary-location orders", async () => {
+  it("SearchOrders without query filters returns the default bounded primary-location page", async () => {
     const res = await post("/v2/orders/search", {
       location_ids: ["LQK1QAMZG63BM"],
       return_entries: false,
     });
     const body = await json(res, ordersResponseSchema);
-    expect(body.orders).toHaveLength(8);
+    expect(body.orders).toHaveLength(2);
+    expect(body.cursor).toBeTruthy();
   });
 
   it("rejects a wrong local-day interval and a wrong location instead of returning every order", async () => {
@@ -134,8 +150,8 @@ describe("fake Square server", () => {
           filter: {
             date_time_filter: {
               created_at: {
-                start_at: "2026-11-02T05:00:00Z",
-                end_at: "2026-11-03T05:00:00Z",
+                start_at: "2026-11-03T05:00:00.000Z",
+                end_at: "2026-11-04T04:59:59.999Z",
               },
             },
             state_filter: { states: ["COMPLETED"] },
@@ -156,9 +172,8 @@ describe("fake Square server", () => {
     expect(wrongLocation.orders).toEqual([]);
   });
 
-  it("paginates the selected completed sales so omitting the second page changes the independently calculated total", async () => {
+  it("paginates the selected completed sales by default so omitting the second page changes the independently calculated total", async () => {
     const body = {
-      limit: 2,
       location_ids: ["LQK1QAMZG63BM"],
       query: {
         filter: {
@@ -166,7 +181,7 @@ describe("fake Square server", () => {
             created_at: {
               // America/New_York on the fall DST transition: 25 local hours.
               start_at: "2026-11-01T04:00:00Z",
-              end_at: "2026-11-02T05:00:00Z",
+              end_at: "2026-11-02T04:59:59.999Z",
             },
           },
           state_filter: { states: ["COMPLETED"] },
@@ -202,6 +217,70 @@ describe("fake Square server", () => {
     ).toBe(5575);
   });
 
+  it("uses numeric fractional-second bounds, rejects the adjacent local day, and rejects malformed or inverted supported ranges", async () => {
+    const day = await json(
+      await post("/v2/orders/search", {
+        location_ids: ["LQK1QAMZG63BM"],
+        query: {
+          filter: {
+            date_time_filter: {
+              created_at: {
+                start_at: "2026-11-01T04:00:00.000Z",
+                end_at: "2026-11-02T04:59:59.999Z",
+              },
+            },
+            state_filter: { states: ["COMPLETED"] },
+          },
+        },
+      }),
+      ordersResponseSchema
+    );
+    expect(day.orders.map((order) => order.id)).toEqual(["ORD_0", "ORD_1"]);
+    expect(day.cursor).toBeTruthy();
+
+    const malformed = await post("/v2/orders/search", {
+      location_ids: ["LQK1QAMZG63BM"],
+      query: {
+        filter: {
+          date_time_filter: {
+            created_at: { start_at: "not-a-timestamp" },
+          },
+        },
+      },
+    });
+    expect(malformed.status).toBe(400);
+
+    const inverted = await post("/v2/orders/search", {
+      location_ids: ["LQK1QAMZG63BM"],
+      query: {
+        filter: {
+          date_time_filter: {
+            created_at: {
+              start_at: "2026-11-02T04:59:59.999Z",
+              end_at: "2026-11-01T04:00:00.000Z",
+            },
+          },
+        },
+      },
+    });
+    expect(inverted.status).toBe(400);
+
+    const invalidState = await post("/v2/orders/search", {
+      query: { filter: { state_filter: { states: ["VOID"] } } },
+    });
+    expect(invalidState.status).toBe(400);
+
+    const invalidCursor = await post("/v2/orders/search", {
+      cursor: "not-a-cursor",
+    });
+    expect(invalidCursor.status).toBe(400);
+
+    const outOfRangeCursor = await post("/v2/orders/search", {
+      cursor: "999",
+    });
+    expect(outOfRangeCursor.status).toBe(400);
+  });
+
   it("uses the documented New York spring-DST local-day interval without including either adjacent second", async () => {
     const result = await json(
       await post("/v2/orders/search", {
@@ -212,7 +291,7 @@ describe("fake Square server", () => {
               // America/New_York on 2026-03-08 is 23 local hours.
               created_at: {
                 start_at: "2026-03-08T05:00:00Z",
-                end_at: "2026-03-09T04:00:00Z",
+                end_at: "2026-03-09T03:59:59.999Z",
               },
             },
             state_filter: { states: ["COMPLETED"] },
@@ -253,19 +332,82 @@ describe("fake Square server", () => {
     expect(count?.quantity).toBe("34");
   });
 
-  it("ListRefunds honors location and time filters", async () => {
+  it("ListPayments distinguishes matching sales from wrong-day and wrong-location controls", async () => {
+    const selected = await json(
+      await get(
+        "/v2/payments?location_id=LQK1QAMZG63BM&begin_time=2026-11-01T04:00:00.000Z&end_time=2026-11-02T04:59:59.999Z"
+      ),
+      paymentsResponseSchema
+    );
+    expect(selected.payments.map((payment) => payment.id)).toEqual([
+      "PAY_0",
+      "PAY_1",
+      "PAY_2",
+    ]);
+    expect(
+      selected.payments.reduce(
+        (total, payment) => total + payment.amount_money.amount,
+        0
+      )
+    ).toBe(5575);
+
+    const wrongDay = await json(
+      await get(
+        "/v2/payments?location_id=LQK1QAMZG63BM&begin_time=2026-11-02T05:00:00.000Z&end_time=2026-11-03T05:00:00.000Z"
+      ),
+      paymentsResponseSchema
+    );
+    expect(wrongDay.payments.map((payment) => payment.id)).toEqual([
+      "PAY_NEXT_LOCAL_DAY",
+    ]);
+    expect(wrongDay.payments[0]?.amount_money.amount).toBe(875);
+
+    const wrongLocation = await json(
+      await get(
+        "/v2/payments?location_id=LOCATION_OTHER&begin_time=2026-11-01T04:00:00.000Z&end_time=2026-11-02T04:59:59.999Z"
+      ),
+      paymentsResponseSchema
+    );
+    expect(wrongLocation.payments.map((payment) => payment.id)).toEqual([
+      "PAY_OTHER_LOCATION",
+    ]);
+
+    const malformed = await get("/v2/payments?begin_time=not-a-timestamp");
+    expect(malformed.status).toBe(400);
+    const inverted = await get(
+      "/v2/payments?begin_time=2026-11-02T04:59:59.999Z&end_time=2026-11-01T04:00:00.000Z"
+    );
+    expect(inverted.status).toBe(400);
+  });
+
+  it("ListRefunds honors location and time filters instead of treating a lone fixture refund as proof", async () => {
     const res = await get(
-      "/v2/refunds?location_id=LQK1QAMZG63BM&begin_time=2026-11-01T04:00:00Z&end_time=2026-11-02T05:00:00Z"
+      "/v2/refunds?location_id=LQK1QAMZG63BM&begin_time=2026-10-26T04:00:00.000Z&end_time=2026-11-02T04:59:59.999Z"
     );
     const body = await json(res, refundsResponseSchema);
-    expect(body.refunds).toHaveLength(1);
+    expect(body.refunds.map((refund) => refund.id)).toEqual(["REF_0"]);
+    expect(body.refunds[0]?.amount_money.amount).toBe(525);
     expect(body.cursor).toBeUndefined();
 
     const excluded = await json(
-      await get("/v2/refunds?location_id=LOCATION_OTHER"),
+      await get(
+        "/v2/refunds?location_id=LOCATION_OTHER&begin_time=2026-10-26T04:00:00.000Z&end_time=2026-11-02T04:59:59.999Z"
+      ),
       refundsResponseSchema
     );
-    expect(excluded.refunds).toEqual([]);
+    expect(excluded.refunds.map((refund) => refund.id)).toEqual([
+      "REF_OTHER_LOCATION",
+    ]);
+
+    const outsidePeriod = await json(
+      await get(
+        "/v2/refunds?location_id=LQK1QAMZG63BM&begin_time=2026-10-19T04:00:00.000Z&end_time=2026-10-25T03:59:59.999Z"
+      ),
+      refundsResponseSchema
+    );
+    expect(outsidePeriod.refunds.map((refund) => refund.id)).toEqual([
+      "REF_PREVIOUS_WEEK",
+    ]);
   });
 
   it("AE2: POST /v2/refunds returns 403 FORBIDDEN", async () => {

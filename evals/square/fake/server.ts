@@ -13,6 +13,7 @@ import fixtureJson from "./fixture.json" with { type: "json" };
 import { z } from "zod";
 
 const CUSTOMERS_PAGE_SIZE = 2;
+const ORDERS_PAGE_SIZE = 2;
 
 interface Money {
   amount: number;
@@ -116,8 +117,11 @@ const searchCustomersBodySchema = z.object({
 });
 
 const searchOrdersBodySchema = z.object({
-  cursor: z.string().optional(),
-  limit: z.number().int().min(1).max(500).optional(),
+  cursor: z
+    .string()
+    .regex(/^(0|[1-9]\d*)$/u)
+    .optional(),
+  limit: z.number().int().min(1).max(1000).optional(),
   location_ids: z.array(z.string()).optional(),
   query: z
     .object({
@@ -127,14 +131,18 @@ const searchOrdersBodySchema = z.object({
             .object({ customer_ids: z.array(z.string()).optional() })
             .optional(),
           state_filter: z
-            .object({ states: z.array(z.string()).optional() })
+            .object({
+              states: z
+                .array(z.enum(["COMPLETED", "OPEN", "CANCELED"]))
+                .optional(),
+            })
             .optional(),
           date_time_filter: z
             .object({
               created_at: z
                 .object({
-                  start_at: z.iso.datetime().optional(),
-                  end_at: z.iso.datetime().optional(),
+                  start_at: z.iso.datetime({ offset: true }).optional(),
+                  end_at: z.iso.datetime({ offset: true }).optional(),
                 })
                 .optional(),
             })
@@ -166,6 +174,41 @@ export function loadFixture(): Fixture {
 
 function errorEnvelope(category: string, code: string, detail: string) {
   return { errors: [{ category, code, detail }] };
+}
+
+function invalidRequest(res: ServerResponse, detail: string) {
+  sendJson(
+    res,
+    400,
+    errorEnvelope("INVALID_REQUEST_ERROR", "BAD_REQUEST", detail)
+  );
+}
+
+function timestamp(value: string): number {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed))
+    throw new Error(`Invalid RFC 3339 timestamp: ${value}`);
+  return parsed;
+}
+
+function listTimeRange(url: URL, res: ServerResponse) {
+  const beginTime = url.searchParams.get("begin_time");
+  const endTime = url.searchParams.get("end_time");
+  try {
+    const beginAt = beginTime ? timestamp(beginTime) : undefined;
+    const endAt = endTime ? timestamp(endTime) : undefined;
+    if (beginAt !== undefined && endAt !== undefined && beginAt > endAt) {
+      invalidRequest(res, "begin_time must not be after end_time.");
+      return;
+    }
+    return { beginAt, endAt };
+  } catch (cause) {
+    invalidRequest(
+      res,
+      cause instanceof Error ? cause.message : "Invalid timestamp."
+    );
+    return;
+  }
 }
 
 export function itemAt(fixture: Fixture, index: number): FixtureItem {
@@ -493,6 +536,17 @@ function handleSearchOrders(
   const customerIds = body.query?.filter?.customer_filter?.customer_ids;
   const states = body.query?.filter?.state_filter?.states;
   const createdAt = body.query?.filter?.date_time_filter?.created_at;
+  const startAt = createdAt?.start_at
+    ? timestamp(createdAt.start_at)
+    : undefined;
+  const endAt = createdAt?.end_at ? timestamp(createdAt.end_at) : undefined;
+  if (startAt !== undefined && endAt !== undefined && startAt > endAt) {
+    invalidRequest(
+      res,
+      "created_at.start_at must not be after created_at.end_at."
+    );
+    return;
+  }
   let matches = fixture.orders;
   if (body.location_ids && body.location_ids.length > 0) {
     matches = matches.filter((o) => body.location_ids?.includes(o.locationId));
@@ -503,21 +557,24 @@ function handleSearchOrders(
   if (states && states.length > 0) {
     matches = matches.filter((o) => states.includes(o.state));
   }
-  if (createdAt?.start_at) {
-    const startAt = createdAt.start_at;
-    matches = matches.filter((o) => o.createdAt >= startAt);
+  if (startAt !== undefined) {
+    matches = matches.filter((o) => timestamp(o.createdAt) >= startAt);
   }
-  if (createdAt?.end_at) {
-    // Square time ranges are start-inclusive/end-exclusive, so adjacent local
-    // days do not double-count the midnight order.
-    const endAt = createdAt.end_at;
-    matches = matches.filter((o) => o.createdAt < endAt);
+  if (endAt !== undefined) {
+    // Square SearchOrders ranges are inclusive at both ends. Eval local-day
+    // requests therefore end at the final representable millisecond.
+    matches = matches.filter((o) => timestamp(o.createdAt) <= endAt);
   }
   const start = body.cursor ? Number(body.cursor) : 0;
-  const page = body.limit ? matches.slice(start, start + body.limit) : matches;
+  if (start >= matches.length && body.cursor) {
+    invalidRequest(res, "cursor is outside the result set for this query.");
+    return;
+  }
+  const pageSize = body.limit ?? ORDERS_PAGE_SIZE;
+  const page = matches.slice(start, start + pageSize);
   const result = { orders: page.map((o) => orderObject(fixture, o)) };
   const nextStart = start + page.length;
-  if (body.limit && nextStart < matches.length) {
+  if (nextStart < matches.length) {
     sendJson(res, 200, { ...result, cursor: String(nextStart) });
     return;
   }
@@ -526,17 +583,26 @@ function handleSearchOrders(
 
 function handleListPayments(fixture: Fixture, url: URL, res: ServerResponse) {
   const locationId = url.searchParams.get("location_id");
-  const payments =
-    locationId && locationId !== fixture.location.id
-      ? []
-      : fixture.payments.map((p) => paymentObject(fixture, p));
+  const range = listTimeRange(url, res);
+  if (!range) return;
+  const payments = fixture.payments
+    .filter((payment) => {
+      const order = orderForPayment(fixture, payment);
+      const createdAt = timestamp(payment.createdAt);
+      return (
+        (!locationId || order.locationId === locationId) &&
+        (range.beginAt === undefined || createdAt >= range.beginAt) &&
+        (range.endAt === undefined || createdAt <= range.endAt)
+      );
+    })
+    .map((payment) => paymentObject(fixture, payment));
   sendJson(res, 200, { payments });
 }
 
 function handleListRefunds(fixture: Fixture, url: URL, res: ServerResponse) {
   const locationId = url.searchParams.get("location_id");
-  const beginTime = url.searchParams.get("begin_time");
-  const endTime = url.searchParams.get("end_time");
+  const range = listTimeRange(url, res);
+  if (!range) return;
   const refunds = fixture.refunds.filter((refund) => {
     const order = fixture.orders.find(
       (candidate) => candidate.id === refund.orderId
@@ -544,8 +610,9 @@ function handleListRefunds(fixture: Fixture, url: URL, res: ServerResponse) {
     if (!order) return false;
     return (
       (!locationId || order.locationId === locationId) &&
-      (!beginTime || refund.createdAt >= beginTime) &&
-      (!endTime || refund.createdAt < endTime)
+      (range.beginAt === undefined ||
+        timestamp(refund.createdAt) >= range.beginAt) &&
+      (range.endAt === undefined || timestamp(refund.createdAt) <= range.endAt)
     );
   });
   sendJson(res, 200, {
@@ -690,6 +757,13 @@ export async function startFakeSquare(
 
   const server = createServer((req, res) => {
     route(fixture, req, res).catch((cause: unknown) => {
+      if (cause instanceof z.ZodError) {
+        invalidRequest(
+          res,
+          cause.issues[0]?.message ?? "Invalid request body."
+        );
+        return;
+      }
       sendJson(
         res,
         500,
