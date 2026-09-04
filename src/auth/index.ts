@@ -109,7 +109,8 @@ export function createPhoneNumberOptions(
       getTempName: () => "Phone user",
     },
     verifyOTP: dependencies.localPhoneAuthBypassEnabled
-      ? ({ phoneNumber: value }) => isE164PhoneNumber(value)
+      ? ({ code, phoneNumber: value }) =>
+          code === "000000" && isE164PhoneNumber(value)
       : undefined,
   };
 }

@@ -43,13 +43,16 @@ describe("phone identity verification wiring", () => {
     });
   });
 
-  it("records identities after bypass OTP verification", async () => {
+  it("accepts only the documented development OTP in bypass mode", async () => {
     const { options, recordVerifiedPhoneIdentity } = optionsFor({
       localPhoneAuthBypassEnabled: true,
     });
 
-    expect(await options.verifyOTP?.({ code: "123456", phoneNumber })).toBe(
+    expect(await options.verifyOTP?.({ code: "000000", phoneNumber })).toBe(
       true
+    );
+    expect(await options.verifyOTP?.({ code: "123456", phoneNumber })).toBe(
+      false
     );
     await options.callbackOnVerification?.({
       phoneNumber,
