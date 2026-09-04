@@ -428,7 +428,7 @@
         </text>
         <text x="862" y="226" font-size="12" class="mono">step.started</text>
         <text x="862" y="242" font-size="12">
-          model from DB settings (agent.ts)
+          DB model; local contract fixture in evals
         </text>
         <text x="862" y="264" font-size="12" class="mono">step.completed</text>
         <text x="862" y="280" font-size="12">
@@ -828,7 +828,8 @@
           <tr>
             <td>step.started</td>
             <td>
-              pick the gateway model for the caller's workspace.
+              check auth and lease, then pick the workspace gateway model;
+              model-free contract evals select their local fixture.
               <code>agent/agent.ts</code>
             </td>
           </tr>

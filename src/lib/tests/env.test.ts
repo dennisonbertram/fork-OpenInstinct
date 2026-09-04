@@ -315,4 +315,32 @@ describe("environment", () => {
       expect(localPhoneAuthBypassEnabled).toBe(expected);
     }
   );
+
+  it("enables contract fixtures only in local development", async () => {
+    vi.stubEnv("EVAL_CONTRACT_FIXTURE", "1");
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("VERCEL_ENV", undefined);
+
+    const { env, isContractFixtureEnabled } = await import("@/env");
+
+    expect(env.EVAL_CONTRACT_FIXTURE).toBe("1");
+    expect(isContractFixtureEnabled()).toBe(true);
+  });
+
+  it.each([
+    ["production", undefined],
+    ["development", "development"],
+    ["development", "preview"],
+  ] as const)(
+    "rejects contract fixtures in NODE_ENV=%s VERCEL_ENV=%s",
+    async (nodeEnv, vercelEnv) => {
+      vi.stubEnv("EVAL_CONTRACT_FIXTURE", "1");
+      vi.stubEnv("NODE_ENV", nodeEnv);
+      vi.stubEnv("VERCEL_ENV", vercelEnv);
+
+      await expect(import("@/env")).rejects.toThrow(
+        "Invalid environment variables"
+      );
+    }
+  );
 });

@@ -50,6 +50,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@next/env": "16.3.3",
     "@oxlint/plugins": "1.80.0",
     "@playwright/test": "^1.62.1",
@@ -106,6 +107,7 @@
     "eval:square": "node scripts/eval-square.ts",
     "eval:agent": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/run-agent-evals.ts",
     "eval:ci": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/run-agent-evals.ts --junit .eve/junit.xml",
+    "eval:contract": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/run-contract-evals.ts",
     "eval:list": "eve eval --list",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",

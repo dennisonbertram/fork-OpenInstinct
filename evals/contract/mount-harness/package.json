@@ -1,0 +1,11 @@
+{
+  "name": "openinstinct-contract-mount-harness",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@openinstinct/contract-demo-extension": "workspace:*",
+    "@t3-oss/env-core": "0.13.11",
+    "eve": "0.49.0",
+    "zod": "4.4.3"
+  }
+}

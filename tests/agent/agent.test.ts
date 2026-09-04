@@ -7,12 +7,16 @@ const services = vi.hoisted(() => ({
   getModel: vi.fn<typeof getGatewayModel>(),
   isActive: vi.fn<typeof isScheduledAgentRunLeaseActive>(),
 }));
+const fixture = vi.hoisted(() => ({ enabled: false }));
 
 vi.mock("@/db/services/scheduled-agent-run-leases", () => ({
   isScheduledAgentRunLeaseActive: services.isActive,
 }));
 vi.mock("@/db/services/settings", () => ({
   getGatewayModel: services.getModel,
+}));
+vi.mock("@/env", () => ({
+  isContractFixtureEnabled: () => fixture.enabled,
 }));
 
 import agent from "@/agent/agent";
@@ -23,6 +27,7 @@ const retryLeaseToken = "00000000-0000-4000-8000-000000000003";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  fixture.enabled = false;
   services.getModel.mockResolvedValue("openai/gpt-5.6-sol-fast");
 });
 
@@ -55,6 +60,29 @@ describe("root agent model resolution", () => {
       agent.model.events["step.started"]?.({}, scheduledWorkerContext())
     ).rejects.toThrow("The scheduled run lease is no longer active.");
     expect(services.getModel).not.toHaveBeenCalled();
+  });
+
+  it("uses the deterministic fixture only after auth and lease checks pass", async () => {
+    fixture.enabled = true;
+    services.isActive.mockResolvedValue(true);
+
+    const model = await agent.model.events["step.started"]?.(
+      {},
+      scheduledWorkerContext()
+    );
+
+    expect(services.isActive).toHaveBeenCalledExactlyOnceWith(
+      runId,
+      retryLeaseToken
+    );
+    expect(services.getModel).not.toHaveBeenCalled();
+    expect(model).toMatchObject({
+      model: {
+        modelId: "contract-fixture",
+        provider: "openinstinct-contract-fixtures",
+      },
+      modelContextWindowTokens: 128_000,
+    });
   });
 });
 

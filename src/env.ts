@@ -93,6 +93,7 @@ export const env = createEnv({
     BLOB_READ_WRITE_TOKEN: requiredValue.optional(),
     BLOB_STORE_ID: requiredValue.optional(),
     CRON_SECRET: requiredValue.optional(),
+    EVAL_CONTRACT_FIXTURE: z.enum(["0", "1"]).default("0"),
     GOOGLE_CONNECTOR_UID: requiredValue.default("google/open-instinct"),
     LINQ_CONNECTOR: requiredValue.optional(),
     SQUARE_BASE_URL: squareLoopbackBaseUrlSchema.optional(),
@@ -142,6 +143,16 @@ export const env = createEnv({
             "WORKSPACE_SCOPE_ENFORCEMENT=off is only allowed in isolated non-production environments.",
           path: ["WORKSPACE_SCOPE_ENFORCEMENT"],
         }
+      )
+      .refine(
+        (value) =>
+          value.EVAL_CONTRACT_FIXTURE !== "1" ||
+          (value.NODE_ENV === "development" && value.VERCEL_ENV === undefined),
+        {
+          message:
+            "EVAL_CONTRACT_FIXTURE=1 is only allowed in local development.",
+          path: ["EVAL_CONTRACT_FIXTURE"],
+        }
       ),
   experimental__runtimeEnv: {},
   emptyStringAsUndefined: true,
@@ -157,6 +168,10 @@ export const localPhoneAuthBypassEnabled =
     authHostname?.endsWith(".localhost") === true ||
     authHostname === "127.0.0.1" ||
     authHostname === "[::1]");
+
+export function isContractFixtureEnabled() {
+  return env.EVAL_CONTRACT_FIXTURE === "1";
+}
 
 let workspaceScopeEnforcementEnabled = () =>
   env.WORKSPACE_SCOPE_ENFORCEMENT === "enforce";

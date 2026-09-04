@@ -127,9 +127,8 @@ Before resolving conflicts, sort every upstream pull request into take,
 adapt, or skip, and write the adapt decisions in the sync PR. The fork keeps
 `load_skill` and `connection_search` enabled at the root; the Square skill and
 connection need them. Upstream migrations are renumbered after the fork's
-last migration. A sync PR that touches `agent/` runs the Square evals, and
-once [`docs/CONTRACT_EVALS.md`](docs/CONTRACT_EVALS.md) is built, the
-contract evals are a required gate for every sync.
+last migration. A sync PR that touches `agent/` runs the Square evals. The
+model-free `pnpm eval:contract` suite is a required gate for every sync.
 
 ## Repository is the fork, never upstream
 

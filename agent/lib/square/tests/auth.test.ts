@@ -54,6 +54,7 @@ vi.mock("@vercel/connect/eve", () => ({
 }));
 vi.mock("@/env", () => ({
   env: { SQUARE_CONNECTOR_UID: "square/test" },
+  isContractFixtureEnabled: () => false,
   isWorkspaceScopeEnforcementEnabled: mocks.scopeEnabled,
 }));
 vi.mock("@/db/services/connection-installations", () => ({
@@ -133,6 +134,7 @@ describe("square connection auth resolver", () => {
         SQUARE_ENVIRONMENT: "sandbox",
         SQUARE_SANDBOX_ACCESS_TOKEN: "eval-token",
       },
+      isContractFixtureEnabled: () => false,
       isWorkspaceScopeEnforcementEnabled: mocks.scopeEnabled,
     }));
     vi.resetModules();
@@ -153,6 +155,56 @@ describe("square connection auth resolver", () => {
     ).resolves.toEqual({ token: "eval-token" });
   });
 
+  it("keeps the contract fake token scoped to the authenticated user", async () => {
+    vi.doMock("@/env", () => ({
+      env: {
+        SQUARE_CONNECTOR_UID: undefined,
+        SQUARE_ENVIRONMENT: "sandbox",
+        SQUARE_SANDBOX_ACCESS_TOKEN: "eval-token",
+      },
+      isContractFixtureEnabled: () => true,
+      isWorkspaceScopeEnforcementEnabled: mocks.scopeEnabled,
+    }));
+    vi.resetModules();
+    const { squareAuth: contractSquareAuth } =
+      await import("@/agent/lib/square/auth");
+
+    const provider = await contractSquareAuth(sessionContext());
+
+    expect(mocks.verifyScope).toHaveBeenCalledWith({
+      userId: "better-auth:alice",
+      workspaceId: aliceWorkspaceId,
+    });
+    expect(provider).toMatchObject({ principalType: "user" });
+  });
+
+  it("fails the contract fake token closed without a user principal", async () => {
+    vi.doMock("@/env", () => ({
+      env: {
+        SQUARE_CONNECTOR_UID: undefined,
+        SQUARE_ENVIRONMENT: "sandbox",
+        SQUARE_SANDBOX_ACCESS_TOKEN: "eval-token",
+      },
+      isContractFixtureEnabled: () => true,
+      isWorkspaceScopeEnforcementEnabled: mocks.scopeEnabled,
+    }));
+    vi.resetModules();
+    const { squareAuth: contractSquareAuth } =
+      await import("@/agent/lib/square/auth");
+    const context = sessionContext();
+
+    await expect(
+      contractSquareAuth({
+        ...context,
+        session: {
+          ...context.session,
+          auth: { current: null, initiator: null },
+        },
+      })
+    ).rejects.toThrow("authenticated workspace user");
+    expect(mocks.verifyScope).not.toHaveBeenCalled();
+  });
+
   it("does not use the static token when VERCEL_ENV is production", async () => {
     vi.doMock("@/env", () => ({
       env: {
@@ -161,6 +213,7 @@ describe("square connection auth resolver", () => {
         SQUARE_SANDBOX_ACCESS_TOKEN: "eval-token",
         VERCEL_ENV: "production",
       },
+      isContractFixtureEnabled: () => false,
       isWorkspaceScopeEnforcementEnabled: mocks.scopeEnabled,
     }));
     vi.resetModules();

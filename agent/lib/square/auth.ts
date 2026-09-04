@@ -6,7 +6,11 @@ import {
   recordConnectionInstallation,
 } from "@/db/services/connection-installations";
 import { verifyScopeAccess } from "@/db/services/scope";
-import { env, isWorkspaceScopeEnforcementEnabled } from "@/env";
+import {
+  env,
+  isContractFixtureEnabled,
+  isWorkspaceScopeEnforcementEnabled,
+} from "@/env";
 import { squareScopes, squareSubject } from "@/lib/square";
 
 export const squareAuth: ConnectionAuthResolver = async (ctx) => {
@@ -16,6 +20,23 @@ export const squareAuth: ConnectionAuthResolver = async (ctx) => {
     env.SQUARE_SANDBOX_ACCESS_TOKEN
   ) {
     const token = env.SQUARE_SANDBOX_ACCESS_TOKEN;
+    if (isContractFixtureEnabled()) {
+      if (!isWorkspaceScopeEnforcementEnabled()) {
+        throw new Error("Contract evals require workspace scope enforcement.");
+      }
+      const caller = ctx.session.auth.current ?? ctx.session.auth.initiator;
+      if (caller?.principalType !== "user") {
+        throw new Error("An authenticated workspace user is required.");
+      }
+      const scope = scopeFromPrincipal(caller);
+      if (!(await verifyScopeAccess(scope))) {
+        throw new Error("An authenticated workspace user is required.");
+      }
+      return {
+        getToken: async () => ({ token }),
+        principalType: "user" as const,
+      };
+    }
     return { getToken: async () => ({ token }) };
   }
   if (!env.SQUARE_CONNECTOR_UID) {
