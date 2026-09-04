@@ -353,8 +353,9 @@ Source: `src/app/(authenticated)/layout.tsx` and `_components`.
 
 - `SidebarProvider` wraps a `Sidebar` (default variant, offcanvas collapse)
   and a `SidebarInset` that scrolls (`h-svh overflow-y-auto`).
-- The sidebar header is the colorful Jory wordmark in a large
-  `SidebarMenuButton`; its home link has the accessible name `Jory`. The
+- The sidebar header pairs the colorful Jory wordmark with the 36px clay
+  Jory avatar immediately to its right, in a large `SidebarMenuButton`.
+  Both images are decorative; their shared home link has the accessible name `Jory`. The
   content is the navigation. The footer is the account control.
 - Below `md`, a 48px header with a `SidebarTrigger` and a `type-label` page
   name replaces the sidebar.

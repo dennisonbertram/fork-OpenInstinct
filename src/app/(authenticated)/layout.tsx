@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import joryWordmark from "../../../docs/design/assets/jory-wordmark-color.svg";
+import joryAvatar from "../../../docs/design/assets/jory-avatar_clay.webp";
 import {
   Sidebar,
   SidebarContent,
@@ -43,11 +44,19 @@ export default async function AuthenticatedLayout({
                 <SidebarMenuButton
                   aria-label="Jory"
                   size="lg"
+                  className="gap-3 py-1.5"
                   render={<Link href="/" />}
                 >
                   {/* Next intentionally types SVG imports as `any`; this is the reviewed local wordmark. */}
                   {/* oxlint-disable-next-line typescript/no-unsafe-assignment */}
                   <Image src={joryWordmark} alt="" className="h-6 w-auto" />
+                  <Image
+                    src={joryAvatar}
+                    alt=""
+                    width={36}
+                    height={36}
+                    className="size-9 shrink-0 object-contain"
+                  />
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
