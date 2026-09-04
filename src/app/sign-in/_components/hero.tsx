@@ -1,4 +1,18 @@
+import { Card } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
+
+export function signInSubhead({
+  localBypass,
+  linqConfigured,
+}: {
+  readonly localBypass: boolean;
+  readonly linqConfigured: boolean;
+}) {
+  if (localBypass) return "Enter your phone number to sign in.";
+  if (linqConfigured)
+    return "Enter your phone number and we will text you a code.";
+  return undefined;
+}
 
 export function SignInHero({
   eyebrow,
@@ -25,16 +39,13 @@ export function SignInHero({
 
 export function SignInBubbles() {
   return (
-    <div
-      aria-hidden="true"
-      className="flex w-full max-w-sm flex-col gap-2 rounded-xl bg-card p-4 shadow-card"
-    >
+    <Card aria-hidden="true" className="w-full max-w-sm gap-2 p-4">
       <p className="type-supporting-body ml-auto max-w-[85%] rounded-bubble bg-bubble-user px-4 py-3">
         Can you check the Square inventory for low-stock items?
       </p>
       <p className="type-supporting-body mr-auto max-w-[85%] rounded-bubble bg-bubble-assistant px-4 py-3">
         On it. I will pull the catalog and flag anything under threshold.
       </p>
-    </div>
+    </Card>
   );
 }
