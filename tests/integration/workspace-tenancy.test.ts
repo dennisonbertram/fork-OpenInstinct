@@ -240,7 +240,7 @@ function createDatabase() {
 async function applyExistingMigrations(database: PGlite) {
   const tenancyMigration = await tenancyMigrationName();
   for (const migrationName of await migrationNames()) {
-    if (migrationName !== tenancyMigration) {
+    if (migrationName < tenancyMigration) {
       // oxlint-disable-next-line eslint/no-await-in-loop -- Migrations must execute in committed order.
       await applyMigration(database, migrationName);
     }

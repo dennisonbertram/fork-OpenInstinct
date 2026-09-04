@@ -1,12 +1,20 @@
-/* oxlint-disable typescript/no-unsafe-type-assertion -- The handler fixture supplies only the Chat SDK fields exercised here. */
-import type { HookContext } from "eve/hooks";
 import type { LinqChannelConfig } from "eve/channels/linq";
-import type { AuditableLogger } from "evlog";
+import type { LinqSendOptions } from "@linqapp/chat-sdk-adapter";
+import type { LinqAPIV3 } from "@linqapp/sdk";
+import type { AdapterPostableMessage } from "chat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as Blob from "@vercel/blob";
+import type * as EnvModule from "@/env";
+import type * as UsageService from "@/db/services/usage";
+import type { recordUsageEvent } from "@/db/services/usage";
+import { sendMessageOutputSchema } from "@/agent/lib/send-message";
 import type { AccessScope } from "@/lib/access-scope";
-import workerCancellationHook from "@/agent/hooks/worker-cancellation-delivery";
-import { linqChannelConfig } from "@/agent/channels/linq";
+import type {
+  finalizeScheduledReport,
+  releaseScheduledReport,
+} from "@/db/services/scheduled-agent-jobs";
+// oxlint-disable-next-line import/no-unassigned-import -- Loads the production module so the mocked channel factory can capture its configuration.
+import "@/agent/channels/linq";
 
 interface BrowserImage {
   bytes: Uint8Array;
@@ -15,33 +23,103 @@ interface BrowserImage {
   mediaType: string;
 }
 
-const linqChannelCapture = vi.hoisted(() => {
-  // This suite tests outbound rendering/cancellation only; keep its external
-  // delivery fixture isolated from workspace lifecycle and budget lookups.
+type NativeMessageBody = Parameters<LinqAPIV3["chats"]["messages"]["send"]>[1];
+type NativeMessageOptions = Parameters<
+  LinqAPIV3["chats"]["messages"]["send"]
+>[2];
+
+// The fork budgets and ledgers every provider message. This suite covers
+// outbound rendering only, so keep it clear of workspace lifecycle and usage
+// lookups: enforcement off short-circuits checkBudget, and the usage ledger is
+// mocked so no fire-and-forget insert reaches a database.
+const usageCapture = vi.hoisted(() => {
   vi.stubEnv("WORKSPACE_SCOPE_ENFORCEMENT", "off");
-  return {
-    images: new Map<string, BrowserImage>(),
-    readImage: vi.fn<
+  return { recordUsageEvent: vi.fn<typeof recordUsageEvent>() };
+});
+vi.mock("@/db/services/usage", async (importOriginal) => ({
+  ...(await importOriginal<typeof UsageService>()),
+  recordUsageEvent: usageCapture.recordUsageEvent,
+}));
+
+const linqChannelCapture = vi.hoisted(() => ({
+  // SAFETY: This mutable test capture stores only API keys from the typed SDK constructor mock.
+  clientApiKeys: [] as string[],
+  // SAFETY: The mocked channel factory replaces this value during module loading.
+  config: undefined as LinqChannelConfig | undefined,
+  images: new Map<string, BrowserImage>(),
+  readImage: vi.fn<
+    (
+      scope: AccessScope,
+      id: string,
+      options: {
+        readonly rootSessionId: string;
+        readonly signal?: AbortSignal;
+      }
+    ) => Promise<BrowserImage | undefined>
+  >(),
+  postMessage: vi
+    .fn<
       (
-        scope: AccessScope,
-        id: string,
-        options: {
-          readonly rootSessionId: string;
-          readonly signal?: AbortSignal;
-        }
-      ) => Promise<BrowserImage | undefined>
-    >(),
+        threadId: string,
+        message: AdapterPostableMessage,
+        options?: LinqSendOptions
+      ) => Promise<void>
+    >()
+    .mockResolvedValue(undefined),
+  resolveApiKey: vi
+    .fn<() => Promise<string>>()
+    .mockResolvedValue("linq-test-api-key"),
+  sendNativeMessage: vi
+    .fn<
+      (
+        chatId: string,
+        body: NativeMessageBody,
+        options?: NativeMessageOptions
+      ) => Promise<void>
+    >()
+    .mockResolvedValue(undefined),
+}));
+const scheduleDeliveryCapture = vi.hoisted(() => ({
+  finalize: vi.fn<typeof finalizeScheduledReport>(),
+  release: vi.fn<typeof releaseScheduledReport>(),
+}));
+vi.mock("@/db/services/scheduled-agent-jobs", () => ({
+  finalizeScheduledReport: scheduleDeliveryCapture.finalize,
+  releaseScheduledReport: scheduleDeliveryCapture.release,
+}));
+vi.mock("@/env", async (importOriginal) => {
+  const original = await importOriginal<typeof EnvModule>();
+  return {
+    ...original,
+    env: { ...original.env, LINQ_CONNECTOR: "linq/test" },
   };
 });
-const evlogCapture = vi.hoisted(() => ({
-  info: vi.fn<AuditableLogger["info"]>(),
-  set: vi.fn<AuditableLogger["set"]>(),
-  useLogger: vi.fn<() => Pick<AuditableLogger, "info" | "set" | "warn">>(),
-  warn: vi.fn<AuditableLogger["warn"]>(),
+vi.mock("@vercel/connect/eve", () => ({
+  connectLinqCredentials: () => ({
+    apiKey: linqChannelCapture.resolveApiKey,
+  }),
 }));
-vi.mock("evlog/eve", () => ({
-  useLogger: evlogCapture.useLogger,
+vi.mock("@linqapp/sdk", () => ({
+  LinqAPIV3: class {
+    constructor(options: Pick<LinqAPIV3, "apiKey">) {
+      linqChannelCapture.clientApiKeys.push(options.apiKey);
+    }
+
+    chats = {
+      messages: { send: linqChannelCapture.sendNativeMessage },
+    };
+  },
 }));
+vi.mock(import("eve/channels/linq"), async (importOriginal) => {
+  const original = await importOriginal();
+  return {
+    ...original,
+    linqChannel(config: LinqChannelConfig) {
+      linqChannelCapture.config = config;
+      return original.linqChannel(config);
+    },
+  };
+});
 vi.mock("@/db/services/browser-images", () => ({
   async readReadyBrowserImageArtifact(
     scope: AccessScope,
@@ -79,41 +157,36 @@ vi.mock("@vercel/blob", async (importOriginal) => {
     },
   };
 });
-const channelEvents = linqChannelConfig.events;
-const trackWorkerCancellation = channelEvents["action.result"];
-const deliverCompletedMessage = channelEvents["message.completed"];
-// SAFETY: The test reads the optional event slot from the channel's public config contract.
-const deliverInputRequest = (
-  channelEvents as NonNullable<LinqChannelConfig["events"]>
-)["input.requested"];
+const handleActionResult = linqChannelCapture.config?.events?.["action.result"];
+const deliverInputRequest =
+  linqChannelCapture.config?.events?.["input.requested"];
+if (!handleActionResult) {
+  throw new Error("The Linq channel must configure action result delivery.");
+}
 
-type HandlerParameters = Parameters<typeof deliverCompletedMessage>;
+type ActionHandlerParameters = Parameters<typeof handleActionResult>;
 
 interface LinqTestMessage {
+  readonly attachments?: readonly {
+    readonly mimeType?: string;
+    readonly name?: string;
+    readonly type: "audio" | "file" | "image" | "video";
+    readonly url: string;
+  }[];
   readonly files?: readonly {
     readonly data: Buffer;
     readonly filename: string;
     readonly mimeType: string;
   }[];
-  readonly markdown: string;
-}
-
-interface LinqTestState {
-  acknowledgedLinqMessageId?: string;
-  pendingToolCallMessage?: string | null;
-  workerCancellations?: readonly {
-    readonly sourceMessageId: string;
-    readonly taskId: string;
-  }[];
+  readonly text: string;
 }
 
 describe("Linq message delivery", () => {
   beforeEach(() => {
-    evlogCapture.info.mockClear();
-    evlogCapture.set.mockClear();
-    evlogCapture.useLogger.mockReset();
-    evlogCapture.useLogger.mockReturnValue(evlogCapture);
-    evlogCapture.warn.mockClear();
+    vi.clearAllMocks();
+    usageCapture.recordUsageEvent.mockResolvedValue(undefined);
+    scheduleDeliveryCapture.finalize.mockResolvedValue(true);
+    scheduleDeliveryCapture.release.mockResolvedValue(true);
   });
 
   it("renders tool approval as exact plain-text replies", async () => {
@@ -123,42 +196,36 @@ describe("Linq message delivery", () => {
     const { context, post } = handlerContext();
 
     await deliverInputRequest(
-      {
-        requests: [
-          {
-            action: {
-              callId: "call-google-write",
-              input: {
-                action: "send_email",
-                body: "Dennison!",
-                subject: "Just testing",
-                to: ["recipient@example.com"],
-              },
-              kind: "tool-call",
-              toolName: "google_workspace_write",
+      inputRequestEvent([
+        {
+          action: {
+            callId: "call-google-write",
+            input: {
+              action: "send_email",
+              body: "Dennison!",
+              subject: "Just testing",
+              to: ["recipient@example.com"],
             },
-            allowFreeform: false,
-            display: "confirmation",
-            kind: "tool-approval",
-            options: [
-              { id: "approve", label: "Approve" },
-              { id: "cancel", label: "Cancel" },
-            ],
-            prompt: "Approve tool call: google_workspace_write",
-            requestId: "approval-1",
+            kind: "tool-call",
+            toolName: "google_workspace_write",
           },
-        ],
-        sequence: 0,
-        stepIndex: 0,
-        turnId: "turn-1",
-      },
+          allowFreeform: false,
+          display: "confirmation",
+          kind: "tool-approval",
+          options: [
+            { id: "approve", label: "Approve" },
+            { id: "cancel", label: "Cancel" },
+          ],
+          prompt: "Approve tool call: google_workspace_write",
+          requestId: "approval-1",
+        },
+      ]),
       context,
       sessionContext()
     );
 
     expect(post).toHaveBeenCalledExactlyOnceWith({
-      markdown:
-        'Approve tool call: google_workspace_write\n\nReply exactly "approve" or "cancel".',
+      raw: 'Approve tool call: google_workspace_write\n\nReply exactly "approve" or "cancel".',
     });
   });
 
@@ -169,49 +236,44 @@ describe("Linq message delivery", () => {
     const { context, post } = handlerContext();
 
     await deliverInputRequest(
-      {
-        requests: [
-          {
-            action: {
-              callId: "call-question-1",
-              input: {},
-              kind: "tool-call",
-              toolName: "ask_question",
-            },
-            allowFreeform: false,
-            display: "select",
-            kind: "question",
-            options: [
-              { id: "morning", label: "Morning" },
-              { id: "afternoon", label: "Afternoon" },
-            ],
-            prompt: "What time works?",
-            requestId: "question-1",
+      inputRequestEvent([
+        {
+          action: {
+            callId: "call-question-1",
+            input: {},
+            kind: "tool-call",
+            toolName: "ask_question",
           },
-          {
-            action: {
-              callId: "call-question-2",
-              input: {},
-              kind: "tool-call",
-              toolName: "ask_question",
-            },
-            allowFreeform: true,
-            display: "text",
-            kind: "question",
-            prompt: "What should the note say?",
-            requestId: "question-2",
+          allowFreeform: false,
+          display: "select",
+          kind: "question",
+          options: [
+            { id: "morning", label: "Morning" },
+            { id: "afternoon", label: "Afternoon" },
+          ],
+          prompt: "What time works?",
+          requestId: "question-1",
+        },
+        {
+          action: {
+            callId: "call-question-2",
+            input: {},
+            kind: "tool-call",
+            toolName: "ask_question",
           },
-        ],
-        sequence: 0,
-        stepIndex: 0,
-        turnId: "turn-1",
-      },
+          allowFreeform: true,
+          display: "text",
+          kind: "question",
+          prompt: "What should the note say?",
+          requestId: "question-2",
+        },
+      ]),
       context,
       sessionContext()
     );
 
     expect(post).toHaveBeenCalledExactlyOnceWith({
-      markdown: [
+      raw: [
         "What time works?",
         "1. Morning\n2. Afternoon",
         "Reply with an option label or number.",
@@ -221,7 +283,13 @@ describe("Linq message delivery", () => {
     });
   });
 
-  it("posts final responses as native iMessage Markdown", async () => {
+  it("does not register automatic assistant text posting", () => {
+    expect(linqChannelCapture.config?.events?.["message.completed"]).toBeTypeOf(
+      "function"
+    );
+  });
+
+  it("posts send_message output as raw iMessage text", async () => {
     const message = [
       "Still blocked. No order was submitted.",
       "The order remains unchanged:",
@@ -230,16 +298,206 @@ describe("Linq message delivery", () => {
     ].join("\n");
     const { context, post } = handlerContext();
 
-    await deliverCompletedMessage(
-      completedEvent({ message }),
+    await handleActionResult(
+      sendMessageResult({ kind: "message", text: message }),
       context,
       sessionContext()
     );
 
-    // A single line break inside a non-list block is joined with a space:
-    // Linq's markdown renderer drops a raw "\n" with no separator.
+    expect(post).toHaveBeenCalledExactlyOnceWith({ raw: message });
+  });
+
+  it("finalizes a scheduled result after send_message posts it", async () => {
+    const { context } = handlerContext();
+
+    await handleActionResult(
+      sendMessageResult({ kind: "message", text: "The price fell." }),
+      context,
+      sessionContext("scheduled-result")
+    );
+
+    expect(scheduleDeliveryCapture.finalize).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000002",
+      "00000000-0000-4000-8000-000000000004",
+      "delivered"
+    );
+    expect(linqChannelCapture.postMessage).toHaveBeenCalledExactlyOnceWith(
+      "linq:dm:chat-1",
+      { raw: "The price fell." },
+      {
+        idempotencyKey:
+          "scheduled-report:00000000-0000-4000-8000-000000000002:1",
+      }
+    );
+  });
+
+  it("uses the same Linq idempotency key when a report turn is retried", async () => {
+    const { context } = handlerContext();
+    const event = sendMessageResult({
+      kind: "message",
+      text: "The price fell.",
+    });
+
+    await handleActionResult(
+      event,
+      context,
+      sessionContext("scheduled-result")
+    );
+    await handleActionResult(
+      event,
+      context,
+      sessionContext("scheduled-result")
+    );
+
+    expect(linqChannelCapture.postMessage).toHaveBeenCalledTimes(2);
+    expect(linqChannelCapture.postMessage.mock.calls[0]?.[2]).toEqual(
+      linqChannelCapture.postMessage.mock.calls[1]?.[2]
+    );
+  });
+
+  it("posts one native rich link preview per call with fresh credentials", async () => {
+    const { context, post } = handlerContext();
+    linqChannelCapture.clientApiKeys.length = 0;
+    linqChannelCapture.resolveApiKey
+      .mockResolvedValueOnce("linq-api-key-1")
+      .mockResolvedValueOnce("linq-api-key-2");
+
+    await handleActionResult(
+      sendMessageResult({ kind: "link", url: "https://example.com/first" }),
+      context,
+      sessionContext()
+    );
+    await handleActionResult(
+      sendMessageResult({ kind: "link", url: "https://example.com/second" }),
+      context,
+      sessionContext()
+    );
+
+    expect(linqChannelCapture.resolveApiKey).toHaveBeenCalledTimes(2);
+    expect(linqChannelCapture.clientApiKeys).toEqual([
+      "linq-api-key-1",
+      "linq-api-key-2",
+    ]);
+    expect(linqChannelCapture.sendNativeMessage).toHaveBeenNthCalledWith(
+      1,
+      "chat-1",
+      {
+        message: {
+          parts: [{ type: "link", value: "https://example.com/first" }],
+        },
+      },
+      undefined
+    );
+    expect(linqChannelCapture.sendNativeMessage).toHaveBeenNthCalledWith(
+      2,
+      "chat-1",
+      {
+        message: {
+          parts: [{ type: "link", value: "https://example.com/second" }],
+        },
+      },
+      undefined
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("requires a native link preview to be its own send_message call", () => {
+    expect(
+      sendMessageOutputSchema.safeParse({
+        kind: "link",
+        text: "Read this",
+        url: "https://example.com/article",
+      }).success
+    ).toBe(false);
+  });
+
+  it("discriminates native links from message content", () => {
+    expect(
+      sendMessageOutputSchema.safeParse({
+        attachments: [{ kind: "image", url: "https://example.com/image.png" }],
+        kind: "message",
+        text: "A caption",
+      }).success
+    ).toBe(true);
+    expect(sendMessageOutputSchema.safeParse({ kind: "message" }).success).toBe(
+      false
+    );
+    expect(
+      sendMessageOutputSchema.safeParse({
+        kind: "message",
+        text: "Read this",
+        url: "https://example.com/article",
+      }).success
+    ).toBe(false);
+    expect(
+      sendMessageOutputSchema.safeParse({
+        link: "https://example.com/article",
+      }).success
+    ).toBe(false);
+  });
+
+  it("enforces Linq's native link URL constraints", () => {
+    const prefix = "https://example.com/";
+    const maximumLengthLink = `${prefix}${"a".repeat(2048 - prefix.length)}`;
+
+    expect(
+      sendMessageOutputSchema.safeParse({
+        kind: "link",
+        url: maximumLengthLink,
+      }).success
+    ).toBe(true);
+    expect(
+      sendMessageOutputSchema.safeParse({
+        kind: "link",
+        url: `${maximumLengthLink}a`,
+      }).success
+    ).toBe(false);
+    expect(
+      sendMessageOutputSchema.safeParse({
+        kind: "link",
+        url: "http://example.com/article",
+      }).success
+    ).toBe(false);
+  });
+
+  it("posts a proactive message without a current inbound message", async () => {
+    const { context, post } = handlerContext(undefined);
+
+    await handleActionResult(
+      sendMessageResult({
+        kind: "message",
+        text: "Your weekly summary is ready.",
+      }),
+      context,
+      sessionContext()
+    );
+
     expect(post).toHaveBeenCalledExactlyOnceWith({
-      markdown: message.replaceAll("\n", " "),
+      raw: "Your weekly summary is ready.",
+    });
+  });
+
+  it.each([
+    ["image", "image/jpeg", "photo.jpg"],
+    ["video", "video/mp4", "clip.mp4"],
+    ["audio", "audio/mpeg", "voice.mp3"],
+    ["file", "application/pdf", "brief.pdf"],
+  ] as const)("posts a native %s attachment", async (kind, mimeType, name) => {
+    const { context, post } = handlerContext();
+    const url = `https://media.example/${name}`;
+
+    await handleActionResult(
+      sendMessageResult({
+        attachments: [{ kind, mimeType, name, url }],
+        kind: "message",
+      }),
+      context,
+      sessionContext()
+    );
+
+    expect(post).toHaveBeenCalledExactlyOnceWith({
+      attachments: [{ mimeType, name, type: kind, url }],
+      raw: "",
     });
   });
 
@@ -253,9 +511,10 @@ describe("Linq message delivery", () => {
     });
     const { context, post } = handlerContext();
 
-    await deliverCompletedMessage(
-      completedEvent({
-        message: `Here it is.\n\n![Product](/artifacts/${artifactId})`,
+    await handleActionResult(
+      sendMessageResult({
+        kind: "message",
+        text: `Here it is.\n\n![Product](/artifacts/${artifactId})`,
       }),
       context,
       sessionContext()
@@ -277,8 +536,48 @@ describe("Linq message delivery", () => {
           mimeType: "image/png",
         },
       ],
-      markdown: "Here it is.",
+      raw: "Here it is.",
     });
+  });
+
+  it("loads scheduled artifacts from the scheduled-run session", async () => {
+    const artifactId = "0d01e667-d128-4bb7-a248-1ae21db72f4f";
+    linqChannelCapture.readImage.mockResolvedValue({
+      bytes: new Uint8Array([1, 2, 3]),
+      filename: "scheduled-product.png",
+      id: artifactId,
+      mediaType: "image/png",
+    });
+    const { context } = handlerContext();
+
+    await handleActionResult(
+      sendMessageResult({
+        kind: "message",
+        text: `Price changed.\n\n![Product](/artifacts/${artifactId})`,
+      }),
+      context,
+      sessionContext("scheduled-result")
+    );
+
+    expect(linqChannelCapture.readImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        workspaceId: "workspace-1",
+      }),
+      artifactId,
+      { rootSessionId: "scheduled-run-session", signal: undefined }
+    );
+    expect(linqChannelCapture.postMessage).toHaveBeenCalledWith(
+      "linq:dm:chat-1",
+      expect.objectContaining({
+        files: [expect.objectContaining({ filename: "scheduled-product.png" })],
+        raw: "Price changed.",
+      }),
+      expect.objectContaining({
+        idempotencyKey:
+          "scheduled-report:00000000-0000-4000-8000-000000000002:1",
+      })
+    );
   });
 
   it("sends multiple artifact images as one native attachment gallery", async () => {
@@ -296,9 +595,10 @@ describe("Linq message delivery", () => {
     );
     const { context, post } = handlerContext();
 
-    await deliverCompletedMessage(
-      completedEvent({
-        message: [
+    await handleActionResult(
+      sendMessageResult({
+        kind: "message",
+        text: [
           "Two good options.",
           `![First](/artifacts/${firstArtifactId})`,
           `![Second](/artifacts/${secondArtifactId})`,
@@ -321,11 +621,11 @@ describe("Linq message delivery", () => {
           mimeType: "image/png",
         },
       ],
-      markdown: "Two good options.",
+      raw: "Two good options.",
     });
   });
 
-  it("keeps reply bubbles and attaches images to the final bubble", async () => {
+  it("keeps one send_message call in one bubble with its images", async () => {
     const artifactId = "0d01e667-d128-4bb7-a248-1ae21db72f4f";
     linqChannelCapture.readImage.mockResolvedValue({
       bytes: new Uint8Array([1, 2, 3]),
@@ -335,17 +635,16 @@ describe("Linq message delivery", () => {
     });
     const { context, post } = handlerContext();
 
-    await deliverCompletedMessage(
-      completedEvent({
-        message: `First thought.\n\nSecond thought.\n\n![Product](/artifacts/${artifactId})`,
+    await handleActionResult(
+      sendMessageResult({
+        kind: "message",
+        text: `First thought.\n\nSecond thought.\n\n![Product](/artifacts/${artifactId})`,
       }),
       context,
       sessionContext()
     );
 
-    expect(post).toHaveBeenCalledTimes(2);
-    expect(post).toHaveBeenNthCalledWith(1, { markdown: "First thought." });
-    expect(post).toHaveBeenNthCalledWith(2, {
+    expect(post).toHaveBeenCalledExactlyOnceWith({
       files: [
         {
           data: Buffer.from([1, 2, 3]),
@@ -353,121 +652,22 @@ describe("Linq message delivery", () => {
           mimeType: "image/png",
         },
       ],
-      markdown: "Second thought.",
+      raw: "First thought.\n\nSecond thought.",
     });
   });
 
-  it("suppresses intermediate tool-call messages", async () => {
-    const { addReaction, context, post, state } = handlerContext();
-
-    await deliverCompletedMessage(
-      completedEvent({
-        finishReason: "tool-calls",
-        message: "Checking the checkout\nwith the browser",
-      }),
-      context,
-      sessionContext()
-    );
-
-    expect(post).not.toHaveBeenCalled();
-    expect(addReaction).toHaveBeenCalledExactlyOnceWith(
-      "linq:dm:chat-1",
-      "message-1",
-      "thumbs_up"
-    );
-    expect(evlogCapture.set).toHaveBeenCalledExactlyOnceWith({
-      channel: {
-        linq: {
-          reactions: [
-            {
-              emoji: "thumbs_up",
-              messageId: "message-1",
-              outcome: "accepted",
-              threadId: "linq:dm:chat-1",
-            },
-          ],
-        },
-      },
-    });
-    expect(state.pendingToolCallMessage).toBe("Checking the checkout");
-  });
-
-  it("records Linq reaction failures without failing the turn", async () => {
+  it.each([
+    "thumbs_up",
+    "thumbs_down",
+    "heart",
+    "laugh",
+    "exclamation",
+    "question",
+  ] as const)("adds the native %s Tapback", async (type) => {
     const { addReaction, context, post } = handlerContext();
-    const consoleWarn = vi.spyOn(console, "warn").mockReturnValue(undefined);
-    const error = Object.assign(new Error("Reaction denied"), {
-      code: "LINQ_REACTION_DENIED",
-      status: 403,
-      traceId: "trace-1",
-    });
-    addReaction.mockRejectedValueOnce(error);
 
-    await deliverCompletedMessage(
-      completedEvent({ finishReason: "tool-calls", message: "Checking" }),
-      context,
-      sessionContext()
-    );
-
-    expect(post).not.toHaveBeenCalled();
-    expect(evlogCapture.warn).toHaveBeenCalledExactlyOnceWith(
-      "Linq reaction failed",
-      {
-        channel: {
-          linq: {
-            reactions: [
-              {
-                emoji: "thumbs_up",
-                error: {
-                  code: "LINQ_REACTION_DENIED",
-                  message: "Reaction denied",
-                  raw: error,
-                  status: 403,
-                },
-                messageId: "message-1",
-                outcome: "failed",
-                threadId: "linq:dm:chat-1",
-              },
-            ],
-          },
-        },
-      }
-    );
-    expect(consoleWarn).toHaveBeenCalledExactlyOnceWith(
-      "[linq] reaction failed",
-      {
-        emoji: "thumbs_up",
-        error: {
-          code: "LINQ_REACTION_DENIED",
-          message: "Reaction denied",
-          raw: error,
-          status: 403,
-        },
-        messageId: "message-1",
-        outcome: "failed",
-        sessionId: "session-1",
-        threadId: "linq:dm:chat-1",
-        turnId: "turn-1",
-      }
-    );
-    consoleWarn.mockRestore();
-  });
-
-  it("falls back for accepted and skipped reactions when evlog is unavailable", async () => {
-    const { addReaction, context } = handlerContext();
-    const error = new Error("No logger for this resumed turn");
-    const consoleWarn = vi.spyOn(console, "warn").mockReturnValue(undefined);
-    const consoleInfo = vi.spyOn(console, "info").mockReturnValue(undefined);
-    evlogCapture.useLogger.mockImplementation(() => {
-      throw error;
-    });
-
-    await deliverCompletedMessage(
-      completedEvent({ finishReason: "tool-calls", message: "Checking" }),
-      context,
-      sessionContext()
-    );
-    await deliverCompletedMessage(
-      completedEvent({ finishReason: "tool-calls", message: "Still checking" }),
+    await handleActionResult(
+      reactToMessageResult({ operation: "add", type }),
       context,
       sessionContext()
     );
@@ -475,237 +675,40 @@ describe("Linq message delivery", () => {
     expect(addReaction).toHaveBeenCalledExactlyOnceWith(
       "linq:dm:chat-1",
       "message-1",
-      "thumbs_up"
+      type
     );
-    expect(consoleWarn).toHaveBeenCalledTimes(2);
-    for (const call of consoleWarn.mock.calls) {
-      expect(call).toEqual([
-        "[linq] evlog unavailable",
-        {
-          error: {
-            message: "No logger for this resumed turn",
-            raw: error,
-            status: 500,
-          },
-          sessionId: "session-1",
-          turnId: "turn-1",
-        },
-      ]);
-    }
-    expect(consoleInfo).toHaveBeenNthCalledWith(1, "[linq] reaction accepted", {
-      emoji: "thumbs_up",
-      messageId: "message-1",
-      outcome: "accepted",
-      sessionId: "session-1",
-      threadId: "linq:dm:chat-1",
-      turnId: "turn-1",
-    });
-    expect(consoleInfo).toHaveBeenNthCalledWith(2, "[linq] reaction skipped", {
-      messageId: "message-1",
-      outcome: "already-acknowledged",
-      sessionId: "session-1",
-      threadId: "linq:dm:chat-1",
-      turnId: "turn-1",
-    });
-    consoleWarn.mockRestore();
-    consoleInfo.mockRestore();
-  });
-
-  it("appends repeated reaction outcomes within one turn", async () => {
-    const { context } = handlerContext();
-    const session = sessionContext();
-
-    await deliverCompletedMessage(
-      completedEvent({ finishReason: "tool-calls", message: "Checking" }),
-      context,
-      session
-    );
-    await deliverCompletedMessage(
-      completedEvent({ finishReason: "tool-calls", message: "Still checking" }),
-      context,
-      session
-    );
-
-    expect(evlogCapture.set).toHaveBeenCalledWith({
-      channel: {
-        linq: {
-          reactions: [
-            {
-              emoji: "thumbs_up",
-              messageId: "message-1",
-              outcome: "accepted",
-              threadId: "linq:dm:chat-1",
-            },
-          ],
-        },
-      },
-    });
-    expect(evlogCapture.info).toHaveBeenCalledWith("Linq reaction skipped", {
-      channel: {
-        linq: {
-          reactions: [
-            {
-              messageId: "message-1",
-              outcome: "already-acknowledged",
-              threadId: "linq:dm:chat-1",
-            },
-          ],
-        },
-      },
-    });
-  });
-
-  it("does not post an empty final response", async () => {
-    const { context, post } = handlerContext();
-
-    await deliverCompletedMessage(
-      completedEvent({ message: null }),
-      context,
-      sessionContext()
-    );
-
     expect(post).not.toHaveBeenCalled();
   });
 
-  it("suppresses the redundant turn after task cancellation", async () => {
-    const { context, post } = handlerContext();
+  it("removes a native Tapback", async () => {
+    const { context, post, removeReaction } = handlerContext();
 
-    trackWorkerCancellation(workerCancellationResult(), context);
-    await recordCancellationThroughHook(
-      "session-1",
-      "turn-2",
-      "Background task task-worker (worker) is cancelled."
-    );
-    await deliverCompletedMessage(
-      completedEvent({ message: "What should I check instead?" }),
-      context,
-      sessionContext()
-    );
-    await deliverCompletedMessage(
-      completedEvent({
-        message: "The previous task was cancelled.",
-        turnId: "turn-2",
-      }),
-      context,
-      sessionContext()
-    );
-    await deliverCompletedMessage(
-      completedEvent({ message: "A later reply", turnId: "turn-3" }),
+    await handleActionResult(
+      reactToMessageResult({ operation: "remove", type: "heart" }),
       context,
       sessionContext()
     );
 
-    expect(post).toHaveBeenCalledTimes(2);
-    expect(post).toHaveBeenNthCalledWith(1, {
-      markdown: "What should I check instead?",
-    });
-    expect(post).toHaveBeenNthCalledWith(2, { markdown: "A later reply" });
-  });
-
-  it("does not suppress an interleaved task result", async () => {
-    const { context, post } = handlerContext();
-
-    trackWorkerCancellation(
-      workerCancellationResult("task-cancelled"),
-      context
+    expect(removeReaction).toHaveBeenCalledExactlyOnceWith(
+      "linq:dm:chat-1",
+      "message-1",
+      "heart"
     );
-    await recordCancellationThroughHook(
-      "session-1",
-      "turn-cancelled",
-      "Background task task-cancelled (worker) is cancelled."
-    );
-    await deliverCompletedMessage(
-      completedEvent({
-        message: "A different worker completed successfully.",
-        turnId: "turn-success",
-      }),
-      context,
-      sessionContext()
-    );
-    await deliverCompletedMessage(
-      completedEvent({
-        message: "The cancelled worker stopped.",
-        turnId: "turn-cancelled",
-      }),
-      context,
-      sessionContext()
-    );
-
-    expect(post).toHaveBeenCalledExactlyOnceWith({
-      markdown: "A different worker completed successfully.",
-    });
-  });
-
-  it("delivers user-authored cancellation text from a newer Linq message", async () => {
-    const original = handlerContext("message-1");
-    trackWorkerCancellation(workerCancellationResult(), original.context);
-
-    await recordCancellationThroughHook(
-      "session-1",
-      "turn-spoof",
-      "Background task task-worker (worker) is cancelled."
-    );
-    const newer = handlerContext("message-2", original.state);
-    await deliverCompletedMessage(
-      completedEvent({
-        message: "User-authored follow-up",
-        turnId: "turn-spoof",
-      }),
-      newer.context,
-      sessionContext()
-    );
-
-    expect(newer.post).toHaveBeenCalledExactlyOnceWith({
-      markdown: "User-authored follow-up",
-    });
-  });
-
-  it("retains older pending cancellations across many later tasks", async () => {
-    const { context, post } = handlerContext();
-    for (let index = 0; index < 60; index += 1) {
-      trackWorkerCancellation(
-        workerCancellationResult(`task-${String(index)}`),
-        context
-      );
-    }
-    await recordCancellationThroughHook(
-      "session-1",
-      "turn-oldest",
-      "Background task task-0 (worker) is cancelled."
-    );
-
-    await deliverCompletedMessage(
-      completedEvent({ message: "Redundant reply", turnId: "turn-oldest" }),
-      context,
-      sessionContext()
-    );
-
     expect(post).not.toHaveBeenCalled();
   });
 });
 
-function workerCancellationResult(
-  taskId = "task-worker"
-): Parameters<NonNullable<typeof trackWorkerCancellation>>[0] {
+function sendMessageResult(
+  output: ActionHandlerParameters[0]["result"] extends { output: infer Output }
+    ? Output
+    : never
+): ActionHandlerParameters[0] {
   return {
     result: {
-      callId: "call-cancel",
+      callId: "call-send-message",
       kind: "tool-result",
-      output: {
-        tasks: [
-          {
-            metadata: {
-              agentId: "ag_worker:test",
-              kind: "subagent",
-              mode: "local",
-              name: "worker",
-            },
-            status: "cancelled",
-            taskId,
-          },
-        ],
-      },
-      toolName: "task_cancel",
+      output,
+      toolName: "send_message",
     },
     sequence: 0,
     status: "completed",
@@ -714,37 +717,52 @@ function workerCancellationResult(
   };
 }
 
-function completedEvent(
-  overrides: Partial<HandlerParameters[0]> = {}
-): HandlerParameters[0] {
+function reactToMessageResult(
+  output: ActionHandlerParameters[0]["result"] extends { output: infer Output }
+    ? Output
+    : never
+): ActionHandlerParameters[0] {
   return {
-    finishReason: "stop",
-    message: "Done",
+    result: {
+      callId: "call-react-to-message",
+      kind: "tool-result",
+      output,
+      toolName: "react_to_message",
+    },
     sequence: 0,
+    status: "completed",
     stepIndex: 0,
     turnId: "turn-1",
-    ...overrides,
   };
 }
 
-function handlerContext(
-  currentMessageId = "message-1",
-  state: LinqTestState = {}
-) {
+type InputRequestEvent = Parameters<NonNullable<typeof deliverInputRequest>>[0];
+
+function inputRequestEvent(requests: InputRequestEvent["requests"]) {
+  return { requests, sequence: 0, stepIndex: 0, turnId: "turn-1" };
+}
+
+function handlerContext(currentMessageId: string | undefined = "message-1") {
   const post = vi.fn<(message: LinqTestMessage) => Promise<void>>();
   post.mockResolvedValue();
   const addReaction = vi
     .fn<(threadId: string, messageId: string, emoji: string) => Promise<void>>()
     .mockResolvedValue(undefined);
-  // SAFETY: The fixture implements the Linq handler fields exercised by these tests.
-  const context = {
+  const removeReaction = vi
+    .fn<(threadId: string, messageId: string, emoji: string) => Promise<void>>()
+    .mockResolvedValue(undefined);
+  const context = handlerEventContext({
     bot: {
       getAdapter: () => ({
         addReaction,
         decodeThreadId: () => ({ chatId: "chat-1", isGroup: false }),
+        postMessage: linqChannelCapture.postMessage,
+        removeReaction,
       }),
     },
-    state,
+    state: {},
+    streaming: false,
+    streamingEditIntervalMs: 1000,
     thread: {
       id: "linq:dm:chat-1",
       post,
@@ -752,22 +770,39 @@ function handlerContext(
         _type: "chat:Thread",
         adapterName: "linq",
         channelId: "linq:dm:chat-1",
-        currentMessage: { id: currentMessageId },
+        currentMessage: currentMessageId ? { id: currentMessageId } : undefined,
         id: "linq:dm:chat-1",
         isDM: true,
       }),
     },
-  } as HandlerParameters[1];
+  });
 
   return {
     addReaction,
     context,
     post,
-    state,
+    removeReaction,
   };
 }
 
-function sessionContext() {
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- This test adapter deliberately accepts a focused structural fixture.
+function handlerEventContext(value: unknown): ActionHandlerParameters[1] {
+  // SAFETY: Callers provide every Linq context field exercised by these focused handlers.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- A complete Chat SDK bot mock would add 97 unrelated methods.
+  return value as ActionHandlerParameters[1];
+}
+
+function sessionContext(authenticator = "test") {
+  const attributes: Record<string, string | readonly string[]> =
+    authenticator === "scheduled-result"
+      ? {
+          scheduledReportLeaseToken: "00000000-0000-4000-8000-000000000004",
+          scheduledReportSequence: "1",
+          scheduledRunId: "00000000-0000-4000-8000-000000000002",
+          scheduledRunSessionId: "scheduled-run-session",
+          workspaceId: "workspace-1",
+        }
+      : { workspaceId: "workspace-1" };
   return {
     async getSandbox() {
       throw new Error("Sandbox access is outside this focused test.");
@@ -778,8 +813,8 @@ function sessionContext() {
     session: {
       auth: {
         current: {
-          attributes: { workspaceId: "workspace-1" },
-          authenticator: "test",
+          attributes,
+          authenticator,
           principalId: "user-1",
           principalType: "user",
         },
@@ -788,37 +823,5 @@ function sessionContext() {
       id: "session-1",
       turn: { id: "turn-1", sequence: 0 },
     },
-  } satisfies HandlerParameters[2];
-}
-
-async function recordCancellationThroughHook(
-  sessionId: string,
-  turnId: string,
-  message: string
-) {
-  const handler = workerCancellationHook.events?.["message.received"];
-  if (!handler) throw new Error("Worker cancellation hook is not configured.");
-  const context = {
-    agent: { name: "root" },
-    channel: { kind: "linq" },
-    async getSandbox() {
-      throw new Error("Sandbox access is outside this focused test.");
-    },
-    getSkill() {
-      throw new Error("Skill access is outside this focused test.");
-    },
-    session: {
-      auth: { current: null, initiator: null },
-      id: sessionId,
-      turn: { id: turnId, sequence: 0 },
-    },
-  } satisfies HookContext;
-  await handler(
-    {
-      data: { message, sequence: 0, turnId },
-      meta: { at: "2026-08-27T20:00:00.000Z", id: `received-${turnId}` },
-      type: "message.received",
-    },
-    context
-  );
+  } satisfies ActionHandlerParameters[2];
 }

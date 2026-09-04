@@ -34,7 +34,7 @@ export async function mintApiCredential(
   const parsed = mintInputSchema.parse(input);
   await ensureScope(scope);
   const secret = `oi_${randomBytes(32).toString("base64url")}`;
-  const now = new Date().toISOString();
+  const now = new Date();
   const credential = await db.transaction(async (transaction) => {
     const [membership] = await transaction
       .select({
@@ -62,7 +62,7 @@ export async function mintApiCredential(
         keyPrefix: secret.slice(0, 11),
         scopes: [...new Set(parsed.scopes)],
         createdByUserId: scope.userId,
-        expiresAt: parsed.expiresAt,
+        expiresAt: parsed.expiresAt ? new Date(parsed.expiresAt) : undefined,
         createdAt: now,
         updatedAt: now,
       })
@@ -78,7 +78,7 @@ export async function mintApiCredential(
 }
 
 export async function authenticateApiKey(rawKey: string) {
-  const now = new Date().toISOString();
+  const now = new Date();
   const [row] = await db
     .select({ credential: apiCredentials })
     .from(apiCredentials)
@@ -114,7 +114,7 @@ export async function revokeApiCredential(
   credentialId: string
 ) {
   await ensureScope(scope);
-  const now = new Date().toISOString();
+  const now = new Date();
   const revoked = await db.transaction(async (transaction) => {
     const [membership] = await transaction
       .select({

@@ -1,19 +1,31 @@
-/* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access -- Eve's Linq adapter exposes the thread through a transitive Chat SDK type; TypeScript still checks this contextual handler. */
 import { connectLinqCredentials } from "@vercel/connect/eve";
+import { LinqAPIV3 } from "@linqapp/sdk";
+import type { AdapterPostableMessage } from "chat";
 import {
   defaultLinqAuth,
   linqChannel,
   type LinqChannelConfig,
   type LinqChannelCredentials,
 } from "eve/channels/linq";
-import { parseError } from "evlog";
-import { useLogger as getEvlog } from "evlog/eve";
+import { vercelOidc } from "eve/channels/auth";
 import { z } from "zod";
 import { getAuth } from "@/auth";
+import { reactToMessageToolResultSchema } from "@/agent/lib/react-to-message";
+import { sendMessageToolResultSchema } from "@/agent/lib/send-message";
 import { normalizeAuthPhoneNumber } from "@/auth/phone-number";
-import { accessScopeForUser, scopeFromPrincipal } from "@/lib/access-scope";
-import { prepareLinqBrowserImageDelivery } from "../lib/linq-browser-image-delivery";
-import { splitLinqReply } from "../lib/linq/reply";
+import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
+import { accessScopeForUser, type AccessScope } from "@/lib/access-scope";
+import { prepareLinqImageArtifactDelivery } from "../lib/linq-image-artifact/delivery";
+import {
+  extractImageArtifactMarkdownReferences,
+  stripImageArtifactMarkdownReferences,
+} from "../lib/linq-image-artifact/markdown";
+import { env } from "@/env";
+import {
+  finalizeScheduledReportDelivery,
+  releaseScheduledReportDelivery,
+  scheduledReportFromSession,
+} from "@/agent/lib/schedules/report-lifecycle";
 import {
   verifyScopeAccess,
   WorkspaceNotOperableError,
@@ -30,34 +42,47 @@ import {
 } from "@/db/services/channel-conversations";
 import { recordConnectionInstallation } from "@/db/services/connection-installations";
 import { findVerifiedUserByPhoneNumber } from "@/db/services/phone-identities";
-import {
-  extractBrowserImageMarkdownReferences,
-  stripBrowserImageMarkdownReferences,
-} from "../lib/linq-browser-image-markdown";
-import { env } from "@/env";
-import { consumeWorkerCancellationTurn } from "../lib/worker-cancellation-delivery";
 
 const verifiedPhoneUserSchema = z.object({
   id: z.string().min(1),
   phoneNumberVerified: z.literal(true),
 });
-const taskCancelResultSchema = z.object({
-  kind: z.literal("tool-result"),
-  output: z.object({ tasks: z.array(z.unknown()) }),
-  toolName: z.literal("task_cancel"),
-});
-const cancelledWorkerTaskSchema = z.object({
-  metadata: z.object({ name: z.literal("worker") }),
-  status: z.literal("cancelled"),
-  taskId: z.string(),
-});
-const workerCancellationsSchema = z.array(
-  z.object({ sourceMessageId: z.string(), taskId: z.string() })
-);
+
+const trustedForwarder = vercelOidc();
+
+// The Linq adapter only rejects a webhook when the verifier returns `false`,
+// while eve's OIDC verifier reports failure as `null`. Translate explicitly so
+// an unverified forwarder can never reach message dispatch.
+export const linqWebhookVerifier: NonNullable<
+  LinqChannelCredentials["webhookVerifier"]
+> = async (request) => (await trustedForwarder(request)) ?? false;
+
+const credentials = (
+  env.LINQ_CONNECTOR
+    ? {
+        ...connectLinqCredentials(env.LINQ_CONNECTOR),
+        webhookVerifier: linqWebhookVerifier,
+      }
+    : {
+        apiKey() {
+          throw new Error(
+            "LINQ_CONNECTOR is not configured for this deployment."
+          );
+        },
+        webhookVerifier: () => false,
+      }
+) satisfies LinqChannelCredentials;
+
 type LinqInputRequest = Parameters<
   NonNullable<NonNullable<LinqChannelConfig["events"]>["input.requested"]>
 >[0]["requests"][number];
 
+/**
+ * Renders one pending approval or question as plain text. eve renders HITL
+ * natively only for Discord, so Linq must post the choices itself. A tool
+ * approval repeats the exact option ids so the user never has to guess a
+ * reply word.
+ */
 function renderLinqInputRequest(request: LinqInputRequest) {
   const options = request.options ?? [];
   if (request.kind === "tool-approval") {
@@ -82,302 +107,188 @@ function renderLinqInputRequest(request: LinqInputRequest) {
   return [request.prompt, "Reply with your answer."].join("\n\n");
 }
 
-async function postLinqReply(
-  thread: NonNullable<
-    Parameters<
-      NonNullable<NonNullable<LinqChannelConfig["events"]>["message.completed"]>
-    >[1]["thread"]
-  >,
-  markdown: string,
-  files: readonly unknown[] = [],
-  scope?: ReturnType<typeof scopeFromPrincipal>
-) {
-  if (scope) {
-    try {
-      await checkBudget(scope, "provider_message");
-    } catch (error) {
-      if (
-        error instanceof BudgetExceededError ||
-        error instanceof WorkspaceNotOperableError
-      ) {
-        await thread.post({ markdown: error.message });
-        recordLinqUsage(scope);
-      }
-      throw error;
-    }
-  }
-  const bubbles = splitLinqReply(markdown);
-  if (bubbles.length === 0) {
-    if (files.length > 0) await thread.post({ files, markdown: "" });
-    if (files.length > 0) recordLinqUsage(scope);
-    return;
-  }
-  /* oxlint-disable eslint/no-await-in-loop -- Reply bubbles must be posted in conversational order. */
-  for (const [index, bubble] of bubbles.entries()) {
-    if (index === bubbles.length - 1 && files.length > 0) {
-      await thread.post({ files, markdown: bubble });
-    } else {
-      await thread.post({ markdown: bubble });
-    }
-  }
-  /* oxlint-enable eslint/no-await-in-loop */
-  recordLinqUsage(scope);
-}
-
-function recordLinqUsage(
-  scope: ReturnType<typeof scopeFromPrincipal> | undefined
-) {
-  if (!scope) return;
-  void recordUsageEvent(scope, {
-    kind: "provider_message",
-    quantity: 1,
-    unit: "messages",
-  }).catch(() => {
-    console.warn("[usage] usage event recording failed");
-  });
-}
-
-const credentials: LinqChannelCredentials = env.LINQ_CONNECTOR
-  ? connectLinqCredentials(env.LINQ_CONNECTOR)
-  : {
-      apiKey() {
-        throw new Error(
-          "LINQ_CONNECTOR is not configured for this deployment."
-        );
-      },
-    };
-
 export const linqChannelConfig = {
   credentials,
   events: {
     async "input.requested"(event, context) {
       if (!context.thread || event.requests.length === 0) return;
       await context.thread.post({
-        markdown: event.requests.map(renderLinqInputRequest).join("\n\n"),
+        raw: event.requests.map(renderLinqInputRequest).join("\n\n"),
       });
     },
-    "action.result"(event, context) {
-      const result = taskCancelResultSchema.safeParse(event.result);
-      if (!result.success) return;
-
-      const sourceMessageId = context.thread?.toJSON().currentMessage?.id;
-      if (!sourceMessageId) return;
-
-      const storedCancellations = workerCancellationsSchema.safeParse(
-        context.state.workerCancellations
-      );
-      const cancellations = storedCancellations.success
-        ? storedCancellations.data
-        : [];
-      for (const value of result.data.output.tasks) {
-        const task = cancelledWorkerTaskSchema.safeParse(value);
-        if (task.success) {
-          cancellations.push({ sourceMessageId, taskId: task.data.taskId });
-        }
-      }
-      context.state.workerCancellations = cancellations;
-    },
-    async "message.completed"(event, context, session) {
-      if (event.finishReason === "tool-calls") {
-        context.state.pendingToolCallMessage = event.message
-          ? (event.message
-              .split(/\r?\n/u)
-              .map((line) => line.trim())
-              .find(Boolean) ?? null)
-          : null;
-        let log: ReturnType<typeof getEvlog> | undefined;
-        try {
-          log = getEvlog(session);
-        } catch (error) {
-          console.warn("[linq] evlog unavailable", {
-            error: parseError(error),
-            sessionId: session.session.id,
-            turnId: event.turnId,
-          });
-        }
+    async "action.result"(event, context, session) {
+      const reaction = reactToMessageToolResultSchema.safeParse(event.result);
+      if (event.status === "completed" && reaction.success) {
         if (!context.thread) {
-          const reaction = { outcome: "missing-thread" };
-          if (log) {
-            log.warn("Linq reaction skipped", {
-              channel: { linq: { reactions: [reaction] } },
-            });
-          } else {
-            console.warn("[linq] reaction skipped", {
-              ...reaction,
-              sessionId: session.session.id,
-              turnId: event.turnId,
-            });
-          }
-          return;
+          throw new Error(
+            "react_to_message requires an active Linq conversation thread."
+          );
         }
-
         const messageId = context.thread.toJSON().currentMessage?.id;
         if (!messageId) {
-          const reaction = {
-            outcome: "missing-message-id",
-            threadId: context.thread.id,
-          };
-          if (log) {
-            log.warn("Linq reaction skipped", {
-              channel: { linq: { reactions: [reaction] } },
-            });
-          } else {
-            console.warn("[linq] reaction skipped", {
-              ...reaction,
-              sessionId: session.session.id,
-              turnId: event.turnId,
-            });
-          }
-          return;
+          throw new Error("react_to_message requires a current Linq message.");
         }
-
-        if (context.state.acknowledgedLinqMessageId === messageId) {
-          const reaction = {
+        const adapter = context.bot.getAdapter("linq");
+        if (reaction.data.output.operation === "remove") {
+          await adapter.removeReaction(
+            context.thread.id,
             messageId,
-            outcome: "already-acknowledged",
-            threadId: context.thread.id,
-          };
-          if (log) {
-            log.info("Linq reaction skipped", {
-              channel: { linq: { reactions: [reaction] } },
-            });
-          } else {
-            console.info("[linq] reaction skipped", {
-              ...reaction,
-              sessionId: session.session.id,
-              turnId: event.turnId,
-            });
-          }
-          return;
+            reaction.data.output.type
+          );
+        } else {
+          await adapter.addReaction(
+            context.thread.id,
+            messageId,
+            reaction.data.output.type
+          );
         }
+        await finalizeScheduledReportDelivery(session);
+        return;
+      }
 
-        try {
-          await context.bot
-            .getAdapter("linq")
-            .addReaction(context.thread.id, messageId, "thumbs_up");
-          context.state.acknowledgedLinqMessageId = messageId;
-          const reaction = {
-            emoji: "thumbs_up",
-            messageId,
-            outcome: "accepted",
-            threadId: context.thread.id,
-          };
-          if (log) {
-            log.set({
-              channel: { linq: { reactions: [reaction] } },
-            });
-          } else {
-            console.info("[linq] reaction accepted", {
-              ...reaction,
-              sessionId: session.session.id,
-              turnId: event.turnId,
-            });
+      const message = sendMessageToolResultSchema.safeParse(event.result);
+      if (event.status === "completed" && message.success) {
+        const { thread } = context;
+        if (!thread) {
+          throw new Error(
+            "send_message requires an active Linq conversation thread."
+          );
+        }
+        const report = scheduledReportFromSession(session);
+        const idempotencyKey = report
+          ? `scheduled-report:${report.runId}:${String(report.sequence)}`
+          : undefined;
+        // Both branches discard the posted message so `postLinqReply` never
+        // hands an adapter-shaped value back to its caller.
+        const post = idempotencyKey
+          ? async (content: AdapterPostableMessage) => {
+              await context.bot
+                .getAdapter("linq")
+                .postMessage(thread.id, content, { idempotencyKey });
+            }
+          : async (content: AdapterPostableMessage) => {
+              await thread.post(content);
+            };
+
+        if (message.data.output.kind === "link") {
+          const adapter = context.bot.getAdapter("linq");
+          const { chatId, pendingHandle } = adapter.decodeThreadId(thread.id);
+          if (pendingHandle || !chatId) {
+            throw new Error(
+              "A native link preview requires an existing Linq conversation."
+            );
           }
-        } catch (error) {
-          const failure = parseError(error);
-          const reaction = {
-            emoji: "thumbs_up",
-            error: failure,
-            messageId,
-            outcome: "failed",
-            threadId: context.thread.id,
-          };
-          log?.warn("Linq reaction failed", {
-            channel: {
-              linq: {
-                reactions: [reaction],
+          const apiKey = await credentials.apiKey();
+          const client = new LinqAPIV3({ apiKey });
+          await client.chats.messages.send(
+            chatId,
+            {
+              message: {
+                parts: [{ type: "link", value: message.data.output.url }],
               },
             },
-          });
-          console.warn("[linq] reaction failed", {
-            ...reaction,
+            idempotencyKey ? { idempotencyKey } : undefined
+          );
+          await finalizeScheduledReportDelivery(session);
+          return;
+        }
+
+        const attachments = message.data.output.attachments?.map(
+          ({ kind, ...attachment }) => ({ ...attachment, type: kind })
+        );
+        const { text: requestedText } = message.data.output;
+        if (!requestedText) {
+          if (attachments?.length) {
+            await post({ attachments, raw: "" });
+          }
+          await finalizeScheduledReportDelivery(session);
+          return;
+        }
+
+        const caller =
+          session.session.auth.current ?? session.session.auth.initiator;
+        if (!caller) {
+          const references =
+            extractImageArtifactMarkdownReferences(requestedText);
+          const text =
+            references.length === 0
+              ? requestedText
+              : [
+                  stripImageArtifactMarkdownReferences(requestedText),
+                  "I couldn't attach the image.",
+                ]
+                  .filter(Boolean)
+                  .join("\n\n");
+          const outgoing: Extract<
+            Parameters<typeof thread.post>[0],
+            { raw: string }
+          > = { raw: text };
+          if (attachments?.length) outgoing.attachments = attachments;
+          // Provider-auth-only replies lack a workspace: not budgeted or ledgered.
+          await postLinqReply(post, outgoing);
+          await finalizeScheduledReportDelivery(session);
+          return;
+        }
+
+        const delivery = await prepareLinqImageArtifactDelivery(requestedText, {
+          rootSessionId: report?.workerSessionId ?? session.session.id,
+          scope: scopeFromPrincipal(caller),
+        });
+        if (delivery.failedArtifactIds.length > 0) {
+          console.warn("[linq] browser image delivery failed", {
+            artifactIds: delivery.failedArtifactIds,
             sessionId: session.session.id,
-            turnId: event.turnId,
           });
         }
-        return;
+        const failureMessage =
+          delivery.failedArtifactIds.length === 0
+            ? ""
+            : delivery.failedArtifactIds.length === 1
+              ? "I couldn't attach one image."
+              : `I couldn't attach ${String(delivery.failedArtifactIds.length)} images.`;
+        const text = [delivery.text, failureMessage]
+          .filter(Boolean)
+          .join("\n\n");
+        const outgoing: Extract<
+          Parameters<typeof thread.post>[0],
+          { raw: string }
+        > = { raw: text };
+        if (attachments?.length) outgoing.attachments = attachments;
+        if (delivery.files.length > 0) outgoing.files = delivery.files;
+        try {
+          await postLinqReply(post, outgoing, scopeFromPrincipal(caller));
+        } catch (error) {
+          if (
+            error instanceof BudgetExceededError ||
+            error instanceof WorkspaceNotOperableError
+          )
+            return;
+          throw error;
+        }
+        await finalizeScheduledReportDelivery(session);
       }
-
-      const cancelledTaskId = consumeWorkerCancellationTurn(
-        session.session.id,
-        event.turnId
+    },
+    async "message.completed"(event, _context, session) {
+      if (event.finishReason === "tool-calls") return;
+      const report = scheduledReportFromSession(session);
+      if (report) {
+        await finalizeScheduledReportDelivery(session, "suppressed");
+      }
+    },
+    async "session.completed"(_event, _context, session) {
+      const report = scheduledReportFromSession(session);
+      if (report) {
+        await finalizeScheduledReportDelivery(session, "suppressed");
+      }
+    },
+    async "turn.cancelled"(_event, _context, session) {
+      await releaseScheduledReportDelivery(
+        session,
+        "Scheduled result reporting was cancelled."
       );
-      const storedCancellations = workerCancellationsSchema.safeParse(
-        context.state.workerCancellations
-      );
-      const cancellations = storedCancellations.success
-        ? storedCancellations.data
-        : [];
-      const sourceMessageId = context.thread?.toJSON().currentMessage?.id;
-      const cancellation = cancellations.find(
-        (candidate) =>
-          candidate.taskId === cancelledTaskId &&
-          candidate.sourceMessageId === sourceMessageId
-      );
-      if (cancellation) {
-        context.state.workerCancellations = cancellations.filter(
-          (candidate) => candidate !== cancellation
-        );
-        context.state.pendingToolCallMessage = null;
-        return;
-      }
-
-      context.state.pendingToolCallMessage = null;
-      if (!event.message || !context.thread) return;
-
-      // Eve's Linq adapter translates supported Markdown into native iMessage
-      // decorations, so recipients see styled text instead of literal markers.
-      const caller =
-        session.session.auth.current ?? session.session.auth.initiator;
-      if (!caller) {
-        // Provider-auth-only replies lack a workspace and are not budgeted or ledgered.
-        const references = extractBrowserImageMarkdownReferences(event.message);
-        const markdown =
-          references.length === 0
-            ? event.message
-            : [
-                stripBrowserImageMarkdownReferences(event.message),
-                "I couldn't attach the image.",
-              ]
-                .filter(Boolean)
-                .join("\n\n");
-        await postLinqReply(context.thread, markdown);
-        return;
-      }
-      const delivery = await prepareLinqBrowserImageDelivery(event.message, {
-        rootSessionId: session.session.id,
-        scope: scopeFromPrincipal(caller),
-      });
-      if (delivery.failedArtifactIds.length > 0) {
-        console.warn("[linq] browser image delivery failed", {
-          artifactIds: delivery.failedArtifactIds,
-          sessionId: session.session.id,
-        });
-      }
-      const failureMessage =
-        delivery.failedArtifactIds.length === 0
-          ? ""
-          : delivery.failedArtifactIds.length === 1
-            ? "I couldn't attach one image."
-            : `I couldn't attach ${String(delivery.failedArtifactIds.length)} images.`;
-      const markdown = [delivery.markdown, failureMessage]
-        .filter(Boolean)
-        .join("\n\n");
-      try {
-        await postLinqReply(
-          context.thread,
-          markdown,
-          delivery.files,
-          scopeFromPrincipal(caller)
-        );
-      } catch (error) {
-        if (
-          error instanceof BudgetExceededError ||
-          error instanceof WorkspaceNotOperableError
-        )
-          return;
-        throw error;
-      }
+    },
+    async "turn.failed"(event, _context, session) {
+      await releaseScheduledReportDelivery(session, event.message);
     },
   },
   async onMessage(context, message) {
@@ -391,31 +302,28 @@ export const linqChannelConfig = {
     const verifiedUserId = phoneNumber
       ? await findVerifiedAuthUserIdByPhoneNumber(phoneNumber)
       : undefined;
-    const principalId = verifiedUserId
-      ? `better-auth:${verifiedUserId}`
-      : auth.principalId;
-    const scope = accessScopeForUser(principalId);
-    const attributes =
-      verifiedUserId && phoneNumber
-        ? { ...auth.attributes, phoneNumber, workspaceId: scope.workspaceId }
-        : { ...auth.attributes, workspaceId: scope.workspaceId };
-    const verifiedScope = await verifyScopeAccess(scope);
-    if (!verifiedScope || !verifiedUserId || !phoneNumber) {
+    if (!verifiedUserId || !phoneNumber) {
+      // Phone possession is the only sign-in factor, so a handle that is not
+      // linked to a verified user is unauthenticated: never mint a principal
+      // or a workspace for it.
+      console.warn("[linq] ignoring message from an unlinked handle", {
+        threadId: context.thread.id,
+      });
       return null;
     }
+    const principalId = `better-auth:${verifiedUserId}`;
+    const scope = accessScopeForUser(principalId);
+    const verifiedScope = await verifyScopeAccess(scope);
+    if (!verifiedScope) return null;
 
     const identity = await findVerifiedUserByPhoneNumber(phoneNumber);
     if (identity?.userId !== verifiedUserId) return null;
 
     const provider = "linq";
-    const { connector: providerAccountId, phoneNumber: providerLineId } = {
-      connector: env.LINQ_CONNECTOR,
-      phoneNumber: env.LINQ_PHONE_NUMBER,
-    };
-    const providerConversationId = context.thread?.id;
-    if (!providerAccountId || !providerLineId || !providerConversationId) {
-      return null;
-    }
+    const providerAccountId = env.LINQ_CONNECTOR;
+    const providerLineId = env.LINQ_PHONE_NUMBER;
+    const providerConversationId = context.thread.id;
+    if (!providerAccountId || !providerLineId) return null;
 
     let binding = await resolveConversationBinding({
       provider,
@@ -426,10 +334,7 @@ export const linqChannelConfig = {
     if (!binding) {
       binding = await createConversationBinding({
         phoneIdentityId: identity.phoneIdentityId,
-        platformLine: {
-          connectorId: providerAccountId,
-          providerLineId,
-        },
+        platformLine: { connectorId: providerAccountId, providerLineId },
         provider,
         providerAccountId,
         providerConversationId,
@@ -459,11 +364,16 @@ export const linqChannelConfig = {
         console.warn("[linq] connection installation recording failed");
       }
     }
+
     return {
       auth: {
         ...auth,
         attributes: {
-          ...attributes,
+          ...auth.attributes,
+          conversationChannel: "linq",
+          conversationId: context.thread.id,
+          linqThreadId: context.thread.id,
+          phoneNumber,
           workspaceId: verifiedScope.workspaceId,
         },
         principalId,
@@ -473,6 +383,47 @@ export const linqChannelConfig = {
 } satisfies LinqChannelConfig;
 
 export default linqChannel(linqChannelConfig);
+
+/**
+ * Posts one send_message reply, budgeted and ledgered when the caller has a
+ * workspace. One `send_message` call is one iMessage bubble: the agent decides
+ * bubble boundaries by calling the tool more than once, so the channel never
+ * re-splits the text. `splitLinqReply` (`agent/lib/linq/reply.ts`) stays the
+ * single splitter for the Square eval gym, which scores unsent reply shape.
+ */
+async function postLinqReply(
+  post: (content: AdapterPostableMessage) => Promise<void>,
+  outgoing: Extract<AdapterPostableMessage, { raw: string }>,
+  scope?: AccessScope
+) {
+  if (scope) {
+    try {
+      await checkBudget(scope, "provider_message");
+    } catch (error) {
+      if (
+        error instanceof BudgetExceededError ||
+        error instanceof WorkspaceNotOperableError
+      ) {
+        await post({ raw: error.message });
+        recordLinqUsage(scope);
+      }
+      throw error;
+    }
+  }
+  await post(outgoing);
+  recordLinqUsage(scope);
+}
+
+function recordLinqUsage(scope: AccessScope | undefined) {
+  if (!scope) return;
+  void recordUsageEvent(scope, {
+    kind: "provider_message",
+    quantity: 1,
+    unit: "messages",
+  }).catch(() => {
+    console.warn("[usage] usage event recording failed");
+  });
+}
 
 async function findVerifiedAuthUserIdByPhoneNumber(phoneNumber: string) {
   const auth = await getAuth();

@@ -1,6 +1,6 @@
 import { connect } from "@vercel/connect/eve";
 import type { ConnectionAuthResolver } from "eve/connections";
-import { scopeFromPrincipal } from "@/lib/access-scope";
+import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
 import {
   findConnectionInstallation,
   recordConnectionInstallation,

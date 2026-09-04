@@ -213,7 +213,15 @@ export const squareCases: readonly SquareCase[] = [
   },
   {
     expectTools: [],
-    facts: () => ["welcome", "yep", "anytime", "sure", "you got", "thank"],
+    facts: () => [
+      "welcome",
+      "yep",
+      "anytime",
+      "sure",
+      "you got",
+      "thank",
+      "reacted",
+    ],
     factsMode: "any",
     forbidTools: anySquareToolPattern,
     id: "thanks-no-tool",

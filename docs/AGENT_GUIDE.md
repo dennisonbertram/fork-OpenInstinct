@@ -42,7 +42,9 @@ Next redirect is an Eve authorization decision.
 - `app/`: pages, layouts, and browser UI. Call application data through tRPC.
 - `components/`: reusable UI primitives and AI presentation components.
 - `agent/`: Eve agent declarations, instructions, channels, memory, hooks, and tools.
-- `agent/subagents/worker/`: the isolated browser worker and its flat tool surface.
+- `agent/channels/scheduled-run.ts`: internal channel a cron job (`agent/schedules/dynamic.ts`) dispatches onto to run a scheduled job's turn; `agent/hooks/scheduled-run-completion.ts` tracks its lease and reports the outcome back.
+- `agent/subagents/browser-agent/`: the isolated browser worker and its flat tool surface.
+- `agent/instructions/`: root instructions, split into ordered `*.ts` modules whose content lives under `agent/instructions/content/**.md` (interactive, scheduled-report, scheduled-worker role variants); `agent/instructions.md` is now a stub.
 - `auth/`: Better Auth configuration, phone normalization, and Linq OTP delivery.
 - `trpc/`: request context and the application router.
 - `db/schema/`: Drizzle source of truth; `db/services/` owns scoped queries.

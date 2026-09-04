@@ -2,7 +2,6 @@ import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { EveEval, EveEvalResult, EveEvalRunSummary } from "eve/evals";
 import type { EvalReporter } from "eve/evals/reporters";
-import { splitLinqReply } from "@/agent/lib/linq/reply";
 import { squareEvalEnv } from "@/evals/square/env";
 import { measureWorkerTask } from "@/lib/worker-events";
 
@@ -34,7 +33,8 @@ function summarize(result: EveEvalResult): SquareCaseReport {
     counts[call.name] = (counts[call.name] ?? 0) + 1;
     return counts;
   }, {});
-  const bubbles = splitLinqReply(result.result.finalMessage ?? "").length;
+  // One send_message call is one iMessage bubble.
+  const bubbles = toolCalls.send_message ?? 0;
   return {
     bubbles,
     costUsd: metrics.costUsd,

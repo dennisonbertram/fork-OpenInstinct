@@ -35,7 +35,7 @@ type TurnStartedHandler = NonNullable<
 const scope = { userId: "user-1", workspaceId: "workspace-1" };
 const context = {
   agent: { name: "test-agent" },
-  channel: {},
+  channel: { kind: "channel:linq" },
   async getSandbox() {
     throw new Error("Sandbox access is outside this focused test.");
   },
@@ -61,11 +61,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.checkBudget.mockResolvedValue(undefined);
   mocks.recordUsageEvent.mockResolvedValue(undefined);
+  mocks.claimSession.mockResolvedValue();
+  mocks.ensureScope.mockResolvedValue();
   mocks.saveChat.mockResolvedValue();
 });
 
 describe("session ownership hook", () => {
-  it("indexes messages received outside the web chat client", async () => {
+  it("repairs ownership before indexing a received message", async () => {
     const handler = sessionOwner.events?.["message.received"];
     expect(handler).toBeDefined();
     const event = {
@@ -76,7 +78,37 @@ describe("session ownership hook", () => {
 
     await handler?.(event, context);
 
+    expect(mocks.ensureScope).toHaveBeenCalledWith(scope);
+    expect(mocks.claimSession).toHaveBeenCalledWith(scope, "session-1");
     expect(mocks.saveChat).toHaveBeenCalledWith(scope, {
+      channel: "channel:linq",
+      sessionId: "session-1",
+    });
+    expect(mocks.ensureScope.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.claimSession.mock.invocationCallOrder[0] ?? 0
+    );
+    expect(mocks.claimSession.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.saveChat.mock.invocationCallOrder[0] ?? 0
+    );
+  });
+
+  it("records the web channel for HTTP messages", async () => {
+    const handler = sessionOwner.events?.["message.received"];
+    const event = {
+      data: { message: "hello", sequence: 0, turnId: "turn-1" },
+      meta: {
+        at: "2026-08-31T00:00:00.000Z",
+        id: "event-1",
+      },
+      type: "message.received",
+    } satisfies Parameters<MessageReceivedHandler>[0];
+    await handler?.(event, {
+      ...context,
+      channel: { kind: "http" },
+    });
+
+    expect(mocks.saveChat).toHaveBeenCalledWith(scope, {
+      channel: "http",
       sessionId: "session-1",
     });
   });

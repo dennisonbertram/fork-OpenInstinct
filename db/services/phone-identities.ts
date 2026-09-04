@@ -80,7 +80,7 @@ async function recordVerifiedPhoneIdentityTransaction({
   readonly secretEncryptionKey: string;
   readonly userId: string;
 }) {
-  const now = new Date().toISOString();
+  const now = new Date();
   return await db.transaction(async (transaction) => {
     const [existing] = await transaction
       .select({ id: phoneIdentities.id, userId: phoneIdentities.userId })
@@ -156,7 +156,7 @@ export async function findVerifiedUserByPhoneNumber(phoneNumber: string) {
 export async function revokePhoneIdentity(userId: string, phoneNumber: string) {
   const { secretEncryptionKey } = await getInstallationSecrets();
   const normalizedPhoneNumber = requireNormalizedPhoneNumber(phoneNumber);
-  const now = new Date().toISOString();
+  const now = new Date();
   const rows = await db
     .update(phoneIdentities)
     .set({ revokedAt: now, status: "revoked", updatedAt: now })

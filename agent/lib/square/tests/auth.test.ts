@@ -4,6 +4,11 @@ import type { SessionContext } from "eve/context";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccessScope } from "@/lib/access-scope";
 import { squareScopes } from "@/lib/square";
+import { accessScopeForUser } from "@/lib/access-scope";
+
+// The shared principal-scope parser rejects a workspace that a `better-auth:`
+// user does not own, so this fixture must use that user's real workspace id.
+const aliceWorkspaceId = accessScopeForUser("better-auth:alice").workspaceId;
 
 interface RecordedInstallation {
   readonly authorizationSubject: string;
@@ -68,7 +73,7 @@ beforeEach(() => {
     membershipStatus: "active",
     role: "owner",
     userId: "better-auth:alice",
-    workspaceId: "workspace:alice",
+    workspaceId: aliceWorkspaceId,
   });
   mocks.findInstallation.mockResolvedValue(undefined);
   mocks.recordInstallation.mockResolvedValue(undefined);
@@ -191,7 +196,7 @@ function sessionContext(): SessionContext {
     session: {
       auth: {
         current: {
-          attributes: { workspaceId: "workspace:alice" },
+          attributes: { workspaceId: aliceWorkspaceId },
           authenticator: "test",
           principalId: "better-auth:alice",
           principalType: "user",
@@ -214,6 +219,6 @@ function installation(status = "active") {
     scopes: ["MERCHANT_PROFILE_READ"],
     status,
     updatedAt: "2026-08-31T00:00:00.000Z",
-    workspaceId: "workspace:alice",
+    workspaceId: aliceWorkspaceId,
   };
 }

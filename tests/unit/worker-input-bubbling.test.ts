@@ -2,22 +2,25 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("worker input bubbling", () => {
-  it("keeps native questions disabled", () => {
-    const askQuestionTool = readFileSync("agent/tools/ask_question.ts", "utf8");
+  it("keeps native questions disabled inside browser workers", () => {
+    const askQuestionTool = readFileSync(
+      "agent/subagents/browser-agent/tools/ask_question.ts",
+      "utf8"
+    );
 
     expect(askQuestionTool).toMatch(/disableTool\(\)/);
   });
 
   it("ends the worker turn and routes the answer through its agent id", () => {
-    const instructions = readFileSync("agent/instructions.md", "utf8");
+    const instructions = readFileSync(
+      "agent/instructions/content/role/interactive.md",
+      "utf8"
+    );
     const workerInstructions = readFileSync(
-      "agent/subagents/worker/instructions.md",
+      "agent/subagents/browser-agent/instructions.md",
       "utf8"
     );
 
-    expect(instructions).toContain(
-      "Ask the user directly in ordinary assistant text"
-    );
     expect(instructions).toContain("continue that worker with its `agentId`");
     expect(instructions).toContain(
       "Before surfacing a `Needs user input:` blocker"

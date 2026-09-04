@@ -1,5 +1,10 @@
 import type { ToolContext } from "eve/tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { accessScopeForUser } from "@/lib/access-scope";
+
+// The shared principal-scope parser rejects a workspace that a `better-auth:`
+// user does not own, so this fixture must use that user's real workspace id.
+const aliceWorkspaceId = accessScopeForUser("better-auth:alice").workspaceId;
 
 const mocks = vi.hoisted(() => ({
   findInstallation:
@@ -53,7 +58,7 @@ beforeEach(() => {
     membershipStatus: "active",
     role: "owner",
     userId: "better-auth:alice",
-    workspaceId: "workspace:alice",
+    workspaceId: aliceWorkspaceId,
   });
   mocks.findInstallation.mockResolvedValue(undefined);
   mocks.recordInstallation.mockResolvedValue(undefined);
@@ -107,7 +112,7 @@ function toolContext() {
     session: {
       auth: {
         current: {
-          attributes: { workspaceId: "workspace:alice" },
+          attributes: { workspaceId: aliceWorkspaceId },
           authenticator: "test",
           principalId: "better-auth:alice",
           principalType: "user",
@@ -131,6 +136,6 @@ function installation(status = "active") {
     scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
     status,
     updatedAt: "2026-08-31T00:00:00.000Z",
-    workspaceId: "workspace:alice",
+    workspaceId: aliceWorkspaceId,
   };
 }

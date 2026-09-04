@@ -7,8 +7,11 @@ export default {
     "agent/instructions/**/*.ts",
     "agent/memory/**/*.ts",
     "agent/subagents/**/*.ts",
+    "agent/schedules/**/*.ts",
     "agent/tools/**/*.ts",
     "db/drizzle.config.ts",
+    // Drizzle consumes every table and relation exported by this schema barrel.
+    "db/schema/index.ts",
     "evals/**/*.eval.ts",
     "evals/evals.config.ts",
     // Spawned by the Square eval harness after its Compose database migrates.
@@ -18,6 +21,9 @@ export default {
     "taze.config.ts",
   ],
   ignoreDependencies: [
+    // Type owners referenced by the Eve declaration patch, which Knip does not parse.
+    "@linqapp/chat-sdk-adapter",
+    "chat",
     // Imported through the owning Tailwind stylesheet rather than TypeScript.
     "shadcn",
     "tailwindcss",

@@ -95,7 +95,7 @@ describe("phone identities", () => {
       throw new Error("Expected both phone identities.");
     expect(recycled.userId).toBe("alice");
     expect(recycled.status).toBe("recycled");
-    expect(recycled.revokedAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
+    expect(recycled.revokedAt).toBeInstanceOf(Date);
     expect(verified).toMatchObject({
       revokedAt: null,
       status: "verified",

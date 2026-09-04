@@ -13,17 +13,22 @@ describe("dollars", () => {
 
 describe("bubbleGate", () => {
   it("passes a normal layout at 2 bubbles", () => {
-    const reply = "Paragraph one.\n\nParagraph two.";
-
-    const result = bubbleGate(reply, "normal");
+    const result = bubbleGate(2, "Paragraph one.\n\nParagraph two.", "normal");
 
     expect(result).toEqual({ bubbles: 2, ok: true });
   });
 
-  it("soft-warns a normal layout at exactly 3 bubbles", () => {
-    const reply = "Paragraph one.\n\nParagraph two.\n\nParagraph three.";
+  it("counts a turn with two send_message calls as two bubbles", () => {
+    const delivered = ["First bubble.", "Second bubble."].join("\n\n");
 
-    const result = bubbleGate(reply, "normal");
+    const result = bubbleGate(2, delivered, "normal");
+
+    expect(result.bubbles).toBe(2);
+    expect(result.ok).toBe(true);
+  });
+
+  it("soft-warns a normal layout at exactly 3 bubbles", () => {
+    const result = bubbleGate(3, "One.\n\nTwo.\n\nThree.", "normal");
 
     expect(result).toEqual({
       bubbles: 3,
@@ -33,10 +38,7 @@ describe("bubbleGate", () => {
   });
 
   it("fails a normal layout at 4+ bubbles", () => {
-    const reply =
-      "Paragraph one.\n\nParagraph two.\n\nParagraph three.\n\nParagraph four.";
-
-    const result = bubbleGate(reply, "normal");
+    const result = bubbleGate(4, "One.\n\nTwo.\n\nThree.\n\nFour.", "normal");
 
     expect(result).toEqual({
       bubbles: 4,
@@ -46,18 +48,20 @@ describe("bubbleGate", () => {
   });
 
   it("passes a list layout at 3 bubbles", () => {
-    const reply = "- item one\n- item two\n- item three";
-
-    const result = bubbleGate(reply, "list");
+    const result = bubbleGate(
+      3,
+      "- item one\n- item two\n- item three",
+      "list"
+    );
 
     expect(result).toEqual({ bubbles: 3, ok: true });
   });
 
   it("passes a 4+ list layout that states a count and offers the rest", () => {
-    const reply =
+    const delivered =
       "- item one\n- item two\n- item three\n- item four\n\nWe have 4 items. Want the rest?";
 
-    const result = bubbleGate(reply, "list");
+    const result = bubbleGate(4, delivered, "list");
 
     expect(result.ok).toBe(true);
     expect(result.bubbles).toBeGreaterThan(3);
@@ -65,9 +69,7 @@ describe("bubbleGate", () => {
   });
 
   it("fails a 4+ list layout lacking a count and an offer", () => {
-    const reply = "- item one\n- item two\n- item three\n- item four";
-
-    const result = bubbleGate(reply, "list");
+    const result = bubbleGate(4, "- one\n- two\n- three\n- four", "list");
 
     expect(result).toEqual({
       bubbles: 4,

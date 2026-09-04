@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
@@ -22,11 +22,7 @@ describe("database services", () => {
   it("preserves workspace ownership across application domains", async () => {
     const client = new PGlite();
     databases.push(client);
-    await applyInitialMigration(client);
-    await applyBrowserImageMigration(client);
-    await applyWorkspaceTenancyMigration(client);
-    await applyUsageBudgetMigration(client);
-    await applyBrowserTraceTelemetryMigration(client);
+    await applyAllMigrations(client);
 
     const pgliteDatabase = drizzle(client, { schema });
     // SAFETY: PGlite implements the query-builder surface exercised by these services despite using a different Drizzle driver.
@@ -114,11 +110,14 @@ describe("database services", () => {
         }
       )
     ).resolves.toEqual(finalized);
-    expect(
-      await browserImages.readReadyBrowserImageArtifact(alice, image.id, {
-        rootSessionId: "session-alice",
-      })
-    ).toBeDefined();
+    const storedImage = await browserImages.readReadyBrowserImageArtifact(
+      alice,
+      image.id,
+      { rootSessionId: "session-alice" }
+    );
+    expect(storedImage?.createdAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u
+    );
     expect(
       await browserImages.readReadyBrowserImageArtifact(bob, image.id)
     ).toBeUndefined();
@@ -138,38 +137,14 @@ describe("database services", () => {
     expect(await sessions.isSessionOwned(bob, "session-alice")).toBe(false);
 
     await sessions.claimSession(alice, "session-imessage");
-    const unindexedChats = (await chats.listChats(alice)).toSorted(
-      (left, right) => left.sessionId.localeCompare(right.sessionId)
-    );
-    expect(
-      unindexedChats.map(({ sessionId, title, usage }) => ({
-        sessionId,
-        title,
-        usage,
-      }))
-    ).toEqual([
-      {
-        sessionId: "session-alice",
-        title: "New chat",
-        usage: { costUsd: null, inputTokens: 0, outputTokens: 0 },
-      },
-      {
-        sessionId: "session-imessage",
-        title: "New chat",
-        usage: { costUsd: null, inputTokens: 0, outputTokens: 0 },
-      },
-    ]);
-    expect(
-      unindexedChats.every(
-        (chat) => chat.createdAt.length > 0 && chat.updatedAt.length > 0
-      )
-    ).toBe(true);
+    expect(await chats.listChats(alice)).toEqual([]);
 
     await sessions.claimSession(bob, "session-alice");
     expect(await sessions.isSessionOwned(alice, "session-alice")).toBe(true);
     expect(await sessions.isSessionOwned(bob, "session-alice")).toBe(false);
 
     await chats.saveChat(alice, {
+      channel: "http",
       sessionId: "session-alice",
       title: "Initial title",
       usage: { costUsd: 0.25, inputTokens: 10, outputTokens: 4 },
@@ -178,9 +153,14 @@ describe("database services", () => {
       sessionId: "session-alice",
       title: "Updated title",
     });
+    await chats.saveChat(alice, {
+      channel: "channel:linq",
+      sessionId: "session-imessage",
+    });
 
     const aliceChat = await chats.readChat(alice, "session-alice");
     expect(aliceChat?.title).toBe("Updated title");
+    expect(aliceChat?.channel).toBe("http");
     expect(aliceChat?.usage).toEqual({
       costUsd: 0.25,
       inputTokens: 10,
@@ -192,19 +172,20 @@ describe("database services", () => {
     expect(
       indexedChats.find((chat) => chat.sessionId === "session-alice")
     ).toEqual(aliceChat);
-    expect(indexedChats.map((chat) => chat.sessionId)).toContain(
-      "session-imessage"
-    );
+    expect(
+      indexedChats.find((chat) => chat.sessionId === "session-imessage")
+    ).toMatchObject({ channel: "channel:linq", title: "New chat" });
     expect(await chats.listChats(bob)).toEqual([]);
 
-    await expect(
-      chats.saveChat(bob, {
-        sessionId: "session-alice",
-        title: "Bob's title",
-      })
-    ).rejects.toThrow(/Failed query: insert into "chats"/);
+    await chats.saveChat(bob, {
+      sessionId: "session-alice",
+      title: "Bob's title",
+    });
+    await chats.saveChat(bob, { sessionId: "session-unknown", title: "Probe" });
     expect(await chats.readChat(alice, "session-alice")).toEqual(aliceChat);
     expect(await chats.readChat(bob, "session-alice")).toBeUndefined();
+    expect(await chats.readChat(bob, "session-unknown")).toBeUndefined();
+    expect(await chats.listChats(bob)).toEqual([]);
 
     await browsers.createBrowserSession(alice, {
       createdAt: new Date().toISOString(),
@@ -329,19 +310,24 @@ describe("database services", () => {
       await vault.deleteVaultItem(bob, aliceVaultItem?.id ?? "vault-alice")
     ).toBe(false);
 
-    await secrets.writeEncryptedSecret(alice, "shared-id", "ciphertext-alice");
-    await secrets.writeEncryptedSecret(bob, "shared-id", "ciphertext-bob");
-    expect(await secrets.readEncryptedSecret(alice, "shared-id")).toBe(
+    const sharedSecretId = "00000000-0000-4000-8000-000000000099";
+    await secrets.writeEncryptedSecret(
+      alice,
+      sharedSecretId,
       "ciphertext-alice"
     );
-    expect(await secrets.readEncryptedSecret(bob, "shared-id")).toBe(
+    await secrets.writeEncryptedSecret(bob, sharedSecretId, "ciphertext-bob");
+    expect(await secrets.readEncryptedSecret(alice, sharedSecretId)).toBe(
+      "ciphertext-alice"
+    );
+    expect(await secrets.readEncryptedSecret(bob, sharedSecretId)).toBe(
       "ciphertext-bob"
     );
-    await secrets.deleteEncryptedSecret(alice, "shared-id");
+    await secrets.deleteEncryptedSecret(alice, sharedSecretId);
     expect(
-      await secrets.readEncryptedSecret(alice, "shared-id")
+      await secrets.readEncryptedSecret(alice, sharedSecretId)
     ).toBeUndefined();
-    expect(await secrets.readEncryptedSecret(bob, "shared-id")).toBe(
+    expect(await secrets.readEncryptedSecret(bob, sharedSecretId)).toBe(
       "ciphertext-bob"
     );
 
@@ -351,9 +337,9 @@ describe("database services", () => {
   }, 15_000);
 });
 
-async function applyInitialMigration(database: PGlite) {
+async function applyMigration(database: PGlite, name: string) {
   const migration = await readFile(
-    new URL("../migrations/0000_fluffy_the_spike.sql", import.meta.url),
+    new URL(`../migrations/${name}`, import.meta.url),
     "utf8"
   );
   /* oxlint-disable eslint/no-await-in-loop -- SQL migration statements must execute in file order. */
@@ -363,50 +349,11 @@ async function applyInitialMigration(database: PGlite) {
   /* oxlint-enable eslint/no-await-in-loop */
 }
 
-async function applyBrowserImageMigration(database: PGlite) {
-  const migration = await readFile(
-    new URL("../migrations/0003_unusual_fabian_cortez.sql", import.meta.url),
-    "utf8"
-  );
-  /* oxlint-disable eslint/no-await-in-loop -- SQL migration statements must execute in file order. */
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await database.exec(statement);
+async function applyAllMigrations(database: PGlite) {
+  for (const name of (await readdir(new URL("../migrations/", import.meta.url)))
+    .filter((entry) => entry.endsWith(".sql"))
+    .toSorted()) {
+    // oxlint-disable-next-line eslint/no-await-in-loop -- SQL migrations must execute in committed order.
+    await applyMigration(database, name);
   }
-  /* oxlint-enable eslint/no-await-in-loop */
-}
-
-async function applyWorkspaceTenancyMigration(database: PGlite) {
-  const migration = await readFile(
-    new URL("../migrations/0004_wide_mysterio.sql", import.meta.url),
-    "utf8"
-  );
-  /* oxlint-disable eslint/no-await-in-loop -- SQL migration statements must execute in file order. */
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await database.exec(statement);
-  }
-  /* oxlint-enable eslint/no-await-in-loop */
-}
-
-async function applyBrowserTraceTelemetryMigration(database: PGlite) {
-  const migration = await readFile(
-    new URL("../migrations/0013_browser_trace_telemetry.sql", import.meta.url),
-    "utf8"
-  );
-  /* oxlint-disable eslint/no-await-in-loop -- SQL migration statements must execute in file order. */
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await database.exec(statement);
-  }
-  /* oxlint-enable eslint/no-await-in-loop */
-}
-
-async function applyUsageBudgetMigration(database: PGlite) {
-  const migration = await readFile(
-    new URL("../migrations/0009_dusty_star_brand.sql", import.meta.url),
-    "utf8"
-  );
-  /* oxlint-disable eslint/no-await-in-loop -- SQL migration statements must execute in file order. */
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await database.exec(statement);
-  }
-  /* oxlint-enable eslint/no-await-in-loop */
 }
