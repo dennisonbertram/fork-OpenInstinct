@@ -76,15 +76,13 @@ const auditCursor = z.string().transform((value, context) => {
   }
 });
 
-function encodeAuditCursor(row: { createdAt: string; id: string }) {
+function encodeAuditCursor(row: { createdAt: Date; id: string }) {
   return Buffer.from(JSON.stringify(row)).toString("base64url");
 }
 
 function startOfCurrentUtcMonth() {
   const now = new Date();
-  return new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
-  ).toISOString();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
 function groupedCounts(rows: readonly { key: string; count: number }[]) {
@@ -198,7 +196,7 @@ export const appRouter = createTRPCRouter({
             ? eq(usageEvents.workspaceId, input.workspaceId)
             : undefined,
           input.sinceIso
-            ? gte(usageEvents.createdAt, input.sinceIso)
+            ? gte(usageEvents.createdAt, new Date(input.sinceIso))
             : undefined,
         ].filter(
           (value): value is NonNullable<typeof value> => value !== undefined
@@ -232,9 +230,9 @@ export const appRouter = createTRPCRouter({
         const cursorWhere =
           input.cursor &&
           or(
-            lt(auditEvents.createdAt, input.cursor.createdAt),
+            lt(auditEvents.createdAt, new Date(input.cursor.createdAt)),
             and(
-              eq(auditEvents.createdAt, input.cursor.createdAt),
+              eq(auditEvents.createdAt, new Date(input.cursor.createdAt)),
               lt(auditEvents.id, input.cursor.id)
             )
           );
@@ -319,9 +317,9 @@ export const appRouter = createTRPCRouter({
         const cursorWhere =
           input.cursor &&
           or(
-            lt(workspaces.createdAt, input.cursor.createdAt),
+            lt(workspaces.createdAt, new Date(input.cursor.createdAt)),
             and(
-              eq(workspaces.createdAt, input.cursor.createdAt),
+              eq(workspaces.createdAt, new Date(input.cursor.createdAt)),
               lt(workspaces.id, input.cursor.id)
             )
           );

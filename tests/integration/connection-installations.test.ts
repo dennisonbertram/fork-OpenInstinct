@@ -99,7 +99,7 @@ describe("connection installations", () => {
       key
     );
     expect(installation?.status).toBe("revoked");
-    expect(installation?.revokedAt).toEqual(expect.any(String));
+    expect(installation?.revokedAt).toEqual(expect.any(Date));
   });
 
   it("records and finds a square-provider installation", async () => {

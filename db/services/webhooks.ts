@@ -50,7 +50,7 @@ export async function registerWebhookEndpoint(
   const { secretEncryptionKey } = await getInstallationSecrets();
   const id = randomUUID();
   const secret = webhookSecret();
-  const now = new Date().toISOString();
+  const now = new Date();
   const endpoint = await db.transaction(async (transaction) => {
     await requireOwner(transaction, scope);
     const [row] = await transaction
@@ -98,7 +98,7 @@ export async function disableWebhookEndpoint(
   endpointId: string
 ) {
   await ensureScope(scope);
-  const now = new Date().toISOString();
+  const now = new Date();
   const disabled = await db.transaction(async (transaction) => {
     await requireOwner(transaction, scope);
     const rows = await transaction
@@ -149,7 +149,7 @@ export async function rotateWebhookSecret(
   await ensureScope(scope);
   const { secretEncryptionKey } = await getInstallationSecrets();
   const secret = webhookSecret();
-  const now = new Date().toISOString();
+  const now = new Date();
   const endpoint = await db.transaction(async (transaction) => {
     await requireOwner(transaction, scope);
     const [row] = await transaction
@@ -190,7 +190,7 @@ export async function emitWebhookEvent(
   }
 ) {
   assertSafePayload(input.payload);
-  const now = new Date().toISOString();
+  const now = new Date();
   const eventId = randomUUID();
   const [event] = await executor
     .insert(webhookEvents)
@@ -212,7 +212,7 @@ export async function drainWebhookDeliveries({
   fetchImpl,
 }: { readonly limit?: number; readonly fetchImpl?: typeof fetch } = {}) {
   const { secretEncryptionKey } = await getInstallationSecrets();
-  const now = new Date().toISOString();
+  const now = new Date();
   await db
     .update(webhookDeliveries)
     .set({ outcome: "dead", updatedAt: now })
@@ -246,12 +246,12 @@ export async function drainWebhookDeliveries({
         .where(
           and(
             eq(webhookEndpoints.status, "active"),
-            lte(webhookDeliveries.nextAttemptAt, new Date().toISOString()),
+            lte(webhookDeliveries.nextAttemptAt, new Date()),
             inArray(webhookDeliveries.outcome, ["pending", "failed"]),
             lte(webhookDeliveries.attempt, maxAttempts - 1),
             or(
               isNull(webhookDeliveries.claimExpiresAt),
-              lte(webhookDeliveries.claimExpiresAt, new Date().toISOString())
+              lte(webhookDeliveries.claimExpiresAt, new Date())
             )
           )
         )
@@ -259,20 +259,20 @@ export async function drainWebhookDeliveries({
         .limit(1);
       if (!row) return undefined;
       const claimToken = randomUUID();
-      const claimExpiresAt = new Date(Date.now() + claimLeaseMs).toISOString();
+      const claimExpiresAt = new Date(Date.now() + claimLeaseMs);
       const [claimed] = await transaction
         .update(webhookDeliveries)
         .set({
           claimExpiresAt,
           claimToken,
-          updatedAt: new Date().toISOString(),
+          updatedAt: new Date(),
         })
         .where(
           and(
             eq(webhookDeliveries.id, row.delivery.id),
             or(
               isNull(webhookDeliveries.claimExpiresAt),
-              lte(webhookDeliveries.claimExpiresAt, new Date().toISOString())
+              lte(webhookDeliveries.claimExpiresAt, new Date())
             )
           )
         )
@@ -301,7 +301,7 @@ export async function drainWebhookDeliveries({
 }
 
 async function fanOutWebhookEvents() {
-  const now = new Date().toISOString();
+  const now = new Date();
   await db.transaction(async (transaction) => {
     const events = await transaction
       .select()
@@ -359,7 +359,7 @@ async function deliver(
   fetchImpl: typeof fetch | undefined,
   secretEncryptionKey: string
 ): Promise<"dead" | "delivered" | "failed"> {
-  const now = new Date().toISOString();
+  const now = new Date();
   let responseStatus: number | null = null;
   let outcome: "dead" | "delivered" | "failed";
   try {
@@ -379,7 +379,7 @@ async function deliver(
       correlationId: event.correlationId,
       data: event.payload,
     });
-    const timestamp = now;
+    const timestamp = now.toISOString();
     const signature = createHmac(
       "sha256",
       decryptWebhookSecret(
@@ -418,7 +418,7 @@ async function deliver(
   if (outcome === "failed" && attempt >= maxAttempts) outcome = "dead";
   const nextAttemptAt =
     outcome === "failed"
-      ? new Date(Date.now() + 2 ** delivery.attempt * 60_000).toISOString()
+      ? new Date(Date.now() + 2 ** delivery.attempt * 60_000)
       : now;
   await executor
     .update(webhookDeliveries)

@@ -167,9 +167,7 @@ export async function reserveIdempotencyKey(
   key: string,
   executor: IdempotencyExecutor = db
 ) {
-  const leaseExpiresAt = new Date(
-    Date.now() + idempotencyLeaseMs
-  ).toISOString();
+  const leaseExpiresAt = new Date(Date.now() + idempotencyLeaseMs);
   const inserted = await executor
     .insert(apiIdempotencyKeys)
     .values({
@@ -178,7 +176,7 @@ export async function reserveIdempotencyKey(
       route,
       idempotencyKey: key,
       responseStatus: 201,
-      createdAt: new Date().toISOString(),
+      createdAt: new Date(),
       leaseExpiresAt,
     })
     .onConflictDoNothing()
@@ -201,11 +199,11 @@ async function reclaimExpiredIdempotencyKey(
   workspaceId: string,
   route: string,
   key: string,
-  leaseExpiresAt: string,
-  previousLeaseExpiresAt: string | undefined,
+  leaseExpiresAt: Date,
+  previousLeaseExpiresAt: Date | undefined,
   executor: IdempotencyExecutor
 ) {
-  const staleBefore = new Date(Date.now() - idempotencyLeaseMs).toISOString();
+  const staleBefore = new Date(Date.now() - idempotencyLeaseMs);
   const reclaimed = await executor
     .update(apiIdempotencyKeys)
     .set({ leaseExpiresAt })
@@ -218,7 +216,7 @@ async function reclaimExpiredIdempotencyKey(
         previousLeaseExpiresAt
           ? and(
               eq(apiIdempotencyKeys.leaseExpiresAt, previousLeaseExpiresAt),
-              lte(apiIdempotencyKeys.leaseExpiresAt, new Date().toISOString())
+              lte(apiIdempotencyKeys.leaseExpiresAt, new Date())
             )
           : or(
               isNull(apiIdempotencyKeys.leaseExpiresAt),

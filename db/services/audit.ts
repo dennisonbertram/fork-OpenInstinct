@@ -18,7 +18,7 @@ export async function recordAuditEvent(
     action: event.action,
     actorUserId: event.actorUserId ?? scope.userId,
     correlationId: event.correlationId,
-    createdAt: event.createdAt,
+    createdAt: event.createdAt ? new Date(event.createdAt) : undefined,
     id: randomUUID(),
     metadata: event.metadata,
     outcome: event.outcome,

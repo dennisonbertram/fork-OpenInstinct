@@ -46,6 +46,8 @@ describe("database migrations", () => {
            'browser_trace_domains',
            'browser_trace_events',
            'chats',
+           'scheduled_agent_jobs',
+           'scheduled_agent_runs',
            'encrypted_secrets',
            'user',
            'session',
@@ -55,11 +57,13 @@ describe("database migrations", () => {
     );
     const pendingConstraints = await pendingConstraintCount(database);
 
-    expect(tables.rows[0]?.count).toBe(17);
+    expect(tables.rows[0]?.count).toBe(19);
     expect(pendingConstraints).toBe(0);
     await expect(
       database.query("SELECT id FROM vault_items WHERE id = 'contact-1'")
-    ).resolves.toMatchObject({ rows: [{ id: "contact-1" }] });
+    ).resolves.toMatchObject({
+      rows: [{ id: "contact-1" }],
+    });
   }, 15_000);
 
   it("preserves legacy rows while enforcing constraints for new writes", async () => {

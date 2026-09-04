@@ -10,7 +10,7 @@ export async function writeEncryptedSecret(
   encryptedValue: string,
   executor: Executor = db
 ) {
-  const updatedAt = new Date().toISOString();
+  const updatedAt = new Date();
   await executor
     .insert(encryptedSecrets)
     .values({

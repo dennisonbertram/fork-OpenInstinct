@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { parseCalendarAvailability } from "@/agent/lib/google-workspace/calendar";
 import { googleWorkspaceAuthOptions } from "@/agent/lib/google-workspace/client";
 import { gmailUpdateLabels } from "@/agent/lib/google-workspace/gmail";
-import { googleWorkspaceWriteApproval } from "@/agent/tools/google_workspace_write";
+import { calendarCreateEvent } from "@/agent/tools/calendar";
+import { gmailSend, gmailUpdate } from "@/agent/tools/gmail";
 import {
   googleWorkspaceScopes,
   googleWorkspaceSubject,
@@ -42,8 +43,9 @@ describe("Google Workspace", () => {
       addLabelIds: ["UNREAD"],
       removeLabelIds: [],
     });
-    expect(googleWorkspaceWriteApproval("update_email")).toBe("not-applicable");
-    expect(googleWorkspaceWriteApproval("send_email")).toBe("user-approval");
+    expect(gmailUpdate.approval).toBeUndefined();
+    expect(gmailSend.approval).toBeTypeOf("function");
+    expect(calendarCreateEvent.approval).toBeTypeOf("function");
   });
 
   it("does not treat calendar API errors as availability", () => {

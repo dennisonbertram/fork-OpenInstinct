@@ -31,7 +31,7 @@ export async function recordUsageEvent(
 ) {
   await db.insert(usageEvents).values({
     costEstimateUsd: event.costEstimateUsd,
-    createdAt: event.createdAt,
+    createdAt: event.createdAt ? new Date(event.createdAt) : undefined,
     id: randomUUID(),
     kind: event.kind,
     metadata: event.metadata,
@@ -55,7 +55,7 @@ export async function sumUsageSince(
       and(
         eq(usageEvents.workspaceId, scope.workspaceId),
         eq(usageEvents.kind, kind),
-        gte(usageEvents.createdAt, sinceIso)
+        gte(usageEvents.createdAt, new Date(sinceIso))
       )
     );
   return row?.total ?? 0;

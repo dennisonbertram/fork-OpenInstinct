@@ -9,6 +9,12 @@ import { isSessionOwned } from "@/db/services/sessions";
 import { verifyScopeAccess } from "@/db/services/scope";
 import { accessScopeForUser, type AccessScope } from "@/lib/access-scope";
 import { getAuthSession } from "@/auth/session";
+import { sendMessageToolResultSchema } from "@/agent/lib/send-message";
+import {
+  finalizeScheduledReportDelivery,
+  releaseScheduledReportDelivery,
+  scheduledReportFromSession,
+} from "@/agent/lib/schedules/report-lifecycle";
 
 const authenticateLocalDev = localDev();
 
@@ -19,13 +25,14 @@ export default eveChannel({
       if (!identity) return null;
       const { phoneNumber, scope } = identity;
 
-      const sessionId = sessionIdFromPath(new URL(request.url).pathname);
-      if (sessionId && !(await waitForSessionOwnership(scope, sessionId))) {
-        throw new ForbiddenError({ message: "Session not found." });
-      }
+      await requireOwnedRouteSubject(scope, request);
 
       return {
-        attributes: { phoneNumber, workspaceId: scope.workspaceId },
+        attributes: {
+          conversationChannel: "eve",
+          phoneNumber,
+          workspaceId: scope.workspaceId,
+        },
         authenticator: "authjs",
         principalId: scope.userId,
         principalType: "user",
@@ -38,18 +45,14 @@ export default eveChannel({
       const scope = accessScopeForUser("better-auth:browser-benchmark");
       const verifiedScope = await verifyScopeAccess(scope);
       if (!verifiedScope) return null;
-      const sessionId = sessionIdFromPath(new URL(request.url).pathname);
-      if (
-        sessionId &&
-        !(await waitForSessionOwnership(verifiedScope, sessionId))
-      ) {
-        throw new ForbiddenError({ message: "Session not found." });
-      }
+
+      await requireOwnedRouteSubject(verifiedScope, request);
 
       return {
         ...local,
         attributes: {
           ...local.attributes,
+          conversationChannel: "eve",
           phoneNumber: "+15555550100",
           workspaceId: verifiedScope.workspaceId,
         },
@@ -64,13 +67,75 @@ export default eveChannel({
       });
     },
   ],
+  events: {
+    async "action.result"(event, _channel, session) {
+      if (
+        event.status === "completed" &&
+        sendMessageToolResultSchema.safeParse(event.result).success
+      ) {
+        await finalizeScheduledReportDelivery(session);
+      }
+    },
+    async "message.completed"(event, _channel, session) {
+      if (event.finishReason === "tool-calls") return;
+      if (scheduledReportFromSession(session)) {
+        await finalizeScheduledReportDelivery(session, "suppressed");
+      }
+    },
+    async "session.completed"(_event, _channel, session) {
+      if (scheduledReportFromSession(session)) {
+        await finalizeScheduledReportDelivery(session, "suppressed");
+      }
+    },
+    async "turn.cancelled"(_event, _channel, session) {
+      await releaseScheduledReportDelivery(
+        session,
+        "Scheduled result reporting was cancelled."
+      );
+    },
+    async "turn.failed"(event, _channel, session) {
+      await releaseScheduledReportDelivery(session, event.message);
+    },
+  },
 });
 
-function sessionIdFromPath(pathname: string) {
-  const match = /^\/eve\/v1\/session\/([^/]+)/.exec(pathname);
-  if (!match?.[1]) return undefined;
+// Routes without a session subject. Every other eve route must name a session
+// this caller owns, either in the path or inside a hook token.
+const subjectFreeRoutes = new Set(["/eve/v1/info", "/eve/v1/session"]);
+
+async function requireOwnedRouteSubject(scope: AccessScope, request: Request) {
+  const { pathname } = new URL(request.url);
+  if (subjectFreeRoutes.has(pathname)) return;
+  const sessionId = sessionIdFromPath(pathname);
+  if (!sessionId || !(await waitForSessionOwnership(scope, sessionId))) {
+    throw new ForbiddenError({ message: "Session not found." });
+  }
+}
+
+export function sessionIdFromPath(pathname: string) {
+  const session = /^\/eve\/v1\/session\/([^/]+)/.exec(pathname)?.[1];
+  if (session) return decodePathSegment(session);
+  const hookToken =
+    /^\/eve\/v1\/(?:callback|connections\/[^/]+\/callback(?:\/[^/]+)?)\/([^/]+)$/.exec(
+      pathname
+    )?.[1];
+  const token = hookToken ? decodePathSegment(hookToken) : undefined;
+  return token ? sessionIdFromHookToken(token) : undefined;
+}
+
+// Hook tokens are derived from the session id: `eve:session:<id>:inbox`,
+// `<id>:turn-control:<n>[:cancel|:inbox]`, and `<id>:auth`.
+function sessionIdFromHookToken(token: string) {
+  return (
+    /^eve:session:([^:]+):inbox$/.exec(token)?.[1] ??
+    /^([^:]+):turn-control:\d+(?::(?:cancel|inbox))?$/.exec(token)?.[1] ??
+    /^([^:]+):auth$/.exec(token)?.[1]
+  );
+}
+
+function decodePathSegment(segment: string) {
   try {
-    return decodeURIComponent(match[1]);
+    return decodeURIComponent(segment);
   } catch {
     return undefined;
   }

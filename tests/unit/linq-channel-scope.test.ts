@@ -1,3 +1,4 @@
+import { Message } from "chat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { accessScopeForUser } from "@/lib/access-scope";
 
@@ -56,14 +57,40 @@ vi.mock("@/db/services/phone-identities", () => ({
 const { linqChannelConfig } = await import("../../agent/channels/linq");
 type OnMessage = typeof linqChannelConfig.onMessage;
 type Context = Parameters<OnMessage>[0];
-type Message = Parameters<OnMessage>[1];
 const workspaceId = accessScopeForUser("better-auth:alice").workspaceId;
-const message = (): Message => ({
-  author: { isBot: false, userId: "linq-user", userName: "+12025550123" },
-});
-const context = (threadId?: string): Context => ({
-  thread: { id: threadId ?? "" },
-});
+
+interface ThreadIdentity {
+  readonly thread: Pick<Context["thread"], "id">;
+}
+
+function context(threadId?: string): Context {
+  const identity: ThreadIdentity = { thread: { id: threadId ?? "" } };
+  // SAFETY: The inbound policy reads only the thread id from this context.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- A complete Chat SDK thread mock would add unrelated methods.
+  return identity as Context;
+}
+
+function message() {
+  return new Message({
+    attachments: [],
+    author: {
+      fullName: "+12025550123",
+      isBot: false,
+      isMe: false,
+      userId: "linq-user",
+      userName: "+12025550123",
+    },
+    formatted: { children: [], type: "root" },
+    id: "message-1",
+    metadata: {
+      dateSent: new Date("2026-09-03T00:00:00.000Z"),
+      edited: false,
+    },
+    raw: {},
+    text: "list my vault items",
+    threadId: "linq:dm:chat-1",
+  });
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -77,6 +104,9 @@ beforeEach(() => {
 
 describe("Linq channel scope", () => {
   it("requires membership verification before authorizing a channel message", async () => {
+    // An unlinked handle is rejected earlier by the inbound guard, so a
+    // verified user is needed to reach the workspace membership check.
+    mocks.findOne.mockResolvedValue({ id: "alice", phoneNumberVerified: true });
     mocks.verifyScope.mockResolvedValue(undefined);
     expect(await linqChannelConfig.onMessage(context(), message())).toBeNull();
     expect(mocks.verifyScope).toHaveBeenCalled();

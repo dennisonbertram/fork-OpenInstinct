@@ -16,7 +16,7 @@ interface ConnectionInstallationKey {
 }
 interface ConnectionInstallationUpdate {
   scopes?: string[];
-  updatedAt: string;
+  updatedAt: Date;
 }
 
 function installationConditions(
@@ -36,7 +36,7 @@ export async function recordConnectionInstallation(
   input: ConnectionInstallationKey & { readonly scopes?: readonly string[] }
 ) {
   await ensureScope(scope);
-  const now = new Date().toISOString();
+  const now = new Date();
   const update: ConnectionInstallationUpdate = { updatedAt: now };
   if (input.scopes) update.scopes = [...input.scopes];
   const [installation] = await db
@@ -79,7 +79,7 @@ export async function revokeConnectionInstallation(
   scope: AccessScope,
   key: ConnectionInstallationKey
 ) {
-  const now = new Date().toISOString();
+  const now = new Date();
   const rows = await db
     .update(connectionInstallations)
     .set({ revokedAt: now, status: "revoked", updatedAt: now })

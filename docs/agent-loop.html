@@ -459,16 +459,16 @@
           Reply to iMessage
         </text>
         <text x="312" y="390" font-size="11.5" class="mono muted">
-          linq.ts · agent/lib/linq/reply.ts
+          linq.ts · agent/tools/messaging.ts
         </text>
         <text x="312" y="412" font-size="12">
-          1. checkBudget(provider_message)
+          1. model calls send_message, one call = one bubble
         </text>
         <text x="312" y="428" font-size="12">
-          2. attach worker images, if any (private /artifacts)
+          2. checkBudget(provider_message) · attach artifacts
         </text>
         <text x="312" y="444" font-size="12">
-          3. splitLinqReply: blank line or bullet = 1 bubble
+          3. thread.post(); channel never re-splits the text
         </text>
 
         <!-- reply box, web -->
@@ -502,10 +502,10 @@
           marker-end="url(#arrow-accent)"
         />
         <text x="120" y="330" font-size="11.5" class="accent-text">
-          thread.post() once per bubble,
+          thread.post() once per send_message call,
         </text>
         <text x="120" y="346" font-size="11.5" class="accent-text">
-          in order; files on the last one
+          in order; each call carries its own attachments
         </text>
 
         <!-- typing status note -->
@@ -579,7 +579,9 @@
         <text x="32" y="62" font-size="13" font-weight="600">
           Context for the model call
         </text>
-        <text x="32" y="84" font-size="12">system: agent/instructions.md</text>
+        <text x="32" y="84" font-size="12">
+          system: agent/instructions/*.ts + content/role/*.md
+        </text>
         <text x="32" y="100" font-size="12">
           memory recalled: profile, personal_info
         </text>
@@ -657,18 +659,20 @@
         <text x="822" y="94" font-size="11.5" font-weight="600">
           agent/tools
         </text>
-        <text x="822" y="110" font-size="11" class="mono">ask_question</text>
+        <text x="822" y="110" font-size="10.5" class="mono">
+          send_message · react_to_message
+        </text>
         <text x="822" y="124" font-size="10.5" class="mono">
-          google_workspace_read
+          gmail.ts · calendar.ts · contacts.ts
         </text>
         <text x="822" y="138" font-size="10.5" class="mono">
-          google_workspace_write
+          schedules.ts (create/list/update/answer)
         </text>
         <text x="822" y="152" font-size="10.5" class="mono">
           request_vault_setup · import
         </text>
         <text x="822" y="166" font-size="10.5" class="mono">
-          update_user_profile
+          bash · read_file · write_file · todo
         </text>
 
         <rect x="976" y="76" width="152" height="96" class="box" />
@@ -689,10 +693,10 @@
 
         <rect x="652" y="186" width="476" height="90" class="box" />
         <text x="660" y="204" font-size="11.5" font-weight="600">
-          worker subagent (its own session, model, sandbox, browser)
+          browser-agent subagent (its own session, model, sandbox, browser)
         </text>
         <text x="660" y="220" font-size="11" class="mono muted">
-          agent/subagents/worker · Kernel browser
+          agent/subagents/browser-agent · Kernel browser
         </text>
         <text x="660" y="234" font-size="11">
           curated observation + preparation; vault output stays opaque;
@@ -767,14 +771,10 @@
           turn.cancelled → session.waiting → new turn
         </text>
         <text x="652" y="392" font-size="12">
-          Side effects already done are not rolled back. The Linq channel
-          records
+          Side effects already done are not rolled back. A running
         </text>
         <text x="652" y="408" font-size="12">
-          any running worker tasks so the next turn can call task_cancel on them
-        </text>
-        <text x="652" y="424" font-size="11.5" class="mono muted">
-          agent/hooks/worker-cancellation-delivery.ts
+          browser-agent task keeps running; the new turn can still see it.
         </text>
       </svg>
     </div>
@@ -809,7 +809,7 @@
           </tr>
           <tr>
             <td>message.received</td>
-            <td>saveChat; record the turn for worker cancellation</td>
+            <td>saveChat. <code>agent/hooks/session-owner.ts</code></td>
           </tr>
           <tr>
             <td>turn.started</td>
@@ -837,8 +837,11 @@
             </td>
           </tr>
           <tr>
-            <td>turn.cancelled / failed / completed</td>
-            <td>clear the cancellation record</td>
+            <td>turn.started / input.requested / failed / cancelled</td>
+            <td>
+              scheduled runs only: lease and report lifecycle.
+              <code>agent/hooks/scheduled-run-completion.ts</code>
+            </td>
           </tr>
           <tr>
             <td>every event</td>
@@ -861,13 +864,19 @@
         </li>
         <li>
           <strong>The root has no browser tools.</strong> Browser work is
-          delegated with a Task line and an output schema; the worker's 16 tool
-          modules live under its own directory and are invisible to the root.
+          delegated with a Task line and an output schema; the browser-agent's
+          16 tool modules live under its own directory and are invisible to the
+          root.
         </li>
         <li>
-          <strong>Schedules carry no user.</strong> A cron turn has no
-          initiator, so it cannot use the per-user Square grant. That is the
-          open constraint on proactive checks (issue #34).
+          <strong>A scheduled run is its own channel and turn.</strong>
+          <code>agent/schedules/dynamic.ts</code> is a once-a-minute cron that
+          claims due jobs and dispatches them onto
+          <code>agent/channels/scheduled-run.ts</code>;
+          <code>agent/hooks/scheduled-run-completion.ts</code> tracks the lease,
+          waits for input, and reports back on completion/failure/cancellation.
+          A cron turn has no initiator, so it cannot use the per-user Square
+          grant. That is the open constraint on proactive checks (issue #34).
         </li>
         <li>
           <strong>Web chat and iMessage share one agent.</strong> Different

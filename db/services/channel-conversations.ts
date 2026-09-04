@@ -106,7 +106,7 @@ export async function createConversationBinding({
   readonly userId: string;
 }) {
   const scope = accessScopeForUser(`better-auth:${userId}`);
-  const now = new Date().toISOString();
+  const now = new Date();
 
   const binding = await db.transaction(async (transaction) => {
     const [identity] = await transaction
@@ -264,7 +264,7 @@ async function reconcileLegacyPersonalAgent(
 
   const agentId = randomUUID();
   const revisionId = randomUUID();
-  const now = new Date().toISOString();
+  const now = new Date();
   await transaction.insert(agents).values({
     activeRevisionId: null,
     createdAt: now,

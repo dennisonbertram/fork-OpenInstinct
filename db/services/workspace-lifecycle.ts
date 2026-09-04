@@ -80,7 +80,7 @@ export async function transitionWorkspaceLifecycle(
   scope: AccessScope,
   to: WorkspaceLifecycleState
 ) {
-  const now = new Date().toISOString();
+  const now = new Date();
   return db.transaction(async (transaction) => {
     const [membership] = await transaction
       .select({
@@ -153,7 +153,7 @@ export async function adminTransitionWorkspaceLifecycle(
   workspaceId: string,
   to: WorkspaceLifecycleState
 ) {
-  const now = new Date().toISOString();
+  const now = new Date();
   return db.transaction(async (transaction) => {
     const [workspace] = await transaction
       .select({ lifecycleState: workspaces.lifecycleState })
@@ -212,7 +212,7 @@ function lifecycleWebhookEventType(
 
 export async function deleteWorkspaceData(scope: AccessScope) {
   const { workspaceId } = scope;
-  const now = new Date().toISOString();
+  const now = new Date();
   return db.transaction(async (transaction) => {
     const [membership] = await transaction
       .select({

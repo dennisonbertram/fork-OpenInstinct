@@ -452,7 +452,7 @@ async function seedOwnedRows(
       id, workspace_id, created_by_user_id, root_session_id, worker_session_id,
       browser_session_id, status, label, storage_pathname, source_kind, idempotency_key, created_at
     ) VALUES (
-      'image-${id}', '${workspaceId}', '${userId}', 'root-${id}', 'worker-${id}',
+      gen_random_uuid(), '${workspaceId}', '${userId}', 'root-${id}', 'worker-${id}',
       'browser-session-${id}', 'pending', 'Image', 'blob/${id}', 'viewport', 'key-${id}', '2026-01-01'
     );
     INSERT INTO chats (session_id, workspace_id, title, created_at, updated_at)

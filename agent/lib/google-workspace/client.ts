@@ -1,7 +1,7 @@
 import { auth } from "@googleapis/gmail";
 import { connect, type EveAuthorizationOptions } from "@vercel/connect/eve";
 import type { ToolContext } from "eve/tools";
-import { scopeFromPrincipal } from "@/lib/access-scope";
+import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
 import {
   findConnectionInstallation,
   recordConnectionInstallation,

@@ -19,7 +19,7 @@ export async function createAgent(
   executor: Executor = db
 ) {
   const parsedInput = agentInputSchema.parse(input);
-  const now = new Date().toISOString();
+  const now = new Date();
   const [agent] = await executor
     .insert(agents)
     .values({
@@ -42,7 +42,7 @@ export async function createRevision(
 ) {
   const parsedManifest = agentManifestSchema.parse(manifest);
   const canonicalManifest = canonicalAgentManifest(parsedManifest);
-  const now = new Date().toISOString();
+  const now = new Date();
   const create = async (transaction: Executor) => {
     const [agent] = await transaction
       .select({ id: agents.id })
@@ -163,7 +163,7 @@ export async function listRevisions(scope: AccessScope, agentId: string) {
 export async function archiveAgent(scope: AccessScope, agentId: string) {
   const [agent] = await db
     .update(agents)
-    .set({ status: "archived", updatedAt: new Date().toISOString() })
+    .set({ status: "archived", updatedAt: new Date() })
     .where(
       and(eq(agents.id, agentId), eq(agents.workspaceId, scope.workspaceId))
     )
@@ -207,7 +207,7 @@ async function moveActiveRevision(
       .set({
         activeRevisionId: revision.id,
         status: "active",
-        updatedAt: new Date().toISOString(),
+        updatedAt: new Date(),
       })
       .where(
         and(eq(agents.id, agentId), eq(agents.workspaceId, scope.workspaceId))
