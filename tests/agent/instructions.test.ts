@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { DynamicResolveContext } from "eve/instructions";
 import { describe, expect, it } from "vitest";
 import executionSafety from "@/agent/instructions/10-execution-safety";
@@ -46,16 +47,38 @@ describe("agent instructions", () => {
     expect(selected?.content).toContain("approval");
   });
 
-  it("uses native approval cards instead of prose approval loops", async () => {
+  it("previews material details without exposing approval internals", async () => {
     const resolve = executionSafety.events["turn.started"];
     expect(resolve).toBeDefined();
     if (!resolve) return;
 
     const selected = await resolve({}, dynamicContext("linq-message"));
     expect(selected?.content).toContain(
-      "Never ask for approval in prose first"
+      "make sure the user has just seen the material details needed to decide"
     );
-    expect(selected?.content).toContain("native approval card");
+    expect(selected?.content).toContain("native approval gate");
+    expect(selected?.content).toContain(
+      "Never expose internal tool names or require exact approval tokens"
+    );
+  });
+
+  it("checks Gmail authorization before requesting send confirmation", async () => {
+    const resolve = roleInstructions.events["turn.started"];
+    expect(resolve).toBeDefined();
+    if (!resolve) return;
+
+    const selected = await resolve({}, dynamicContext("linq-message"));
+    expect(selected?.content).toContain("Load the `email` skill");
+
+    const emailSkill = readFileSync("agent/skills/email.md", "utf8");
+    expect(emailSkill).toContain(
+      "Always call `gmail-connect` before `gmail-send`"
+    );
+    expect(emailSkill).toContain("immediately starts the Google sign-in flow");
+    expect(emailSkill).toContain(
+      "use `send_message` to show the\ncomplete draft"
+    );
+    expect(emailSkill).toContain("generic confirmation that follows");
   });
 
   it("treats personal information as recalled context instead of a read tool", async () => {

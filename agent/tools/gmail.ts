@@ -3,6 +3,7 @@ import { always } from "eve/tools/approval";
 import { z } from "zod";
 import {
   GMAIL_UPDATE_ACTIONS,
+  ensureGmailConnection,
   gmailSendSchema,
   readGmailThread,
   searchGmail,
@@ -10,6 +11,16 @@ import {
   updateGmail,
 } from "@/agent/lib/google-workspace/gmail";
 import { resolveModeValue } from "@/agent/lib/mode";
+
+export const gmailConnect = defineTool({
+  description:
+    "Check that Gmail is available and authorized before composing or sending email. If authorization is missing, this starts the Google sign-in flow. Call this when the user asks to connect Gmail and before gmail-send.",
+  inputSchema: z.object({}),
+  async execute(_input, ctx) {
+    await ensureGmailConnection(ctx);
+    return { connected: true };
+  },
+});
 
 export const gmailSearch = defineTool({
   description:
@@ -70,6 +81,7 @@ export default defineDynamic({
     "turn.started": (_event, context) =>
       resolveModeValue(context, {
         interactive: {
+          "gmail-connect": gmailConnect,
           "gmail-read-thread": gmailReadThread,
           "gmail-search": gmailSearch,
           "gmail-send": gmailSend,

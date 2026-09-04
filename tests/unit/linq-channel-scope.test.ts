@@ -5,6 +5,7 @@ import { accessScopeForUser } from "@/lib/access-scope";
 interface PendingInputStateFixture {
   readonly requests: readonly {
     readonly allowFreeform?: boolean;
+    readonly kind?: "question" | "session-limit" | "tool-approval";
     readonly options?: readonly {
       readonly id: string;
       readonly label: string;
@@ -207,35 +208,43 @@ describe("Linq channel scope", () => {
       workspaceId,
     });
   });
-  it("turns an exact approval reply into the pending Eve input response", async () => {
-    allowAlice();
-    mocks.resolveBinding.mockResolvedValue(binding(workspaceId));
-    mocks.getState.mockResolvedValue({
-      requests: [
-        {
-          allowFreeform: false,
-          options: [
-            { id: "approve", label: "Approve" },
-            { id: "cancel", label: "Cancel" },
-          ],
-          requestId: "approval-1",
-        },
-      ],
-      workspaceId,
-    });
+  it.each([
+    ["yeah", "approve"],
+    ["send it.", "approve"],
+    ["never mind!", "cancel"],
+  ])(
+    "turns the natural reply %j into the pending Eve %s response",
+    async (reply, optionId) => {
+      allowAlice();
+      mocks.resolveBinding.mockResolvedValue(binding(workspaceId));
+      mocks.getState.mockResolvedValue({
+        requests: [
+          {
+            allowFreeform: false,
+            kind: "tool-approval",
+            options: [
+              { id: "approve", label: "Approve" },
+              { id: "cancel", label: "Cancel" },
+            ],
+            requestId: "approval-1",
+          },
+        ],
+        workspaceId,
+      });
 
-    await expect(
-      linqChannelConfig.onMessage(
-        context("linq:chat-1:dm"),
-        message("linq-message-approval", "  approve  ")
-      )
-    ).resolves.toMatchObject({
-      inputResponseStateKey: "pending-input:linq:chat-1:dm",
-      inputResponses: [{ optionId: "approve", requestId: "approval-1" }],
-    });
-    expect(mocks.connectState).toHaveBeenCalledOnce();
-    expect(mocks.deleteState).not.toHaveBeenCalled();
-  });
+      await expect(
+        linqChannelConfig.onMessage(
+          context("linq:chat-1:dm"),
+          message("linq-message-approval", reply)
+        )
+      ).resolves.toMatchObject({
+        inputResponseStateKey: "pending-input:linq:chat-1:dm",
+        inputResponses: [{ optionId, requestId: "approval-1" }],
+      });
+      expect(mocks.connectState).toHaveBeenCalledOnce();
+      expect(mocks.deleteState).not.toHaveBeenCalled();
+    }
+  );
   it("does not consume pending input owned by another workspace", async () => {
     allowAlice();
     mocks.resolveBinding.mockResolvedValue(binding(workspaceId));
@@ -243,6 +252,7 @@ describe("Linq channel scope", () => {
       requests: [
         {
           allowFreeform: false,
+          kind: "tool-approval",
           options: [{ id: "approve", label: "Approve" }],
           requestId: "approval-other",
         },

@@ -28,6 +28,10 @@ export const gmailSendSchema = z.object({
   to: z.array(z.email()).min(1).max(20),
 });
 
+export async function ensureGmailConnection(ctx: ToolContext) {
+  await withGmail(ctx, async () => undefined);
+}
+
 export async function searchGmail(
   ctx: ToolContext,
   query: string,
