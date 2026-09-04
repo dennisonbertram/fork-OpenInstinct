@@ -192,6 +192,10 @@ development, may be enabled in preview with
 - `pnpm test:e2e` uses Playwright, which boots through `scripts/dev.ts` and owns
   Compose, migrations, and teardown. It authenticates through the local phone
   bypass and runs with `WORKSPACE_SCOPE_ENFORCEMENT=enforce`.
+  Chat journeys use the guarded local `EVAL_CONTRACT_FIXTURE=1` model through
+  the real Eve routes, covering send, reload, follow-up, and failure recovery
+  without paid inference or intercepted chat responses. The browser runner
+  refuses to reuse another server; select an unused `PLAYWRIGHT_PORT` if needed.
 
 ### Local startup and browser acceptance
 

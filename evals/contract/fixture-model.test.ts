@@ -139,7 +139,7 @@ describe("contract fixture model", () => {
           },
         ])
       )
-    ).toBe("DELIVERY_COMPLETE");
+    ).toEqual({ text: "DELIVERY_COMPLETE" });
   });
 });
 
