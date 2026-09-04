@@ -836,6 +836,7 @@ export const channelConversations = pgTable(
     workspaceId: text("workspace_id").notNull(),
     agentId: text("agent_id").notNull(),
     pinnedRevisionId: text("pinned_revision_id").notNull(),
+    lastInboundMessageId: text("last_inbound_message_id"),
     status: text("status").notNull().default("active"),
     createdAt: text("created_at").notNull().default(utcTimestampDefault),
     updatedAt: text("updated_at").notNull().default(utcTimestampDefault),

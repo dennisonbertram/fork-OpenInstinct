@@ -279,7 +279,9 @@
         <text x="32" y="120" font-size="12">
           webhook on /eve/v1 · onMessage()
         </text>
-        <text x="32" y="138" font-size="12">bot authors dropped</text>
+        <text x="32" y="138" font-size="12">
+          bot authors + duplicate message IDs dropped
+        </text>
 
         <!-- inbound: web -->
         <rect x="20" y="200" width="230" height="96" class="box" />
@@ -533,11 +535,12 @@
     <figcaption>
       One turn end to end. Both channels resolve to the same principal and
       verified workspace scope before eve sees the message; Linq also resolves
-      an owned conversation binding. The session, vault, Square grant, and usage
-      ledger all key on that scope. The turn runs as a Workflow SDK durable
-      workflow; the accent path is the reply leaving the turn. On iMessage a
-      reply becomes as many bubbles as it has paragraphs and bullets, which is
-      why the eval gym gates bubble count.
+      an owned conversation binding and atomically claims each inbound provider
+      message ID. The session, vault, Square grant, and usage ledger all key on
+      that scope. The turn runs as a Workflow SDK durable workflow; the accent
+      path is the reply leaving the turn. On iMessage a reply becomes as many
+      bubbles as it has paragraphs and bullets, which is why the eval gym gates
+      bubble count.
     </figcaption>
   </figure>
 
@@ -733,7 +736,9 @@
         <text x="32" y="242" font-size="13" font-weight="600" class="park-text">
           Turn parks, holds no compute
         </text>
-        <text x="32" y="264" font-size="12">one approval: purchase · send</text>
+        <text x="32" y="264" font-size="12">
+          iMessage approval: reply approve · cancel
+        </text>
         <text x="32" y="280" font-size="12">
           submit · delete · OAuth callback
         </text>
@@ -828,6 +833,14 @@
           <tr>
             <td>step.completed</td>
             <td>recordUsageEvent with tokens and cost estimate</td>
+          </tr>
+          <tr>
+            <td>input.requested</td>
+            <td>
+              Linq: post deterministic plain-text choices; tool approvals say to
+              reply exactly <code>approve</code> or <code>cancel</code>.
+              <code>agent/channels/linq.ts</code>
+            </td>
           </tr>
           <tr>
             <td>message.completed</td>

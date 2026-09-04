@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { accessScopeForUser } from "@/lib/access-scope";
 
 const mocks = vi.hoisted(() => ({
+  claimInboundMessage: vi.fn<() => Promise<boolean>>(),
   createBinding:
     vi.fn<() => Promise<{ readonly workspaceId: string } | undefined>>(),
   findOne:
@@ -43,6 +44,7 @@ vi.mock("@/db/services/scope", () => ({
   verifyScopeAccess: mocks.verifyScope,
 }));
 vi.mock("@/db/services/channel-conversations", () => ({
+  claimConversationInboundMessage: mocks.claimInboundMessage,
   createConversationBinding: mocks.createBinding,
   resolveConversationBinding: mocks.resolveBinding,
 }));
@@ -58,8 +60,9 @@ type OnMessage = typeof linqChannelConfig.onMessage;
 type Context = Parameters<OnMessage>[0];
 type Message = Parameters<OnMessage>[1];
 const workspaceId = accessScopeForUser("better-auth:alice").workspaceId;
-const message = (): Message => ({
+const message = (id = "linq-message-1"): Message => ({
   author: { isBot: false, userId: "linq-user", userName: "+12025550123" },
+  id,
 });
 const context = (threadId?: string): Context => ({
   thread: { id: threadId ?? "" },
@@ -72,6 +75,7 @@ beforeEach(() => {
   mocks.findIdentity.mockResolvedValue(undefined);
   mocks.resolveBinding.mockResolvedValue(undefined);
   mocks.createBinding.mockResolvedValue(undefined);
+  mocks.claimInboundMessage.mockResolvedValue(true);
   mocks.recordInstallation.mockResolvedValue(undefined);
 });
 
@@ -130,6 +134,23 @@ describe("Linq channel scope", () => {
     mocks.resolveBinding.mockResolvedValue(binding(workspaceId));
     await linqChannelConfig.onMessage(context("linq:chat-1:dm"), message());
     expect(mocks.recordInstallation).not.toHaveBeenCalled();
+  });
+  it("drops a duplicate inbound message before Eve starts another turn", async () => {
+    allowAlice();
+    mocks.resolveBinding.mockResolvedValue(binding(workspaceId));
+    mocks.claimInboundMessage.mockResolvedValue(false);
+
+    await expect(
+      linqChannelConfig.onMessage(
+        context("linq:chat-1:dm"),
+        message("linq-message-retried")
+      )
+    ).resolves.toBeNull();
+    expect(mocks.claimInboundMessage).toHaveBeenCalledWith({
+      bindingId: "binding-1",
+      messageId: "linq-message-retried",
+      workspaceId,
+    });
   });
   it("does not attempt a binding when the phone identity belongs to another user", async () => {
     mocks.enabled.mockReturnValue(true);

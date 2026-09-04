@@ -112,6 +112,46 @@ describe("channel conversation bindings", () => {
     ).resolves.toMatchObject({ rows: [expect.any(Object)] });
   });
 
+  it("claims a retried inbound message only once", async () => {
+    const service = await loadService();
+    await service.createActiveAgent();
+    const binding =
+      await service.conversations.createConversationBinding(bindingInput);
+    if (!binding) throw new Error("Expected a binding.");
+
+    await expect(
+      service.conversations.claimConversationInboundMessage({
+        bindingId: binding.id,
+        messageId: "wrong-workspace-message",
+        workspaceId: service.bob.workspaceId,
+      })
+    ).resolves.toBe(false);
+
+    const duplicateClaims = await Promise.all([
+      service.conversations.claimConversationInboundMessage({
+        bindingId: binding.id,
+        messageId: "linq-message-1",
+        workspaceId: service.alice.workspaceId,
+      }),
+      service.conversations.claimConversationInboundMessage({
+        bindingId: binding.id,
+        messageId: "linq-message-1",
+        workspaceId: service.alice.workspaceId,
+      }),
+    ]);
+
+    expect(
+      duplicateClaims.toSorted((left, right) => Number(left) - Number(right))
+    ).toEqual([false, true]);
+    await expect(
+      service.conversations.claimConversationInboundMessage({
+        bindingId: binding.id,
+        messageId: "linq-message-2",
+        workspaceId: service.alice.workspaceId,
+      })
+    ).resolves.toBe(true);
+  });
+
   it("does not attach a participant when another workspace owns the provider triple", async () => {
     const service = await loadService();
     await service.createActiveAgent();
@@ -232,6 +272,7 @@ async function loadService() {
   await scope.ensureScope(bob);
   return {
     alice,
+    bob,
     client,
     conversations,
     async createActiveAgent(slug = "assistant") {
