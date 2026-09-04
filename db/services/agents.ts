@@ -11,13 +11,16 @@ import { agentRevisions, agents, db } from "@/db";
 import { recordAuditEvent } from "./audit";
 import { emitWebhookEvent } from "./webhooks";
 
+type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 export async function createAgent(
   scope: AccessScope,
-  input: z.input<typeof agentInputSchema>
+  input: z.input<typeof agentInputSchema>,
+  executor: Executor = db
 ) {
   const parsedInput = agentInputSchema.parse(input);
   const now = new Date().toISOString();
-  const [agent] = await db
+  const [agent] = await executor
     .insert(agents)
     .values({
       createdAt: now,
@@ -34,12 +37,13 @@ export async function createAgent(
 export async function createRevision(
   scope: AccessScope,
   agentId: string,
-  manifest: z.input<typeof agentManifestSchema>
+  manifest: z.input<typeof agentManifestSchema>,
+  executor?: Executor
 ) {
   const parsedManifest = agentManifestSchema.parse(manifest);
   const canonicalManifest = canonicalAgentManifest(parsedManifest);
   const now = new Date().toISOString();
-  return await db.transaction(async (transaction) => {
+  const create = async (transaction: Executor) => {
     const [agent] = await transaction
       .select({ id: agents.id })
       .from(agents)
@@ -76,7 +80,8 @@ export async function createRevision(
       .returning();
     if (!revision) throw new Error("Failed to create agent revision.");
     return revision;
-  });
+  };
+  return executor ? create(executor) : db.transaction(create);
 }
 
 export async function publishRevision(

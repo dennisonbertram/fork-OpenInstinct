@@ -6,7 +6,9 @@ import {
   randomBytes,
   randomUUID,
 } from "node:crypto";
-import { and, eq, gte, inArray, isNull, lte } from "drizzle-orm";
+import { lookup } from "node:dns/promises";
+import { request as httpsRequest, type RequestOptions } from "node:https";
+import { and, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
 import { z } from "zod";
 import type { AccessScope } from "@/lib/access-scope";
 import { getInstallationSecrets } from "@/lib/installation-secrets";
@@ -21,6 +23,7 @@ import { recordAuditEvent } from "./audit";
 import { ensureScope } from "./scope";
 
 const maxAttempts = 6;
+const claimLeaseMs = 30_000;
 export const webhookEventTypes = [
   "agent.published",
   "agent.rolled_back",
@@ -42,7 +45,7 @@ export async function registerWebhookEndpoint(
   input: WebhookEndpointInput
 ) {
   const parsed = endpointInputSchema.parse(input);
-  const url = requirePublicHttpsUrl(parsed.url);
+  const url = await requirePublicHttpsUrl(parsed.url);
   await ensureScope(scope);
   const { secretEncryptionKey } = await getInstallationSecrets();
   const id = randomUUID();
@@ -116,7 +119,12 @@ export async function disableWebhookEndpoint(
     if (rows.length === 0) return false;
     await transaction
       .update(webhookDeliveries)
-      .set({ outcome: "dead", updatedAt: now })
+      .set({
+        claimExpiresAt: null,
+        claimToken: null,
+        outcome: "dead",
+        updatedAt: now,
+      })
       .where(
         and(
           eq(webhookDeliveries.endpointId, endpointId),
@@ -201,7 +209,7 @@ export async function emitWebhookEvent(
 
 export async function drainWebhookDeliveries({
   limit = 50,
-  fetchImpl = globalThis.fetch,
+  fetchImpl,
 }: { readonly limit?: number; readonly fetchImpl?: typeof fetch } = {}) {
   const { secretEncryptionKey } = await getInstallationSecrets();
   const now = new Date().toISOString();
@@ -217,7 +225,7 @@ export async function drainWebhookDeliveries({
   await fanOutWebhookEvents();
   const summary = { dead: 0, delivered: 0, failed: 0 };
   for (let index = 0; index < Math.max(1, Math.min(limit, 500)); index += 1) {
-    // Deliveries must be claimed one at a time under a row lock.
+    // Keep the claim transaction short; external delivery must never run under it.
     // eslint-disable-next-line no-await-in-loop
     const result = await db.transaction(async (transaction) => {
       const [row] = await transaction
@@ -240,24 +248,54 @@ export async function drainWebhookDeliveries({
             eq(webhookEndpoints.status, "active"),
             lte(webhookDeliveries.nextAttemptAt, new Date().toISOString()),
             inArray(webhookDeliveries.outcome, ["pending", "failed"]),
-            lte(webhookDeliveries.attempt, maxAttempts - 1)
+            lte(webhookDeliveries.attempt, maxAttempts - 1),
+            or(
+              isNull(webhookDeliveries.claimExpiresAt),
+              lte(webhookDeliveries.claimExpiresAt, new Date().toISOString())
+            )
           )
         )
         .for("update", { skipLocked: true })
         .limit(1);
-      return row
-        ? deliver(
-            transaction,
-            row.delivery,
-            row.endpoint,
-            row.event,
-            fetchImpl,
-            secretEncryptionKey
+      if (!row) return undefined;
+      const claimToken = randomUUID();
+      const claimExpiresAt = new Date(Date.now() + claimLeaseMs).toISOString();
+      const [claimed] = await transaction
+        .update(webhookDeliveries)
+        .set({
+          claimExpiresAt,
+          claimToken,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(
+          and(
+            eq(webhookDeliveries.id, row.delivery.id),
+            or(
+              isNull(webhookDeliveries.claimExpiresAt),
+              lte(webhookDeliveries.claimExpiresAt, new Date().toISOString())
+            )
           )
+        )
+        .returning({ id: webhookDeliveries.id });
+      return claimed
+        ? {
+            ...row,
+            delivery: { ...row.delivery, claimExpiresAt, claimToken },
+          }
         : undefined;
     });
     if (!result) break;
-    summary[result] += 1;
+    // The network operation intentionally runs after the claim transaction commits.
+    // eslint-disable-next-line no-await-in-loop
+    const outcome = await deliver(
+      db,
+      result.delivery,
+      result.endpoint,
+      result.event,
+      fetchImpl,
+      secretEncryptionKey
+    );
+    summary[outcome] += 1;
   }
   return summary;
 }
@@ -318,16 +356,16 @@ async function deliver(
   delivery: typeof webhookDeliveries.$inferSelect,
   endpoint: typeof webhookEndpoints.$inferSelect,
   event: typeof webhookEvents.$inferSelect,
-  fetchImpl: typeof fetch,
+  fetchImpl: typeof fetch | undefined,
   secretEncryptionKey: string
 ): Promise<"dead" | "delivered" | "failed"> {
   const now = new Date().toISOString();
   let responseStatus: number | null = null;
   let outcome: "dead" | "delivered" | "failed";
   try {
-    let url: string;
+    let resolved: ResolvedWebhookUrl;
     try {
-      url = requirePublicHttpsUrl(endpoint.url);
+      resolved = await resolvePublicHttpsUrl(endpoint.url);
     } catch {
       throw new WebhookUrlRejectedError(
         "Webhook URL rejected at delivery time."
@@ -352,7 +390,7 @@ async function deliver(
     )
       .update(`${timestamp}.${body}`, "utf8")
       .digest("hex");
-    const response = await fetchWithTimeout(fetchImpl, url, {
+    const requestInit = {
       body,
       method: "POST",
       headers: {
@@ -361,7 +399,10 @@ async function deliver(
         "x-oi-timestamp": timestamp,
         "x-oi-signature": `v1=${signature}`,
       },
-    });
+    } satisfies WebhookRequestInit;
+    const response = fetchImpl
+      ? await fetchWithTimeout(fetchImpl, resolved.url, requestInit)
+      : await fetchPinnedWithTimeout(resolved, requestInit);
     responseStatus = response.status;
     await response.body?.cancel();
     outcome =
@@ -381,11 +422,20 @@ async function deliver(
       : now;
   await executor
     .update(webhookDeliveries)
-    .set({ attempt, outcome, responseStatus, nextAttemptAt, updatedAt: now })
+    .set({
+      attempt,
+      claimExpiresAt: null,
+      claimToken: null,
+      outcome,
+      responseStatus,
+      nextAttemptAt,
+      updatedAt: now,
+    })
     .where(
       and(
         eq(webhookDeliveries.id, delivery.id),
-        eq(webhookDeliveries.workspaceId, delivery.workspaceId)
+        eq(webhookDeliveries.workspaceId, delivery.workspaceId),
+        eq(webhookDeliveries.claimToken, delivery.claimToken ?? "")
       )
     );
   return outcome;
@@ -406,6 +456,87 @@ function fetchWithTimeout(
     signal: controller.signal,
   }).finally(() => {
     clearTimeout(timeout);
+  });
+}
+
+interface ResolvedWebhookAddress {
+  readonly address: string;
+  readonly family: 4 | 6;
+}
+interface ResolvedWebhookUrl {
+  readonly addresses: readonly ResolvedWebhookAddress[];
+  readonly url: string;
+}
+interface WebhookRequestInit extends RequestInit {
+  readonly body?: string;
+}
+
+function fetchPinnedWithTimeout(
+  resolved: ResolvedWebhookUrl,
+  init: WebhookRequestInit
+) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, 10_000);
+  return requestPinnedHttps(resolved, {
+    ...init,
+    redirect: "manual",
+    signal: controller.signal,
+  }).finally(() => {
+    clearTimeout(timeout);
+  });
+}
+
+function requestPinnedHttps(
+  resolved: ResolvedWebhookUrl,
+  init: WebhookRequestInit
+): Promise<Response> {
+  const parsed = new URL(resolved.url);
+  const address = resolved.addresses[0];
+  if (!address) return Promise.reject(new Error("No public webhook address."));
+  const headers = new Headers(init.headers);
+  headers.set("host", parsed.host);
+  const options: RequestOptions = {
+    headers: Object.fromEntries(headers.entries()),
+    hostname: address.address,
+    lookup: (_hostname, _options, callback) => {
+      callback(null, address.address, address.family);
+    },
+    method: init.method,
+    path: `${parsed.pathname}${parsed.search}`,
+    port: parsed.port ? Number(parsed.port) : 443,
+    rejectUnauthorized: true,
+    servername: parsed.hostname.replace(/^\[|\]$/gu, ""),
+    signal: init.signal ?? undefined,
+  };
+  return new Promise((resolve, reject) => {
+    const request = httpsRequest(options, (response) => {
+      response.on("error", () => {
+        // The delivery outcome is already determined by the status once
+        // headers arrive; body errors must not create an unhandled rejection.
+      });
+      // Webhook delivery only needs the status. Destroy the body stream
+      // without buffering or indefinitely draining untrusted response data.
+      response.destroy();
+      resolve(
+        new Response(null, {
+          headers: Object.fromEntries(
+            Object.entries(response.headers).flatMap(([key, value]) =>
+              Array.isArray(value)
+                ? value.map((item) => [key, item] as const)
+                : value === undefined
+                  ? []
+                  : [[key, value] as const]
+            )
+          ),
+          status: response.statusCode ?? 599,
+        })
+      );
+    });
+    request.on("error", reject);
+    if (init.body === undefined) request.end();
+    else request.end(init.body);
   });
 }
 
@@ -528,28 +659,54 @@ function decryptWebhookSecret(
   ]).toString("utf8");
 }
 
-export function requirePublicHttpsUrl(value: string) {
+export async function requirePublicHttpsUrl(value: string) {
+  return (await resolvePublicHttpsUrl(value)).url;
+}
+
+async function resolvePublicHttpsUrl(
+  value: string
+): Promise<ResolvedWebhookUrl> {
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
     throw new Error("Webhook URL must be a valid public HTTPS URL.");
   }
-  const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+  const host = parsed.hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/gu, "")
+    .replace(/\.$/, "");
   if (parsed.protocol !== "https:" || !host || isPrivateHost(host))
     throw new Error("Webhook URL must be a public HTTPS URL.");
+  let addresses: readonly ResolvedWebhookAddress[];
+  try {
+    addresses = isIpLiteral(host)
+      ? [{ address: host, family: isIpv4(host) ? 4 : 6 }]
+      : (await lookup(host, { all: true, order: "verbatim" })).map(
+          ({ address, family }) => ({
+            address,
+            family: family === 6 ? 6 : 4,
+          })
+        );
+  } catch {
+    throw new Error("Webhook URL DNS resolution failed.");
+  }
+  if (
+    addresses.length === 0 ||
+    addresses.some(({ address }) => !isPublicAddress(address))
+  )
+    throw new Error("Webhook URL must resolve only to public addresses.");
   parsed.username = "";
   parsed.password = "";
-  return parsed.toString();
+  return { addresses, url: parsed.toString() };
 }
 function isPrivateHost(host: string) {
-  // IPv6 is conservatively rejected. This hostname-only guard does not resolve DNS.
   if (
     host === "localhost" ||
     host.endsWith(".localhost") ||
     host === "metadata" ||
     host.includes("metadata.google.internal") ||
-    host.includes(":")
+    (host.includes(":") && !isPublicAddress(host))
   )
     return true;
   const parts = host.split(".");
@@ -569,6 +726,83 @@ function isPrivateHost(host: string) {
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && (b === 0 || b === 168)) ||
     (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224 ||
+    (a === 192 && b === 0) ||
+    (a === 198 && b >= 51 && b <= 52) ||
+    (a === 203 && b === 0 && octets[2] === 113)
+  );
+}
+
+function isIpLiteral(host: string) {
+  return isIpv4(host) || host.includes(":");
+}
+
+function isPublicAddress(address: string) {
+  const normalized = address.toLowerCase().split("%")[0] ?? address;
+  if (isIpv4(normalized)) return !isPrivateIpv4(normalized);
+  const words = parseIpv6(normalized);
+  if (!words) return false;
+  const first = words[0] ?? 0;
+  const mapped =
+    words.slice(0, 6).every((word) => word === 0) && words[6] === 0xffff;
+  if (mapped) {
+    const mappedIpv4 = words
+      .slice(6)
+      .map((word) => {
+        return `${(word >> 8).toString()}.${(word & 0xff).toString()}`;
+      })
+      .join(".");
+    return !isPrivateIpv4(mappedIpv4);
+  }
+  return (
+    !words.every((word) => word === 0) &&
+    !words.every((word, index) => word === (index === 7 ? 1 : 0)) &&
+    (first & 0xfe00) !== 0xfc00 &&
+    (first & 0xffc0) !== 0xfe80 &&
+    (first & 0xff00) !== 0xff00
+  );
+}
+
+function isIpv4(value: string) {
+  return /^\d+(?:\.\d+){3}$/u.test(value);
+}
+
+function isPrivateIpv4(value: string) {
+  if (!isIpv4(value)) return true;
+  const octets = value.split(".").map(Number);
+  if (octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255))
+    return true;
+  const [a, b] = octets;
+  if (a === undefined || b === undefined) return true;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && (b === 0 || b === 168)) ||
+    (a === 198 && b >= 18 && b <= 19) ||
+    (a === 198 && b >= 51 && b <= 52) ||
+    (a === 203 && b === 0 && octets[2] === 113) ||
     a >= 224
+  );
+}
+
+function parseIpv6(value: string) {
+  if (!value.includes(":")) return undefined;
+  const halves = value.split("::");
+  if (halves.length > 2) return undefined;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves[1] ? halves[1].split(":") : [];
+  if (
+    left.some((part) => !/^[0-9a-f]{1,4}$/u.test(part)) ||
+    right.some((part) => !/^[0-9a-f]{1,4}$/u.test(part))
+  )
+    return undefined;
+  const missing = 8 - left.length - right.length;
+  if (missing < 0 || (halves.length === 1 && missing !== 0)) return undefined;
+  return [...left, ...Array.from({ length: missing }, () => "0"), ...right].map(
+    (part) => parseInt(part, 16)
   );
 }

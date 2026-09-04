@@ -1,6 +1,8 @@
 import {
   createCipheriv,
   createDecipheriv,
+  createHmac,
+  hkdfSync,
   randomBytes,
   randomUUID,
 } from "node:crypto";
@@ -15,10 +17,11 @@ import {
   type VaultCreateItem,
 } from "@/lib/vault";
 import type { AccessScope } from "@/lib/access-scope";
-import { db, vaultItems } from "@/db";
+import { db, vaultImportBatches, vaultItems } from "@/db";
 import {
   deleteEncryptedSecret,
   readEncryptedSecret,
+  readEncryptedSecrets,
   writeEncryptedSecret,
 } from "@/db/services/secrets";
 import { ensureScope } from "@/db/services/scope";
@@ -34,6 +37,7 @@ const vaultRecordSchema = z.object({
 });
 
 type VaultRecord = z.infer<typeof vaultRecordSchema>;
+type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 const selection = {
   account: vaultItems.account,
@@ -44,8 +48,12 @@ const selection = {
   updatedAt: vaultItems.updatedAt,
 };
 
-async function createVaultRecord(scope: AccessScope, record: VaultRecord) {
-  await db.insert(vaultItems).values({
+async function createVaultRecord(
+  scope: AccessScope,
+  record: VaultRecord,
+  executor: Executor = db
+) {
+  await executor.insert(vaultItems).values({
     ...record,
     workspaceId: scope.workspaceId,
   });
@@ -66,11 +74,13 @@ export async function listVaultItems(scope: AccessScope) {
 export async function readVaultItems(scope: AccessScope) {
   await ensureScope(scope);
   const records = await listVaultItems(scope);
+  const secretIds = await readEncryptedSecrets(
+    scope,
+    records.map((record) => record.id)
+  );
   return Promise.all(
     records.map(async (record) =>
-      Object.assign({}, record, {
-        hasSecret: await hasVaultSecret(scope, record.id),
-      })
+      Object.assign({}, record, { hasSecret: secretIds.has(record.id) })
     )
   );
 }
@@ -103,23 +113,65 @@ export async function saveVaultItem(
   input: VaultCreateItem
 ) {
   await ensureScope(scope);
+  await db.transaction(async (transaction) => {
+    await saveVaultItemInExecutor(scope, input, transaction);
+  });
+}
+
+export async function saveVaultItems(
+  scope: AccessScope,
+  inputs: readonly VaultCreateItem[]
+) {
+  await ensureScope(scope);
+  const { secretEncryptionKey } = await getInstallationSecrets();
+  const batchHmacKey = Buffer.from(
+    hkdfSync(
+      "sha256",
+      Buffer.from(secretEncryptionKey, "base64"),
+      Buffer.alloc(0),
+      "vault-import-batch-hmac-v1",
+      32
+    )
+  );
+  const batchKey = createHmac("sha256", batchHmacKey)
+    .update(
+      `vault-import:v1:${scope.workspaceId}\u0000${JSON.stringify(inputs)}`
+    )
+    .digest("hex");
+  await db.transaction(async (transaction) => {
+    const inserted = await transaction
+      .insert(vaultImportBatches)
+      .values({ batchKey, workspaceId: scope.workspaceId })
+      .onConflictDoNothing()
+      .returning({ batchKey: vaultImportBatches.batchKey });
+    if (inserted.length === 0) return;
+    for (const input of inputs) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- Preserve source order within one atomic batch.
+      await saveVaultItemInExecutor(scope, input, transaction);
+    }
+  });
+}
+
+async function saveVaultItemInExecutor(
+  scope: AccessScope,
+  input: VaultCreateItem,
+  executor: Executor
+) {
   const id = randomUUID();
   const now = new Date().toISOString();
-  await writeVaultSecret(scope, id, input.secret);
-
-  try {
-    await createVaultRecord(scope, {
+  await writeVaultSecret(scope, id, input.secret, executor);
+  await createVaultRecord(
+    scope,
+    {
       account: vaultAccountHint(input),
       createdAt: now,
       id,
       kind: input.kind,
       label: input.label,
       updatedAt: now,
-    });
-  } catch (error) {
-    await deleteEncryptedSecret(scope, id);
-    throw error;
-  }
+    },
+    executor
+  );
 }
 
 export async function readVaultSecret(scope: AccessScope, id: string) {
@@ -133,12 +185,18 @@ export async function hasVaultSecret(scope: AccessScope, id: string) {
   return (await readEncryptedSecret(scope, id)) !== undefined;
 }
 
-async function writeVaultSecret(scope: AccessScope, id: string, value: string) {
+async function writeVaultSecret(
+  scope: AccessScope,
+  id: string,
+  value: string,
+  executor: Executor = db
+) {
   const { secretEncryptionKey } = await getInstallationSecrets();
   await writeEncryptedSecret(
     scope,
     id,
-    encryptVaultSecret(scope, id, value, secretEncryptionKey)
+    encryptVaultSecret(scope, id, value, secretEncryptionKey),
+    executor
   );
 }
 

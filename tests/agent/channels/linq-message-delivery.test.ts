@@ -14,19 +14,24 @@ interface BrowserImage {
   mediaType: string;
 }
 
-const linqChannelCapture = vi.hoisted(() => ({
-  images: new Map<string, BrowserImage>(),
-  readImage: vi.fn<
-    (
-      scope: AccessScope,
-      id: string,
-      options: {
-        readonly rootSessionId: string;
-        readonly signal?: AbortSignal;
-      }
-    ) => Promise<BrowserImage | undefined>
-  >(),
-}));
+const linqChannelCapture = vi.hoisted(() => {
+  // This suite tests outbound rendering/cancellation only; keep its external
+  // delivery fixture isolated from workspace lifecycle and budget lookups.
+  vi.stubEnv("WORKSPACE_SCOPE_ENFORCEMENT", "off");
+  return {
+    images: new Map<string, BrowserImage>(),
+    readImage: vi.fn<
+      (
+        scope: AccessScope,
+        id: string,
+        options: {
+          readonly rootSessionId: string;
+          readonly signal?: AbortSignal;
+        }
+      ) => Promise<BrowserImage | undefined>
+    >(),
+  };
+});
 const evlogCapture = vi.hoisted(() => ({
   info: vi.fn<AuditableLogger["info"]>(),
   set: vi.fn<AuditableLogger["set"]>(),

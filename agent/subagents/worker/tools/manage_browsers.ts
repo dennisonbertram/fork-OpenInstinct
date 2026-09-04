@@ -22,6 +22,7 @@ import {
   domainFromUrl,
   harvestBrowserTraceDomains,
 } from "@/agent/subagents/worker/lib/trace/domains";
+import { clearVaultFilledBrowserSession } from "../lib/vault-browser-guard";
 
 const browserTimeoutFloorSeconds = 15 * 60;
 
@@ -181,6 +182,7 @@ const manageBrowsers = defineTool({
           .catch((cause: unknown) => {
             if (!isNotFoundError(cause)) throw cause;
           });
+        clearVaultFilledBrowserSession(sessionId);
         await deleteBrowserSession(scope, sessionId);
         return "Browser session deleted successfully";
       }
@@ -247,10 +249,11 @@ function lifecycleResult(browser: KernelBrowser) {
   return {
     browser: value,
     next_actions: [
-      `Use playwright_execute with session_id "${value.session_id}" as the primary surface for deterministic inspection and interaction, including related safe actions, extraction, JavaScript, loops, and pagination.`,
-      `If Playwright is unreliable or semantic interaction is more suitable, call browser_snapshot with session_id "${value.session_id}" to mint current refs; use browser_find or browser_text to narrow large pages.`,
-      `Then use browser_act with session_id "${value.session_id}" as a relaxed fallback for short ref-based click, fill, and submit plans; inspect its successor state instead of waiting on per-action postconditions.`,
-      `Use computer_action with session_id "${value.session_id}" only when visual reasoning or coordinate control is necessary.`,
+      `Use browser_snapshot, browser_text, or browser_find with session_id "${value.session_id}" for structural page inspection; arbitrary JavaScript evaluation is unavailable.`,
+      `Use interact_browser_element with session_id "${value.session_id}" only for typed, reversible form fill/select, tab toggles, or Escape dismissal without approval; ambiguous buttons, links, menus, and dialog-openers use one approved commit_browser_action call.`,
+      `Then use browser_act with session_id "${value.session_id}" as a relaxed fallback for short ref-based reversible preparation; inspect its successor state instead of waiting on per-action postconditions.`,
+      `Use commit_browser_action with session_id "${value.session_id}" only for a reviewed submit, place-order, send-message, or delete action; it requires one human approval for the material terms.`,
+      `Use computer_action with session_id "${value.session_id}" only for reversible visual preparation such as scrolling, pointer movement, waits, or temporary screenshots; raw clicks, typing, keypresses, drags, and clipboard access are blocked.`,
       `Use manage_browsers with action "delete" and session_id "${value.session_id}" when finished.`,
     ],
   };

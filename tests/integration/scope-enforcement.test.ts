@@ -27,29 +27,48 @@ describe("workspace scope verification", () => {
       role: "owner",
       ...scope,
     });
+    await expect(
+      service.database.query(
+        `SELECT count(*)::int AS count FROM workspace_memberships WHERE workspace_id = '${scope.workspaceId}' AND user_id = '${scope.userId}' AND role = 'owner' AND status = 'active'`
+      )
+    ).resolves.toMatchObject({ rows: [{ count: 1 }] });
 
     await service.database.exec(`
-      INSERT INTO workspaces (id, created_at, lifecycle_state)
-      VALUES ('${scope.workspaceId}', '2026-01-01', 'active');
-      INSERT INTO workspace_memberships (workspace_id, user_id, role, status, created_at)
-      VALUES ('${scope.workspaceId}', '${scope.userId}', 'owner', 'revoked', '2026-01-01');
+      UPDATE workspace_memberships
+      SET status = 'revoked'
+      WHERE workspace_id = '${scope.workspaceId}' AND user_id = '${scope.userId}';
     `);
     await expect(service.createRequestScope()).rejects.toBeInstanceOf(
       service.UnauthenticatedError
     );
   });
 
-  it("allows a deterministic first-run scope when its workspace is absent", async () => {
+  it("does not synthesize access for an absent workspace", async () => {
     const { verifyScopeAccess } = await scopeService();
 
     await expect(
       verifyScopeAccess({ userId: "user-a", workspaceId: "workspace-a" })
-    ).resolves.toEqual({
-      membershipStatus: "active",
-      role: "owner",
-      userId: "user-a",
-      workspaceId: "workspace-a",
-    });
+    ).resolves.toBeUndefined();
+  });
+
+  it("fails closed when a guarded service receives an absent workspace", async () => {
+    const {
+      assertWorkspaceOperable,
+      resetScopeEnforcementForIntegrationTest,
+      setScopeEnforcementForIntegrationTest,
+      WorkspaceNotOperableError,
+    } = await scopeService();
+    setScopeEnforcementForIntegrationTest(() => true);
+    try {
+      await expect(
+        assertWorkspaceOperable({
+          userId: "user-a",
+          workspaceId: "missing-workspace",
+        })
+      ).rejects.toBeInstanceOf(WorkspaceNotOperableError);
+    } finally {
+      resetScopeEnforcementForIntegrationTest();
+    }
   });
 
   it("denies a user whose scope targets another tenant workspace", async () => {
@@ -130,9 +149,8 @@ async function scopeService() {
   await applyMigrations(client);
   const database = drizzle(client, { schema });
   setDatabaseForIntegrationTest(database);
-  const { ensureScope, verifyScopeAccess } =
-    await import("@/db/services/scope");
-  return { database: client, ensureScope, verifyScopeAccess };
+  const scope = await import("@/db/services/scope");
+  return { database: client, ...scope };
 }
 
 async function requestScopeService() {
@@ -142,7 +160,8 @@ async function requestScopeService() {
   const database = drizzle(client, { schema });
   setDatabaseForIntegrationTest(database);
   const { UnauthenticatedError } = await import("@/lib/request-scope");
-  const { verifyScopeAccess } = await import("@/db/services/scope");
+  const { ensureScope, verifyScopeAccess } =
+    await import("@/db/services/scope");
   const createRequestScope = () =>
     createRequireRequestScope({
       getAuthSession: async () => ({
@@ -154,6 +173,7 @@ async function requestScopeService() {
       }),
       headers: async () => new Headers(),
       isWorkspaceScopeEnforcementEnabled: () => true,
+      ensureScope,
       verifyScopeAccess,
     })();
   return {

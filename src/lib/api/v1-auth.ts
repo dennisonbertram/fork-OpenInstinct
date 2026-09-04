@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, lte, or } from "drizzle-orm";
 import { z } from "zod";
 import { apiIdempotencyKeys, db } from "@/db";
 import type { ApiCredentialScope } from "@/db";
@@ -108,6 +108,10 @@ type JsonParseResult<T> = { readonly data: T } | { readonly error: string };
 type RequiredIdempotencyKeyResult =
   | { readonly key: string }
   | { readonly response: Response };
+type IdempotencyExecutor =
+  | typeof db
+  | Parameters<Parameters<typeof db.transaction>[0]>[0];
+const idempotencyLeaseMs = 5 * 60_000;
 
 export async function parseJson<T>(
   request: Request,
@@ -140,9 +144,10 @@ export function requiredIdempotencyKey(
 async function findIdempotencyKey(
   workspaceId: string,
   route: string,
-  key: string
+  key: string,
+  executor: IdempotencyExecutor = db
 ) {
-  const [row] = await db
+  const [row] = await executor
     .select()
     .from(apiIdempotencyKeys)
     .where(
@@ -159,9 +164,13 @@ async function findIdempotencyKey(
 export async function reserveIdempotencyKey(
   workspaceId: string,
   route: string,
-  key: string
+  key: string,
+  executor: IdempotencyExecutor = db
 ) {
-  const inserted = await db
+  const leaseExpiresAt = new Date(
+    Date.now() + idempotencyLeaseMs
+  ).toISOString();
+  const inserted = await executor
     .insert(apiIdempotencyKeys)
     .values({
       id: randomUUID(),
@@ -170,13 +179,56 @@ export async function reserveIdempotencyKey(
       idempotencyKey: key,
       responseStatus: 201,
       createdAt: new Date().toISOString(),
+      leaseExpiresAt,
     })
     .onConflictDoNothing()
     .returning({ id: apiIdempotencyKeys.id });
   if (inserted.length > 0) return { state: "reserved" } as const;
-  const existing = await findIdempotencyKey(workspaceId, route, key);
+  const existing = await findIdempotencyKey(workspaceId, route, key, executor);
   return existing?.resourceId
     ? ({ state: "complete", row: existing } as const)
+    : await reclaimExpiredIdempotencyKey(
+        workspaceId,
+        route,
+        key,
+        leaseExpiresAt,
+        existing?.leaseExpiresAt ?? undefined,
+        executor
+      );
+}
+
+async function reclaimExpiredIdempotencyKey(
+  workspaceId: string,
+  route: string,
+  key: string,
+  leaseExpiresAt: string,
+  previousLeaseExpiresAt: string | undefined,
+  executor: IdempotencyExecutor
+) {
+  const staleBefore = new Date(Date.now() - idempotencyLeaseMs).toISOString();
+  const reclaimed = await executor
+    .update(apiIdempotencyKeys)
+    .set({ leaseExpiresAt })
+    .where(
+      and(
+        eq(apiIdempotencyKeys.workspaceId, workspaceId),
+        eq(apiIdempotencyKeys.route, route),
+        eq(apiIdempotencyKeys.idempotencyKey, key),
+        isNull(apiIdempotencyKeys.resourceId),
+        previousLeaseExpiresAt
+          ? and(
+              eq(apiIdempotencyKeys.leaseExpiresAt, previousLeaseExpiresAt),
+              lte(apiIdempotencyKeys.leaseExpiresAt, new Date().toISOString())
+            )
+          : or(
+              isNull(apiIdempotencyKeys.leaseExpiresAt),
+              lte(apiIdempotencyKeys.createdAt, staleBefore)
+            )
+      )
+    )
+    .returning({ id: apiIdempotencyKeys.id });
+  return reclaimed.length > 0
+    ? ({ state: "reserved" } as const)
     : ({ state: "in_flight" } as const);
 }
 
@@ -187,11 +239,12 @@ export async function finalizeIdempotencyKey(
   route: string,
   key: string,
   resourceId: string,
-  responseStatus: number
+  responseStatus: number,
+  executor: IdempotencyExecutor = db
 ) {
-  await db
+  await executor
     .update(apiIdempotencyKeys)
-    .set({ resourceId, responseStatus })
+    .set({ leaseExpiresAt: null, resourceId, responseStatus })
     .where(
       and(
         eq(apiIdempotencyKeys.workspaceId, workspaceId),
@@ -205,9 +258,10 @@ export async function finalizeIdempotencyKey(
 export async function releaseIdempotencyReservation(
   workspaceId: string,
   route: string,
-  key: string
+  key: string,
+  executor: IdempotencyExecutor = db
 ) {
-  await db
+  await executor
     .delete(apiIdempotencyKeys)
     .where(
       and(

@@ -19,6 +19,13 @@ Run the whole suite with `pnpm test:e2e`, or a single spec with:
 pnpm playwright test tests/e2e/api.spec.ts
 ```
 
+If another app already owns port 3000, choose an isolated port without
+reusing that server:
+
+```sh
+PLAYWRIGHT_PORT=3100 pnpm test:e2e
+```
+
 Failures retain a trace in `test-results/`; open it with
 `pnpm playwright show-trace test-results/<test-result>/trace.zip`. The HTML
 report is written to `playwright-report/` and can be viewed with

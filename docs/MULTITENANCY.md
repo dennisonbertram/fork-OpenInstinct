@@ -251,9 +251,10 @@ separate portability review and provider credential implementation.
    tests pass independently of the shared channel.
 
 Rollback boundaries must be explicit: schema additions are backward compatible;
-scope enforcement can be feature-flagged; tenant writes after cutover require
-an export/replay strategy. Never roll back encryption/AAD or membership data by
-silently recreating a tenant.
+membership admission is fail-closed and cannot be disabled in production;
+tenant writes after cutover require an export/replay strategy. Roll back with a
+compatible prior build or forward repair, never with an authorization bypass.
+Never roll back encryption/AAD or membership data by silently recreating a tenant.
 
 ## Test strategy
 

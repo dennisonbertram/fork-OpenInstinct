@@ -240,6 +240,91 @@ describe("agent messages", () => {
     expect(markup).not.toContain("Hidden recipient");
   });
 
+  it("shows browser commit terms without exposing internal browser or vault identifiers", () => {
+    const message = {
+      id: "turn-3:assistant",
+      metadata: { status: "streaming", turnId: "turn-3" },
+      parts: [
+        {
+          approval: { id: "approval-2" },
+          input: {
+            action: "place_order",
+            browser_session_id: "browser-secret-id",
+            frame_id: "order-frame-secret-id",
+            origin: "https://merchant.example",
+            payment: {
+              candidate_id: "vault-card-secret-id",
+              frame_id: "payment-frame-secret-id",
+              origin: "https://payments.example",
+            },
+            target_label: "button: Place order",
+            target_ref: "e12",
+            terms: {
+              item: "Wool travel blanket",
+              kind: "place_order",
+              merchant: "Example Outfitters",
+              option: "Forest green",
+              quantity: 2,
+              total: "USD 84.00",
+            },
+          },
+          state: "approval-requested",
+          stepIndex: 0,
+          toolCallId: "call-3",
+          toolMetadata: {
+            eve: {
+              inputRequest: {
+                kind: "tool-approval",
+                options: [
+                  { id: "approve", label: "Approve", style: "primary" },
+                  { id: "cancel", label: "Cancel", style: "danger" },
+                ],
+                prompt: "Approve this action?",
+                requestId: "approval-2",
+              },
+              kind: "tool-call",
+              name: "commit_browser_action",
+            },
+          },
+          toolName: "commit_browser_action",
+          type: "dynamic-tool",
+        },
+      ],
+      role: "assistant",
+    } satisfies EveMessage;
+
+    const markup = renderToStaticMarkup(
+      <AgentMessage
+        canRespond
+        isStreaming={false}
+        message={message}
+        onInputResponses={() => undefined}
+        userVisibleOnly
+      />
+    );
+
+    for (const term of [
+      "Example Outfitters",
+      "Wool travel blanket",
+      "Forest green",
+      "2",
+      "USD 84.00",
+      "https://payments.example",
+    ]) {
+      expect(markup).toContain(term);
+    }
+    for (const internal of [
+      "commit_browser_action",
+      "browser-secret-id",
+      "order-frame-secret-id",
+      "payment-frame-secret-id",
+      "vault-card-secret-id",
+      "e12",
+    ]) {
+      expect(markup).not.toContain(internal);
+    }
+  });
+
   it("keeps a parked failed child visibly failed", () => {
     const events = [
       {

@@ -71,34 +71,29 @@ const budgetLimitColumn = {
 export async function checkBudget(scope: AccessScope, kind: UsageEventKind) {
   if (!isWorkspaceScopeEnforcementEnabled()) return;
   await assertWorkspaceOperable(scope);
+  const limitColumn = budgetLimitColumn[kind];
+  if (!limitColumn) return;
+
+  const [budget] = await db
+    .select({ limit: limitColumn })
+    .from(workspaceBudgets)
+    .where(eq(workspaceBudgets.workspaceId, scope.workspaceId))
+    .limit(1);
+  const limit = budget?.limit;
+  if (limit === null || limit === undefined) return;
+
+  const used = await sumUsageSince(scope, kind, startOfCurrentUtcMonthIso());
+  if (used < limit) return;
   try {
-    const limitColumn = budgetLimitColumn[kind];
-    if (!limitColumn) return;
-
-    const [budget] = await db
-      .select({ limit: limitColumn })
-      .from(workspaceBudgets)
-      .where(eq(workspaceBudgets.workspaceId, scope.workspaceId))
-      .limit(1);
-    const limit = budget?.limit;
-    if (limit === null || limit === undefined) return;
-
-    const used = await sumUsageSince(scope, kind, startOfCurrentUtcMonthIso());
-    if (used < limit) return;
-    try {
-      await recordAuditEvent(scope, {
-        action: "usage.budget.check",
-        metadata: { kind },
-        outcome: "denied",
-      });
-    } catch {
-      console.warn("[audit] event recording failed");
-    }
-    throw new BudgetExceededError(kind, limit);
-  } catch (error) {
-    if (error instanceof BudgetExceededError) throw error;
-    console.warn("[usage] budget check failed");
+    await recordAuditEvent(scope, {
+      action: "usage.budget.check",
+      metadata: { kind },
+      outcome: "denied",
+    });
+  } catch {
+    console.warn("[audit] event recording failed");
   }
+  throw new BudgetExceededError(kind, limit);
 }
 
 // Budget periods follow calendar months in UTC.

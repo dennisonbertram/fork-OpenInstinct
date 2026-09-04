@@ -106,7 +106,7 @@ export const env = createEnv({
       )
       .optional(),
     ADMIN_PHONE_NUMBERS: z.string().default(""),
-    WORKSPACE_SCOPE_ENFORCEMENT: z.enum(["off", "enforce"]).default("off"),
+    WORKSPACE_SCOPE_ENFORCEMENT: z.enum(["off", "enforce"]).default("enforce"),
     NODE_ENV: z
       .enum(["development", "production", "test"])
       .default("production"),
@@ -130,6 +130,17 @@ export const env = createEnv({
           message:
             "SQUARE_SANDBOX_ACCESS_TOKEN must not be set when SQUARE_ENVIRONMENT or VERCEL_ENV is production.",
           path: ["SQUARE_SANDBOX_ACCESS_TOKEN"],
+        }
+      )
+      .refine(
+        (value) =>
+          value.WORKSPACE_SCOPE_ENFORCEMENT !== "off" ||
+          (value.NODE_ENV !== "production" &&
+            value.VERCEL_ENV !== "production"),
+        {
+          message:
+            "WORKSPACE_SCOPE_ENFORCEMENT=off is only allowed in isolated non-production environments.",
+          path: ["WORKSPACE_SCOPE_ENFORCEMENT"],
         }
       ),
   experimental__runtimeEnv: {},

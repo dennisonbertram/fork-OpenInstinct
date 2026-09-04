@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   resetDatabaseForIntegrationTest,
@@ -193,6 +193,68 @@ describe("/v1 platform API", () => {
         )
       ).status
     ).toBe(201);
+  });
+
+  it("reclaims an abandoned idempotency reservation after its lease window", async () => {
+    const api = await loadApi();
+    const route = "/v1/agents";
+    const helper = await import("@/lib/api/v1-auth");
+    await helper.reserveIdempotencyKey(
+      api.alice.workspaceId,
+      route,
+      "expired-reservation"
+    );
+    await api.client.exec(
+      "UPDATE api_idempotency_keys SET created_at = '2000-01-01T00:00:00.000Z', lease_expires_at = '2000-01-01T00:05:00.000Z' WHERE workspace_id = 'workspace:alice' AND route = '/v1/agents' AND idempotency_key = 'expired-reservation'"
+    );
+
+    const response = await api.agents.POST(
+      request(
+        route,
+        api.agentKey,
+        { slug: "reclaimed-agent" },
+        { "idempotency-key": "expired-reservation" }
+      )
+    );
+
+    expect(response.status).toBe(201);
+    expect(
+      await api.client.query(
+        "SELECT count(*)::int AS count FROM agents WHERE workspace_id = 'workspace:alice'"
+      )
+    ).toMatchObject({ rows: [{ count: 1 }] });
+  });
+
+  it("recovers a finalize crash without poisoning the key or duplicating the resource", async () => {
+    const api = await loadApi();
+    const agentId = await createAgent(api, "crash-agent", "seed");
+    const route = `/v1/agents/${agentId}/revisions`;
+    const helper = await import("@/lib/api/v1-auth");
+    const finalize = vi
+      .spyOn(helper, "finalizeIdempotencyKey")
+      .mockRejectedValueOnce(new Error("simulated finalize crash"));
+
+    const first = await api.revisions.POST(
+      request(route, api.agentKey, manifest, {
+        "idempotency-key": "finalize-crash",
+      }),
+      { params: Promise.resolve({ agentId }) }
+    );
+    expect(first.status).toBe(500);
+    finalize.mockRestore();
+
+    const retry = await api.revisions.POST(
+      request(route, api.agentKey, manifest, {
+        "idempotency-key": "finalize-crash",
+      }),
+      { params: Promise.resolve({ agentId }) }
+    );
+    expect(retry.status).toBe(201);
+    expect(
+      await api.client.query(
+        `SELECT count(*)::int AS count FROM agent_revisions WHERE agent_id = '${agentId}'`
+      )
+    ).toMatchObject({ rows: [{ count: 1 }] });
   });
 
   it("maps duplicate slugs, archived publishes, and unknown errors without leaking details", async () => {

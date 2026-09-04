@@ -33,7 +33,7 @@ import {
   extractBrowserImageMarkdownReferences,
   stripBrowserImageMarkdownReferences,
 } from "../lib/linq-browser-image-markdown";
-import { env, isWorkspaceScopeEnforcementEnabled } from "@/env";
+import { env } from "@/env";
 import { consumeWorkerCancellationTurn } from "../lib/worker-cancellation-delivery";
 
 const verifiedPhoneUserSchema = z.object({
@@ -364,70 +364,65 @@ export const linqChannelConfig = {
       verifiedUserId && phoneNumber
         ? { ...auth.attributes, phoneNumber, workspaceId: scope.workspaceId }
         : { ...auth.attributes, workspaceId: scope.workspaceId };
-    if (!isWorkspaceScopeEnforcementEnabled()) {
-      return {
-        auth: {
-          ...auth,
-          attributes,
-          principalId,
-        },
-      };
-    }
-    if (!(await verifyScopeAccess(scope))) {
+    const verifiedScope = await verifyScopeAccess(scope);
+    if (!verifiedScope || !verifiedUserId || !phoneNumber) {
       return null;
     }
 
-    if (verifiedUserId && phoneNumber) {
-      const identity = await findVerifiedUserByPhoneNumber(phoneNumber);
-      if (identity?.userId === verifiedUserId) {
-        const provider = "linq";
-        const { connector: providerAccountId, phoneNumber: providerLineId } = {
-          connector: env.LINQ_CONNECTOR,
-          phoneNumber: env.LINQ_PHONE_NUMBER,
-        };
-        const providerConversationId = context.thread?.id;
-        if (providerAccountId && providerLineId && providerConversationId) {
-          let binding = await resolveConversationBinding({
-            provider,
-            providerAccountId,
-            providerConversationId,
-          });
-          let bindingCreated = false;
-          if (!binding) {
-            binding = await createConversationBinding({
-              phoneIdentityId: identity.phoneIdentityId,
-              platformLine: {
-                connectorId: providerAccountId,
-                providerLineId,
-              },
-              provider,
-              providerAccountId,
-              providerConversationId,
-              userId: verifiedUserId,
-            });
-            bindingCreated = binding !== undefined;
-          }
-          if (binding && binding.workspaceId !== scope.workspaceId) return null;
-          if (binding && bindingCreated) {
-            try {
-              await recordConnectionInstallation(scope, {
-                authorizationSubject: providerLineId,
-                connectorId: providerAccountId,
-                provider: "linq",
-              });
-            } catch {
-              console.warn("[linq] connection installation recording failed");
-            }
-          }
-          // MVP transition rule: until real workspaces have active agents,
-          // preserve the existing channel behavior rather than dropping turns.
-        }
+    const identity = await findVerifiedUserByPhoneNumber(phoneNumber);
+    if (identity?.userId !== verifiedUserId) return null;
+
+    const provider = "linq";
+    const { connector: providerAccountId, phoneNumber: providerLineId } = {
+      connector: env.LINQ_CONNECTOR,
+      phoneNumber: env.LINQ_PHONE_NUMBER,
+    };
+    const providerConversationId = context.thread?.id;
+    if (!providerAccountId || !providerLineId || !providerConversationId) {
+      return null;
+    }
+
+    let binding = await resolveConversationBinding({
+      provider,
+      providerAccountId,
+      providerConversationId,
+    });
+    let bindingCreated = false;
+    if (!binding) {
+      binding = await createConversationBinding({
+        phoneIdentityId: identity.phoneIdentityId,
+        platformLine: {
+          connectorId: providerAccountId,
+          providerLineId,
+        },
+        provider,
+        providerAccountId,
+        providerConversationId,
+        userId: verifiedUserId,
+      });
+      bindingCreated = binding !== undefined;
+    }
+    if (!binding || binding.workspaceId !== verifiedScope.workspaceId) {
+      return null;
+    }
+    if (bindingCreated) {
+      try {
+        await recordConnectionInstallation(verifiedScope, {
+          authorizationSubject: providerLineId,
+          connectorId: providerAccountId,
+          provider: "linq",
+        });
+      } catch {
+        console.warn("[linq] connection installation recording failed");
       }
     }
     return {
       auth: {
         ...auth,
-        attributes,
+        attributes: {
+          ...attributes,
+          workspaceId: verifiedScope.workspaceId,
+        },
         principalId,
       },
     };

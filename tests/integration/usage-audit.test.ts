@@ -122,7 +122,7 @@ describe("usage and audit services", () => {
     });
   });
 
-  it("allows when the flag is off or budget storage is unavailable", async () => {
+  it("allows isolated opt-out but fails closed when budget storage is unavailable", async () => {
     const service = await loadServices();
     await service.client.query("DROP TABLE workspace_budgets");
     await expect(
@@ -131,7 +131,7 @@ describe("usage and audit services", () => {
     enforcementEnabled = true;
     await expect(
       service.usage.checkBudget(service.alice, "model_tokens")
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow(/workspace_budgets|relation/i);
   });
 
   it("keeps chat and browser writes successful when the usage ledger is unavailable", async () => {

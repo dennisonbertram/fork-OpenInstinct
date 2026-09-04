@@ -6,9 +6,13 @@ const mocks = vi.hoisted(() => ({
   getAuthSession: vi.fn(),
   getBlob: vi.fn(),
   readArtifact: vi.fn(),
+  verifyScope: vi.fn(),
 }));
 
 vi.mock("@/auth/session", () => ({ getAuthSession: mocks.getAuthSession }));
+vi.mock("@/db/services/scope", () => ({
+  verifyScopeAccess: mocks.verifyScope,
+}));
 vi.mock("@/db/services/browser-images", () => ({
   readReadyBrowserImageArtifact: mocks.readArtifact,
 }));
@@ -21,6 +25,12 @@ import { GET } from "@/app/artifacts/[artifactId]/route";
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getAuthSession.mockResolvedValue({ user: { id: "user-1" } });
+  mocks.verifyScope.mockResolvedValue({
+    membershipStatus: "active",
+    role: "owner",
+    userId: "better-auth:user-1",
+    workspaceId: "personal:87ba86cd9f29b27a69120683022c60c4",
+  });
   mocks.readArtifact.mockResolvedValue({
     byteSize: png.byteLength,
     filename: "Product image.png",

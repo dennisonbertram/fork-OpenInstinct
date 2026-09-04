@@ -1,3 +1,4 @@
+import { db } from "@/db";
 import { createRevision, getAgent, listRevisions } from "@/db/services/agents";
 import { agentManifestSchema } from "@/lib/agent-manifest";
 import {
@@ -8,7 +9,6 @@ import {
   finalizeIdempotencyKey,
   parseJson,
   requiredIdempotencyKey,
-  releaseIdempotencyReservation,
   reserveIdempotencyKey,
 } from "@/lib/api/v1-auth";
 
@@ -33,58 +33,63 @@ export async function POST(
   if ("error" in body)
     return apiError(400, "invalid_request", body.error, auth.context.requestId);
   const route = `/v1/agents/${agentId}/revisions`;
-  const reservation = await reserveIdempotencyKey(
-    auth.context.scope.workspaceId,
-    route,
-    idempotency.key
-  );
-  if (reservation.state === "complete") {
-    if (!reservation.row.resourceId)
+  try {
+    const result = await db.transaction(async (transaction) => {
+      const reservation = await reserveIdempotencyKey(
+        auth.context.scope.workspaceId,
+        route,
+        idempotency.key,
+        transaction
+      );
+      if (reservation.state !== "reserved") return reservation;
+      const revision = await createRevision(
+        auth.context.scope,
+        agentId,
+        body.data,
+        transaction
+      );
+      await finalizeIdempotencyKey(
+        auth.context.scope.workspaceId,
+        route,
+        idempotency.key,
+        revision.id,
+        201,
+        transaction
+      );
+      return { state: "created" as const, revision };
+    });
+    if (result.state === "complete") {
+      if (!result.row.resourceId)
+        return apiError(
+          409,
+          "idempotency_conflict",
+          "A request with this Idempotency-Key is in progress.",
+          auth.context.requestId
+        );
+      const revision = (await listRevisions(auth.context.scope, agentId)).find(
+        (row) => row.id === result.row.resourceId
+      );
+      if (revision)
+        return apiJson(
+          { data: revision },
+          result.row.responseStatus,
+          auth.context.requestId
+        );
       return apiError(
         409,
         "idempotency_conflict",
         "A request with this Idempotency-Key is in progress.",
         auth.context.requestId
       );
-    const revision = (await listRevisions(auth.context.scope, agentId)).find(
-      (row) => row.id === reservation.row.resourceId
-    );
-    if (revision)
-      return apiJson(
-        { data: revision },
-        reservation.row.responseStatus,
+    }
+    if (result.state === "in_flight")
+      return apiError(
+        409,
+        "idempotency_conflict",
+        "A request with this Idempotency-Key is in progress.",
         auth.context.requestId
       );
-  } else if (reservation.state === "in_flight")
-    return apiError(
-      409,
-      "idempotency_conflict",
-      "A request with this Idempotency-Key is in progress.",
-      auth.context.requestId
-    );
-  let revision: Awaited<ReturnType<typeof createRevision>>;
-  try {
-    revision = await createRevision(auth.context.scope, agentId, body.data);
-  } catch (error) {
-    await releaseIdempotencyReservation(
-      auth.context.scope.workspaceId,
-      route,
-      idempotency.key
-    );
-    return apiErrorFor(
-      error instanceof Error ? error : new Error(),
-      auth.context.requestId
-    );
-  }
-  try {
-    await finalizeIdempotencyKey(
-      auth.context.scope.workspaceId,
-      route,
-      idempotency.key,
-      revision.id,
-      201
-    );
-    return apiJson({ data: revision }, 201, auth.context.requestId);
+    return apiJson({ data: result.revision }, 201, auth.context.requestId);
   } catch (error) {
     return apiErrorFor(
       error instanceof Error ? error : new Error(),

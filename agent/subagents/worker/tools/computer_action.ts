@@ -109,6 +109,22 @@ export default defineTool({
   async execute(input, context) {
     const scope = await requireWorkerScope(context);
     await requireOwnedBrowserSession(scope, input.session_id);
+    if (
+      input.actions.some(({ type }) =>
+        [
+          "click_mouse",
+          "drag_mouse",
+          "press_key",
+          "type_text",
+          "write_clipboard",
+          "read_clipboard",
+        ].includes(type)
+      )
+    ) {
+      throw new Error(
+        "Raw coordinate and clipboard actions are not available through the browser worker. Use a typed browser action or commit_browser_action."
+      );
+    }
 
     const computer = kernel.browsers.computer;
     const data: unknown[] = [];

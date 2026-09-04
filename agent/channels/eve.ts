@@ -9,7 +9,6 @@ import { isSessionOwned } from "@/db/services/sessions";
 import { verifyScopeAccess } from "@/db/services/scope";
 import { accessScopeForUser, type AccessScope } from "@/lib/access-scope";
 import { getAuthSession } from "@/auth/session";
-import { isWorkspaceScopeEnforcementEnabled } from "@/env";
 
 const authenticateLocalDev = localDev();
 
@@ -37,8 +36,13 @@ export default eveChannel({
       if (!local) return null;
 
       const scope = accessScopeForUser("better-auth:browser-benchmark");
+      const verifiedScope = await verifyScopeAccess(scope);
+      if (!verifiedScope) return null;
       const sessionId = sessionIdFromPath(new URL(request.url).pathname);
-      if (sessionId && !(await waitForSessionOwnership(scope, sessionId))) {
+      if (
+        sessionId &&
+        !(await waitForSessionOwnership(verifiedScope, sessionId))
+      ) {
         throw new ForbiddenError({ message: "Session not found." });
       }
 
@@ -47,7 +51,7 @@ export default eveChannel({
         attributes: {
           ...local.attributes,
           phoneNumber: "+15555550100",
-          workspaceId: scope.workspaceId,
+          workspaceId: verifiedScope.workspaceId,
         },
         principalId: scope.userId,
         principalType: "user" as const,
@@ -79,10 +83,6 @@ async function requestIdentityFromRequest(request: Request) {
   if (!phoneNumber.success) return undefined;
 
   const scope = accessScopeForUser(`better-auth:${session.user.id}`);
-  if (!isWorkspaceScopeEnforcementEnabled()) {
-    return { phoneNumber: phoneNumber.data, scope };
-  }
-
   const verifiedScope = await verifyScopeAccess(scope);
   if (!verifiedScope) return undefined;
   return {

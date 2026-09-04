@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { drainWebhookDeliveries as DrainWebhookDeliveries } from "@/db/services/webhooks";
-import { createDrainWebhooksRoute } from "@/app/api/cron/drain-webhooks/route";
+import { createDrainWebhooksRoute } from "@/app/api/cron/drain-webhooks/handler";
 
 const drainWebhookDeliveries = vi.fn<typeof DrainWebhookDeliveries>();
 

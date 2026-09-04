@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { defineConfig } from "@playwright/test";
 
-const baseURL = "http://localhost:3000";
+// oxlint-disable-next-line eslint/no-restricted-properties, turbo/no-undeclared-env-vars -- A caller-selected port keeps isolated E2E runs from attaching to an unrelated local server.
+const port = process.env.PLAYWRIGHT_PORT ?? "3000";
+const baseURL = `http://localhost:${port}`;
 const storageState = "playwright/.auth/user.json";
 
 export default defineConfig({
@@ -38,6 +40,7 @@ export default defineConfig({
       BETTER_AUTH_SECRET: "e2e-better-auth-secret-for-playwright-tests",
       BETTER_AUTH_URL: baseURL,
       KERNEL_API_KEY: "e2e-kernel-key",
+      PORT: port,
       ADMIN_PHONE_NUMBERS: "+12025550123",
       SECRET_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
       WORKSPACE_SCOPE_ENFORCEMENT: "enforce",
