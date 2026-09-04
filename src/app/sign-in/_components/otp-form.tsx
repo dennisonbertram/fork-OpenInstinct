@@ -21,9 +21,11 @@ import { PhoneNumberField } from "./phone-field";
 export function PhoneOtpAuthForm({
   callbackUrl,
   linqPhoneNumber,
+  localBypass = false,
 }: {
   readonly callbackUrl: string;
   readonly linqPhoneNumber?: string;
+  readonly localBypass?: boolean;
 }) {
   const sendOtp = useMutation({
     mutationFn: async (phoneNumberValue: string) => {
@@ -45,37 +47,42 @@ export function PhoneOtpAuthForm({
     sendOtp.mutate(formValue(event.currentTarget, "phone-number"));
   }
 
-  if (sendOtp.isSuccess) {
-    return (
-      <VerificationCodeForm
-        callbackUrl={callbackUrl}
-        onUseDifferentNumber={sendOtp.reset}
-        phoneNumber={sendOtp.data}
-      />
-    );
-  }
-
   return (
     <>
-      <FirstTimeLinqSetup phoneNumber={linqPhoneNumber} />
-      <form
-        className="mt-4"
-        onSubmit={(event) => {
-          submit(event);
-        }}
-      >
-        <FieldGroup>
-          <PhoneNumberField />
-          <FieldError errors={sendOtp.error ? [sendOtp.error] : undefined} />
-          <Button
-            className="w-full rounded-full"
-            disabled={sendOtp.isPending}
-            type="submit"
-          >
-            {sendOtp.isPending ? "Sending…" : "Send code"}
-          </Button>
-        </FieldGroup>
-      </form>
+      {localBypass ? (
+        <p className="type-supporting-body mt-6 text-muted-foreground">
+          Local development does not send a text. Use code{" "}
+          <span className="type-mono">000000</span> on the next step.
+        </p>
+      ) : (
+        <FirstTimeLinqSetup phoneNumber={linqPhoneNumber} />
+      )}
+      {sendOtp.isSuccess ? (
+        <VerificationCodeForm
+          callbackUrl={callbackUrl}
+          onUseDifferentNumber={sendOtp.reset}
+          phoneNumber={sendOtp.data}
+        />
+      ) : (
+        <form
+          className="mt-4"
+          onSubmit={(event) => {
+            submit(event);
+          }}
+        >
+          <FieldGroup>
+            <PhoneNumberField />
+            <FieldError errors={sendOtp.error ? [sendOtp.error] : undefined} />
+            <Button
+              className="w-full rounded-full"
+              disabled={sendOtp.isPending}
+              type="submit"
+            >
+              {sendOtp.isPending ? "Sending…" : "Send code"}
+            </Button>
+          </FieldGroup>
+        </form>
+      )}
     </>
   );
 }

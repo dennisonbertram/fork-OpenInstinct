@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import {
-  SignInBubbles,
-  SignInHero,
-  signInSubhead,
-} from "@/app/sign-in/_components/hero";
+import { SignInHero, signInSubhead } from "@/app/sign-in/_components/hero";
 
 describe("sign-in hero", () => {
   it("renders the greeting as the h1 without a product eyebrow", () => {
@@ -30,25 +26,10 @@ describe("sign-in hero", () => {
   });
 });
 
-describe("sign-in bubbles", () => {
-  it("renders the user and assistant bubbles on the bubble tokens", () => {
-    const html = renderToStaticMarkup(createElement(SignInBubbles));
-    expect(html).toContain(
-      "Can you check the Square inventory for low-stock items?"
-    );
-    expect(html).toContain(
-      "On it. I will pull the catalog and flag anything under threshold."
-    );
-    expect(html).toContain("bg-bubble-user");
-    expect(html).toContain("bg-bubble-assistant");
-    expect((html.match(/rounded-bubble/g) ?? []).length).toBe(2);
-  });
-});
-
 describe("sign-in subhead", () => {
   it("explains the local bypass", () => {
     expect(signInSubhead({ localBypass: true, linqConfigured: true })).toBe(
-      "Enter your phone number to sign in."
+      "Enter your phone number to request a sign-in code."
     );
   });
 

@@ -1491,16 +1491,17 @@ and page-header patterns quoted below match its section 3.7).
 ### `src/app/sign-in/page.tsx`
 
 - Container: `<main className="flex min-h-svh items-center justify-center bg-background px-4 py-8 text-foreground">`
-  wrapping `<section className="w-full max-w-sm space-y-6">` — this is the
-  "Narrow form page" pattern from design doc 3.7.
-- Headings: `h1.type-page-title` "Sign In"; supporting text
+  wrapping a `max-w-5xl` responsive grid. The grid keeps Jory above the login
+  card below `lg` and places Jory beside the card at `lg` and above.
+- Headings: `h1.type-hero` "Hey, Jory"; supporting text
   `p.type-supporting-body.text-muted-foreground`.
 - Renders (conditionally, based on `localPhoneAuthBypassEnabled` /
-  `env.LINQ_CONNECTOR`): `LocalPhoneAuthForm` (`./_components/local-form`),
-  `PhoneOtpAuthForm` (`./_components/otp-form`), or a plain fallback
-  paragraph. Imports `env`, `localPhoneAuthBypassEnabled` (`@/env`),
+  `env.LINQ_CONNECTOR`): `PhoneOtpAuthForm` (`./_components/otp-form`) in
+  development-code or live-Linq mode, or a plain fallback paragraph. The local
+  mode still has separate phone-number and verification-code steps and names
+  the development code `000000`. Imports `env`, `localPhoneAuthBypassEnabled` (`@/env`),
   `getAuthSession` (`@/auth/session`), `readLinqOnboardingPhoneNumber`
-  (`@/auth/linq`).
+  (`@/auth/linq`), and the Jory mascot through `next/image`.
 
 ### `src/app/(authenticated)/layout.tsx`
 
@@ -1686,7 +1687,7 @@ and page-header patterns quoted below match its section 3.7).
 
 | Route                | Components rendered (layout chain -> page -> key composed components)                                                                                                                                     |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/sign-in`           | `RootLayout` -> `SignInPage` -> `LocalPhoneAuthForm` \| `PhoneOtpAuthForm`                                                                                                                                |
+| `/sign-in`           | `RootLayout` -> `SignInPage` -> `PhoneOtpAuthForm`                                                                                                                                                        |
 | `/` (workspace home) | `RootLayout` -> `AuthenticatedLayout` (Sidebar shell) -> `Page` -> `ChannelsSection`, `ConnectionsSection` (`GoogleWorkspaceAction`, `SquareAction`), `WorkspaceSection`/`ConnectorRow` (`ModelSelector`) |
 | `/chat` (new)        | `RootLayout` -> `AuthenticatedLayout` -> `NewChatPage` -> `AgentChat` (`sessionless`)                                                                                                                     |
 | `/chat/[sessionId]`  | `RootLayout` -> `AuthenticatedLayout` -> `ChatSessionPage` -> `AgentChat`                                                                                                                                 |
@@ -1706,14 +1707,15 @@ and page-header patterns quoted below match its section 3.7).
 ### Sign-in page
 
 - `main` centered container (`min-h-svh`, `bg-background`)
-- `h1.type-page-title` "Sign In"
-- `p.type-supporting-body` "Enter your phone number to sign in."
+- Responsive grid with Jory above the card below `lg` and beside it from `lg`
+- `h1.type-hero` "Hey, Jory"
+- `p.type-supporting-body` describing the phone-code flow
 - One of, based on config:
   - Unconfigured-state text ("iMessage sign-in is not configured...")
-  - `LocalPhoneAuthForm` (dev/local bypass path — `Button`, `FieldError`,
-    `FieldGroup`)
-  - `PhoneOtpAuthForm` (`Alert`/`AlertDescription`/`AlertTitle`, `Field`
-    group, `Input`, `Button`, `MessageSquareIcon`)
+  - `PhoneOtpAuthForm` in local mode with a visible `000000` development-code
+    notice and separate request/verify steps
+  - `PhoneOtpAuthForm` in live mode with the Linq setup alert, `Field` group,
+    `Input`, `Button`, and `MessageSquareIcon`
 
 ### Workspace home
 
