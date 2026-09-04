@@ -13,6 +13,16 @@ describe("auth proxy matcher", () => {
     ).toBe(false);
   });
 
+  it("does not match public brand assets", () => {
+    expect(
+      unstable_doesMiddlewareMatch({
+        config,
+        nextConfig: {},
+        url: "/brand/jory-avatar-desk.webp",
+      })
+    ).toBe(false);
+  });
+
   it("continues to match protected application routes", () => {
     expect(
       unstable_doesMiddlewareMatch({
