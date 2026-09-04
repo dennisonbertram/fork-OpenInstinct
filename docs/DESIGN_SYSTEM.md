@@ -14,7 +14,7 @@ cream page, white cards, navy ink and primary, indigo ring and links, soft
 status tints, Inter Tight, 12px base radius, pill badges, and chat bubbles.
 The decisions behind it (D1 to D6) were proposed by the assistant and are not yet confirmed by the owner; they are recorded in
 [`JORY_DESIGN_MERGE.md`](JORY_DESIGN_MERGE.md) section 3.1. The Pencil canvas
-in `design/` predates this restyle in sections 04 to 07.
+in `design/` was updated to the same values on 2026-09-03.
 
 ## 1. Rules
 
@@ -333,8 +333,8 @@ Each item is verified against the named file on 2026-09-03.
 4. **No spacing, elevation scale, or z-index tokens.** Section 3.8 lists
    observed conventions only; section 3.5 has two shadows.
 5. **No component showcase route.** `docs/design/design-system.pen` (Pencil)
-   draws every primitive and screen, but its OpenInstinct sections show the
-   pre-restyle values until they are redrawn.
+   draws every primitive and screen at the shipped values, but it is a design
+   file, not a rendered route.
 6. **`chart-1` to `chart-5` are still the shadcn defaults.** No chart ships
    today.
 
