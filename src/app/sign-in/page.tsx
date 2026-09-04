@@ -1,10 +1,18 @@
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import {
+  SignInBubbles,
+  SignInHero,
+  signInSubhead,
+} from "@/app/sign-in/_components/hero";
+import { Card } from "@/components/ui/card";
 import { LocalPhoneAuthForm } from "@/app/sign-in/_components/local-form";
 import { PhoneOtpAuthForm } from "@/app/sign-in/_components/otp-form";
 import { env, localPhoneAuthBypassEnabled } from "@/env";
 import { getAuthSession } from "@/auth/session";
 import { readLinqOnboardingPhoneNumber } from "@/auth/linq";
+import mascot from "./_assets/jory-avatar-desk.webp";
 
 export default async function SignInPage({
   searchParams,
@@ -25,30 +33,46 @@ export default async function SignInPage({
       ? undefined
       : (env.LINQ_PHONE_NUMBER ??
         (await readLinqOnboardingPhoneNumber(env.LINQ_CONNECTOR)));
+  const subhead = signInSubhead({
+    localBypass: localPhoneAuthBypassEnabled,
+    linqConfigured,
+  });
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-background px-4 py-8 text-foreground">
-      <section className="w-full max-w-sm space-y-6">
-        <div className="flex flex-col gap-2">
-          <h1 className="type-page-title">Sign In</h1>
-          <p className="type-supporting-body text-muted-foreground">
-            Enter your phone number to sign in.
-          </p>
-        </div>
-        {!localPhoneAuthBypassEnabled && !linqConfigured ? (
-          <p className="type-supporting-body text-muted-foreground">
-            iMessage sign-in is not configured for this deployment. Attach a
-            Linq connector through Vercel Connect.
-          </p>
-        ) : localPhoneAuthBypassEnabled ? (
-          <LocalPhoneAuthForm callbackUrl={callbackUrl} />
-        ) : (
-          <PhoneOtpAuthForm
-            callbackUrl={callbackUrl}
-            linqPhoneNumber={linqPhoneNumber}
+      <div className="grid w-full max-w-5xl items-end gap-10 md:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
+        <Card className="w-full max-w-md gap-6 justify-self-center p-8 md:justify-self-start">
+          <SignInHero
+            eyebrow="OpenInstinct"
+            headline="Sign in."
+            subhead={subhead}
           />
-        )}
-      </section>
+          {!localPhoneAuthBypassEnabled && !linqConfigured ? (
+            <p className="type-supporting-body mt-6 text-muted-foreground">
+              iMessage sign-in is not configured for this deployment. Attach a
+              Linq connector through Vercel Connect.
+            </p>
+          ) : localPhoneAuthBypassEnabled ? (
+            <LocalPhoneAuthForm callbackUrl={callbackUrl} />
+          ) : (
+            <PhoneOtpAuthForm
+              callbackUrl={callbackUrl}
+              linqPhoneNumber={linqPhoneNumber}
+            />
+          )}
+        </Card>
+        <div className="order-first flex flex-col items-center gap-6 md:order-0 md:items-start">
+          <div className="hidden md:block">
+            <SignInBubbles />
+          </div>
+          <Image
+            alt="Jory, the OpenInstinct assistant, at a desk"
+            className="h-auto w-60 md:w-[26rem]"
+            preload
+            src={mascot}
+          />
+        </div>
+      </div>
     </main>
   );
 }

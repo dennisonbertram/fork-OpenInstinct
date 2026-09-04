@@ -15,7 +15,10 @@
   --merit-weight-signal: 400;
   --merit-weight-emphasis: 600;
   --merit-weight-mono: 400;
+  --merit-weight-display: 700;
   --merit-tracking-text: 0rem;
+  --merit-tracking-hero: -0.02em;
+  --merit-tracking-eyebrow: 0.14em;
   --merit-tracking-display: -0.022rem;
   --merit-tracking-tight: -0.015rem;
   --merit-tracking-mono: 0rem;
@@ -28,7 +31,12 @@
   --merit-size-supporting: 0.875rem;
   --merit-size-caption: 0.75rem;
   --merit-size-micro: 0.6875rem;
+  --merit-size-hero: 3.5rem;
+  --merit-size-hero-compact: 2.375rem;
+  --merit-size-eyebrow: 0.8125rem;
   --merit-leading-product-title: 1;
+  --merit-leading-hero: 1.02;
+  --merit-leading-eyebrow: 1.35;
   --merit-leading-title: 1.2;
   --merit-leading-ui: 1.35;
   --merit-leading-body: 1.5;
@@ -111,6 +119,16 @@
   --merit-recipe-supporting-body-font-weight: var(--merit-weight-body);
   --merit-recipe-supporting-body-letter-spacing: var(--merit-tracking-text);
   --merit-recipe-supporting-body-line-height: var(--merit-leading-body);
+  --merit-recipe-hero-font-family: var(--merit-family-text);
+  --merit-recipe-hero-font-size: var(--merit-size-hero);
+  --merit-recipe-hero-font-weight: var(--merit-weight-display);
+  --merit-recipe-hero-letter-spacing: var(--merit-tracking-hero);
+  --merit-recipe-hero-line-height: var(--merit-leading-hero);
+  --merit-recipe-eyebrow-font-family: var(--merit-family-text);
+  --merit-recipe-eyebrow-font-size: var(--merit-size-eyebrow);
+  --merit-recipe-eyebrow-font-weight: var(--merit-weight-emphasis);
+  --merit-recipe-eyebrow-letter-spacing: var(--merit-tracking-eyebrow);
+  --merit-recipe-eyebrow-line-height: var(--merit-leading-eyebrow);
   --merit-scale-body-font-size: var(--merit-size-body);
   --merit-scale-body-line-height: var(--merit-leading-body);
   --merit-scale-caption-font-size: var(--merit-size-caption);
@@ -126,6 +144,12 @@
 @media (width >= 48rem) {
   :root {
     --merit-recipe-input-font-size: var(--merit-size-supporting);
+  }
+}
+
+@media (width < 40rem) {
+  :root {
+    --merit-recipe-hero-font-size: var(--merit-size-hero-compact);
   }
 }
 
@@ -328,6 +352,24 @@
     line-height: var(--merit-scale-supporting-line-height);
   }
 
+  .type-hero {
+    font-family: var(--merit-recipe-hero-font-family);
+    font-size: var(--merit-recipe-hero-font-size);
+    font-weight: var(--merit-recipe-hero-font-weight);
+    letter-spacing: var(--merit-recipe-hero-letter-spacing);
+    line-height: var(--merit-recipe-hero-line-height);
+    text-wrap: balance;
+  }
+
+  .type-eyebrow {
+    font-family: var(--merit-recipe-eyebrow-font-family);
+    font-size: var(--merit-recipe-eyebrow-font-size);
+    font-weight: var(--merit-recipe-eyebrow-font-weight);
+    letter-spacing: var(--merit-recipe-eyebrow-letter-spacing);
+    line-height: var(--merit-recipe-eyebrow-line-height);
+    text-transform: uppercase;
+  }
+
   .type-emphasis {
     font-weight: var(--merit-weight-emphasis);
   }
@@ -368,4 +410,22 @@
 
 @utility type-emphasis {
   font-weight: var(--merit-weight-emphasis);
+}
+
+@utility type-hero {
+  font-family: var(--merit-recipe-hero-font-family);
+  font-size: var(--merit-recipe-hero-font-size);
+  font-weight: var(--merit-recipe-hero-font-weight);
+  letter-spacing: var(--merit-recipe-hero-letter-spacing);
+  line-height: var(--merit-recipe-hero-line-height);
+  text-wrap: balance;
+}
+
+@utility type-eyebrow {
+  font-family: var(--merit-recipe-eyebrow-font-family);
+  font-size: var(--merit-recipe-eyebrow-font-size);
+  font-weight: var(--merit-recipe-eyebrow-font-weight);
+  letter-spacing: var(--merit-recipe-eyebrow-letter-spacing);
+  line-height: var(--merit-recipe-eyebrow-line-height);
+  text-transform: uppercase;
 }
