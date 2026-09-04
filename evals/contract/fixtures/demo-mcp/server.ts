@@ -15,9 +15,22 @@ import { z } from "zod";
 
 const addressSchema = z.object({ port: z.number().int().positive() });
 
-export async function startDemoMcp({ token }: { token: string }) {
+export type DemoMcpFault =
+  | "missing-description"
+  | "invalid-input-schema"
+  | "missing-annotations"
+  | "malformed-output"
+  | "oversized-output";
+
+export async function startDemoMcp({
+  token,
+  fault,
+}: {
+  token: string;
+  fault?: DemoMcpFault;
+}) {
   const httpServer = createServer((request, response) => {
-    void handleRequest(request, response, token).catch(() => {
+    void handleRequest(request, response, token, fault).catch(() => {
       if (!response.headersSent) {
         response.writeHead(500, { "content-type": "application/json" });
         response.end(
@@ -41,7 +54,8 @@ export async function startDemoMcp({ token }: { token: string }) {
 async function handleRequest(
   request: IncomingMessage,
   response: ServerResponse,
-  token: string
+  token: string,
+  fault?: DemoMcpFault
 ) {
   if (request.method !== "POST" || request.url !== "/mcp") {
     response.writeHead(404).end();
@@ -59,12 +73,46 @@ async function handleRequest(
     name: "openinstinct-contract-demo",
     version: "0.0.0",
   });
-  server.registerTool(
+  const echoInputSchema = { text: z.string().describe("Text to echo") };
+  const echoTool = server.registerTool(
     "echo",
     {
-      description: "Echo text through the mounted MCP connection.",
-      inputSchema: { text: z.string().describe("Text to echo") },
+      description:
+        fault === "missing-description"
+          ? undefined
+          : "Echo text through the mounted MCP connection.",
+      inputSchema: echoInputSchema,
       outputSchema: { text: z.string() },
+      annotations:
+        fault === "missing-annotations"
+          ? undefined
+          : {
+              destructiveHint: false,
+              idempotentHint: true,
+              openWorldHint: false,
+              readOnlyHint: true,
+            },
+    },
+    async ({ text }: { text: string }) => ({
+      content: [
+        {
+          type: "text",
+          text:
+            fault === "oversized-output" ? `${text}${"x".repeat(8192)}` : text,
+        },
+      ],
+      structuredContent: fault === "malformed-output" ? { text: 42 } : { text },
+    })
+  );
+  if (fault === "invalid-input-schema") echoTool.inputSchema = z.any();
+  server.registerTool(
+    "fail",
+    {
+      description:
+        "Return a structured synthetic tool error for admission tests.",
+      inputSchema: {
+        reason: z.string().describe("Synthetic reason for failure"),
+      },
       annotations: {
         destructiveHint: false,
         idempotentHint: true,
@@ -72,9 +120,9 @@ async function handleRequest(
         readOnlyHint: true,
       },
     },
-    async ({ text }) => ({
-      content: [{ type: "text", text }],
-      structuredContent: { text },
+    async ({ reason }) => ({
+      content: [{ type: "text", text: `synthetic error: ${reason}` }],
+      isError: true,
     })
   );
 

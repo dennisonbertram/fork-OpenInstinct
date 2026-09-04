@@ -11,13 +11,13 @@ Labels: **Verified** was run on 2026-09-04. **Proposed** is the design.
 
 ## 0. The ladder
 
-| Layer            | What it proves                                                                                        | Where it runs                                      | Model calls | Gate                                               |
-| ---------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ----------- | -------------------------------------------------- |
-| 1 Contract       | This server's tools do what its own tests say                                                         | `plugins/<name>/server/test/`                      | none        | PR to the plugin repo                              |
-| 2 Conformance    | Any server obeys the MCP rules the host relies on                                                     | `shared/mcp-conformance`, pointed at a URL         | none        | PR, and layer 4                                    |
-| 3 Mount          | eve mounts the extension, the model can call `<mount>__<tool>`, and the reply carries the tool output | `shared/harness-host`, `eve eval` with `mockModel` | none        | PR to the plugin repo                              |
-| 4 Deployed smoke | The preview deployment answers with a real signed token                                               | layer 2 against the preview URL                    | none        | before release                                     |
-| 5 Behavior gym   | A real model picks the right tool and answers well                                                    | `eve eval` with a real model, on demand            | yes, paid   | before release, on demand, like `pnpm eval:square` |
+| Layer            | What it proves                                                                                        | Where it runs                                       | Model calls | Gate                                               |
+| ---------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ----------- | -------------------------------------------------- |
+| 1 Contract       | This server's tools do what its own tests say                                                         | `plugins/<name>/server/test/`                       | none        | PR to the plugin repo                              |
+| 2 Conformance    | The supported local Jory admission subset (the generic external runner remains proposed)              | `evals/contract/mcp-admission.ts`, pointed at a URL | none        | PR, and layer 4                                    |
+| 3 Mount          | eve mounts the extension, the model can call `<mount>__<tool>`, and the reply carries the tool output | `shared/harness-host`, `eve eval` with `mockModel`  | none        | PR to the plugin repo                              |
+| 4 Deployed smoke | The preview deployment answers with a real signed token                                               | layer 2 against the preview URL                     | none        | before release                                     |
+| 5 Behavior gym   | A real model picks the right tool and answers well                                                    | `eve eval` with a real model, on demand             | yes, paid   | before release, on demand, like `pnpm eval:square` |
 
 Each layer needs the one below it to be green. Stop at the first red layer.
 Do not skip layer 3; it is the only place the eve-to-server seam is checked
@@ -143,7 +143,32 @@ Command: `pnpm vitest run`. Exit code 0 is the gate.
 
 ---
 
-## 2. Layer 2: generic conformance runner (Proposed)
+## 2. Layer 2: supported Jory admission subset (Implemented)
+
+The reference helper in [`evals/contract/mcp-admission.ts`](../evals/contract/mcp-admission.ts)
+uses the installed `@modelcontextprotocol/sdk@1.30.0` `Client` and
+`StreamableHTTPClientTransport` over Streamable HTTP. Run it with the real
+fixture and inspect its machine-readable named checks with:
+
+```sh
+pnpm exec vitest run evals/contract/mcp-admission.test.ts
+```
+
+`runMcpAdmission` checks bearer admission (missing and invalid credentials),
+SDK initialization and the four Jory-supported protocol versions, tool list
+membership, descriptions, input/output JSON Schema compilation, complete
+read/write annotations, declared metadata, structured success output, and
+bounded UTF-8 text output. Invalid inputs and explicitly supplied tool errors
+must produce structured MCP errors. It invokes only the examples supplied by
+the caller; it never fuzzes or automatically calls listed tools. A plugin
+repository can copy this helper and provide synthetic `examples` plus its
+declared tool metadata without importing production core.
+
+The demo fixture includes deliberately malformed description, schema,
+annotation, structured output, and oversized-output modes. Those modes are
+test-only and are never enabled by the reference server's normal invocation.
+
+### 2.1. Generic conformance runner (Proposed)
 
 One package, `shared/mcp-conformance`, one command:
 
@@ -347,15 +372,16 @@ No secrets are needed for steps 1 to 4.
 
 ## 7. What is verified and what is not
 
-| Item                                                                  | State                                      |
-| --------------------------------------------------------------------- | ------------------------------------------ |
-| Layer 1 test file above against the demo server                       | Verified, 6 of 6 tests pass                |
-| Inspector CLI commands and exit codes 0 and 5                         | Verified                                   |
-| `tools/list` schema is JSON Schema draft-07                           | Verified by observation                    |
-| eve 0.49.0 client supports protocol versions 2024-11-05 to 2025-11-25 | Verified in the compiled client            |
-| `mockModel` callback shape and `t.calledTool` matcher                 | Verified in `node_modules/eve/docs/evals/` |
-| The conformance runner                                                | Not built                                  |
-| The fuzz loop with `json-schema-faker`                                | Not run                                    |
-| Reference harness: mount, skill load, and credentialed MCP read       | Verified by `pnpm eval:contract`           |
-| A released plugin's own harness                                       | Not run                                    |
-| Vercel deploy of the Express entry                                    | Not run                                    |
+| Item                                                                  | State                                                                   |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Layer 1 test file above against the demo server                       | Verified, 6 of 6 tests pass                                             |
+| Inspector CLI commands and exit codes 0 and 5                         | Verified                                                                |
+| `tools/list` schema is JSON Schema draft-07                           | Verified by observation                                                 |
+| eve 0.49.0 client supports protocol versions 2024-11-05 to 2025-11-25 | Verified in the compiled client                                         |
+| `mockModel` callback shape and `t.calledTool` matcher                 | Verified in `node_modules/eve/docs/evals/`                              |
+| Local Jory admission helper and malformed-fixture tests               | Verified by `pnpm exec vitest run evals/contract/mcp-admission.test.ts` |
+| The generic `shared/mcp-conformance` runner                           | Not built (still proposed)                                              |
+| The fuzz loop with `json-schema-faker`                                | Not run                                                                 |
+| Reference harness: mount, skill load, and credentialed MCP read       | Verified by `pnpm eval:contract`                                        |
+| A released plugin's own harness                                       | Not run                                                                 |
+| Vercel deploy of the Express entry                                    | Not run                                                                 |
