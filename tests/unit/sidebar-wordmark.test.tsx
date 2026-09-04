@@ -2,6 +2,7 @@ import { createElement, Fragment, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import joryWordmark from "../../docs/design/assets/jory-wordmark-color.svg";
+import joryAvatar from "../../docs/design/assets/jory-avatar_clay.webp";
 
 vi.mock("next/navigation", () => ({
   redirect: () => undefined,
@@ -47,9 +48,13 @@ describe("authenticated layout", () => {
     const expectedWordmark = renderToStaticMarkup(
       createElement("img", { alt: "", src: String(joryWordmark) })
     );
+    const expectedAvatar = renderToStaticMarkup(
+      // SAFETY: Vite resolves image imports to URLs; Next declares StaticImageData.
+      createElement("img", { alt: "", src: String(joryAvatar as unknown) })
+    ).replace(/<link[^>]*\/>/g, "");
 
     expect(html).toMatch(/<a[^>]*aria-label="Jory"[^>]*href="\/"/);
-    expect(html).toContain(expectedWordmark);
+    expect(html).toContain(`${expectedWordmark}${expectedAvatar}</a>`);
     expect(html).not.toContain("OpenInstinct");
   });
 });
