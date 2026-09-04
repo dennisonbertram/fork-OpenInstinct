@@ -1,5 +1,4 @@
 import { Card } from "@/components/ui/card";
-import { Logo } from "@/components/ui/logo";
 
 export function signInSubhead({
   localBypass,
@@ -15,20 +14,14 @@ export function signInSubhead({
 }
 
 export function SignInHero({
-  eyebrow,
   headline,
   subhead,
 }: {
-  readonly eyebrow: string;
   readonly headline: string;
   readonly subhead?: string;
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2 type-eyebrow text-muted-foreground">
-        <Logo />
-        <span>{eyebrow}</span>
-      </div>
       <h1 className="type-hero">{headline}</h1>
       {subhead ? (
         <p className="type-supporting-body text-muted-foreground">{subhead}</p>

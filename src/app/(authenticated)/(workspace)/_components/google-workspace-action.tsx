@@ -22,7 +22,7 @@ export function GoogleWorkspaceAction({
     return <Badge variant="secondary">Loading…</Badge>;
   }
   if (state === "unavailable") {
-    return <Badge variant="secondary">Setup required</Badge>;
+    return <Badge variant="secondary">Admin setup needed</Badge>;
   }
 
   const action = state === "connected" ? "disconnect" : "connect";
