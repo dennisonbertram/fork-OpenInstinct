@@ -67,7 +67,11 @@ export function PhoneOtpAuthForm({
         <FieldGroup>
           <PhoneNumberField />
           <FieldError errors={sendOtp.error ? [sendOtp.error] : undefined} />
-          <Button className="w-full" disabled={sendOtp.isPending} type="submit">
+          <Button
+            className="w-full rounded-full"
+            disabled={sendOtp.isPending}
+            type="submit"
+          >
             {sendOtp.isPending ? "Sending…" : "Send code"}
           </Button>
         </FieldGroup>
@@ -134,7 +138,7 @@ function VerificationCodeForm({
           errors={verifyCode.error ? [verifyCode.error] : undefined}
         />
         <Button
-          className="w-full"
+          className="w-full rounded-full"
           disabled={verifyCode.isPending}
           type="submit"
         >
