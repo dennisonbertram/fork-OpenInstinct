@@ -5,6 +5,11 @@ verified and when, the operator state of the sandbox deployment, and the
 proposed next steps. Labels follow [`README.md`](README.md): Implemented,
 Verified, Proposed.
 
+> Operator note: real-model Square evals require an explicit cost ceiling, for
+> example `pnpm eval:square --max-cost-usd 1`. The local fixture is free; model
+> and judge calls are not. See [`evals/square/README.md`](../evals/square/README.md)
+> for repetitions, timeouts, selected-model runs, and manifest interpretation.
+
 ## Implemented (merged 2026-09-02, PR #32)
 
 Each OpenInstinct user connects their own Square seller account. The agent

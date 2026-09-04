@@ -6,13 +6,38 @@ fake Square server, backed by `evals/square/fake/fixture.json`: correctness
 tool called), cost, and iMessage bubble shape.
 
 ```sh
-pnpm eval:square
+pnpm eval:square --max-cost-usd 1
 ```
 
 The wrapper (`scripts/eval-square.ts`, U5) starts the fake on a loopback port,
 sets `SQUARE_BASE_URL`, `SQUARE_SANDBOX_ACCESS_TOKEN`, and
 `SQUARE_ENVIRONMENT=sandbox`, runs `eve eval square`, and stops the fake on
 exit.
+
+The model call is paid, so `--max-cost-usd <USD>` is required and one attempt
+is the default. Use `--repetitions <1-5>` only when a repeated measurement is
+needed; the wrapper preserves every attempted run in its manifest and returns
+failure if any attempt failed. It stops before a later repetition when reported
+cost reaches the supplied ceiling, or when a provider leaves cost unknown. The
+ceiling cannot preempt an in-flight call because there is no provider price
+service and cost arrives after completion. Pass `--timeout <ms>` through to
+Eve for the per-case bound.
+
+To test a selected model without altering product defaults, run an isolated
+database and seed only its workspace setting:
+
+```sh
+pnpm eval:square --with-database --max-cost-usd 1 --model openai/gpt-5.6-sol-fast
+```
+
+Each command writes `.eve/eval-runs/` provenance beside the existing Square
+artifact. The manifest uses `step.started` model IDs as the actual selection
+evidence; requested model, configured reasoning, and judge are configuration.
+It also copies the fake fixture's pinned `clock.asOf` and `clock.timezone` into
+the artifact, so relative-date cases can be reproduced against the same clock.
+Reasoning application and delivery acknowledgement are
+`not-observable-from-eve-events`, and unreported costs remain `unknown` rather
+than being estimated.
 
 Cost is recorded per case and never fails a run; the shape gate does (over 3
 bubbles, or a 5+ item list with no count and offer). Artifacts land in

@@ -34,6 +34,7 @@ describe("agent eval supervisor", supervisorTestOptions, () => {
       `compose --project-name ${project} up --detach --wait postgres`,
       `compose --project-name ${project} port postgres 5432`,
       "pnpm db:migrate postgresql://postgres:postgres@127.0.0.1:49152/open_instinct development unused-by-agent-evals http://127.0.0.1:9 http://127.0.0.1:9",
+      "pnpm exec tsx evals/square/setup-access.ts postgresql://postgres:postgres@127.0.0.1:49152/open_instinct development unused-by-agent-evals http://127.0.0.1:9 http://127.0.0.1:9",
       "pnpm exec eve eval agent --strict --max-concurrency 1 --tag smoke postgresql://postgres:postgres@127.0.0.1:49152/open_instinct development unused-by-agent-evals http://127.0.0.1:9 http://127.0.0.1:9",
       `compose --project-name ${project} down --volumes`,
     ]);
@@ -49,10 +50,35 @@ describe("agent eval supervisor", supervisorTestOptions, () => {
     );
   });
 
+  it("requires an explicit budget before starting a paid agent eval", async () => {
+    const result = await runSupervisor(
+      {
+        AI_GATEWAY_API_KEY: "test-gateway-key",
+      },
+      ["--tag", "smoke"]
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.commands).toBe("");
+    expect(result.stderr).toContain("--max-cost-usd");
+  });
+
+  it("seeds an explicit test model through the isolated workspace setting", async () => {
+    const result = await runSupervisor(
+      { AI_GATEWAY_API_KEY: "test-gateway-key" },
+      ["--max-cost-usd", "1", "--model", "openai/test-model", "--tag", "smoke"]
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.commands).toContain(
+      "pnpm exec tsx evals/square/setup-access.ts --model openai/test-model"
+    );
+  });
+
   it.each([
-    ["concurrency override", ["--max-concurrency", "8"]],
-    ["remote target", ["--url", "https://example.com"]],
-    ["different eval path", ["browser"]],
+    ["concurrency override", ["--max-cost-usd", "1", "--max-concurrency", "8"]],
+    ["remote target", ["--max-cost-usd", "1", "--url", "https://example.com"]],
+    ["different eval path", ["--max-cost-usd", "1", "browser"]],
   ])("rejects a %s before starting Docker", async (_description, args) => {
     const result = await runSupervisor(
       { AI_GATEWAY_API_KEY: "test-gateway-key" },
@@ -104,6 +130,7 @@ describe("agent eval supervisor", supervisorTestOptions, () => {
       `compose --project-name ${project} up --detach --wait postgres`,
       `compose --project-name ${project} port postgres 5432`,
       "pnpm db:migrate postgresql://postgres:postgres@127.0.0.1:49152/open_instinct development unused-by-agent-evals http://127.0.0.1:9 http://127.0.0.1:9",
+      "pnpm exec tsx evals/square/setup-access.ts postgresql://postgres:postgres@127.0.0.1:49152/open_instinct development unused-by-agent-evals http://127.0.0.1:9 http://127.0.0.1:9",
       "pnpm exec eve eval agent --strict --max-concurrency 1 --tag smoke postgresql://postgres:postgres@127.0.0.1:49152/open_instinct development unused-by-agent-evals http://127.0.0.1:9 http://127.0.0.1:9",
       `compose --project-name ${project} down --volumes`,
     ]);
@@ -122,7 +149,7 @@ function projectFromComposeCommand(command: string | undefined) {
 
 async function runSupervisor(
   environment: Record<string, string> = {},
-  args = ["--tag", "smoke"]
+  args = ["--max-cost-usd", "1", "--tag", "smoke"]
 ) {
   const directory = await mkdtemp(join(tmpdir(), "open-instinct-evals-"));
   temporaryDirectories.push(directory);
@@ -148,7 +175,7 @@ fi
       `#!/bin/sh
 printf 'pnpm %s %s %s %s %s %s\n' "$*" "$DATABASE_URL" "$NODE_ENV" "$KERNEL_API_KEY" "$KERNEL_BASE_URL" "$BETTER_AUTH_URL" >> "$EVAL_SUPERVISOR_LOG"
 if [ "$1" = "exec" ]; then
-  if [ "\${EVAL_BLOCK_ACTION:-never}" = "eval" ]; then
+  if [ "$2" = "eve" ] && [ "\${EVAL_BLOCK_ACTION:-never}" = "eval" ]; then
     trap 'exit 130' INT TERM HUP
     while true; do /bin/sleep 0.1; done
   fi

@@ -2,6 +2,13 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { startFakeSquare } from "../evals/square/fake/server.ts";
+import {
+  beginManifestAttempt,
+  completeManifestAttempt,
+  createEvalRunManifest,
+  manifestCostStatus,
+  readFixtureClock,
+} from "../evals/run-manifest.ts";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 
@@ -32,14 +39,31 @@ if (appliedDefaults.length > 0) {
   );
 }
 
-const rawArguments = process.argv.slice(2);
+const options = parseSquareEvalOptions(process.argv.slice(2));
 const withDatabase =
-  rawArguments.includes("--with-database") ||
-  environment.EVAL_SQUARE_DATABASE === "compose";
-// pnpm forwards a bare "--" separator; eve would treat it as an eval id.
-const forwardedArguments = rawArguments.filter(
-  (arg) => arg !== "--with-database" && arg !== "--"
-);
+  options.withDatabase || environment.EVAL_SQUARE_DATABASE === "compose";
+if (options.model && !withDatabase) {
+  throw new Error(
+    "--model requires --with-database so the isolated workspace setting can be seeded."
+  );
+}
+const manifestPath = await createEvalRunManifest({
+  caseDirectory: "evals/square",
+  fixtureClock: await readFixtureClock(
+    repositoryRoot,
+    "evals/square/fake/fixture.json"
+  ),
+  judgeModel: "openai/gpt-5.4-mini",
+  maxConcurrency: 8,
+  maxCostUsd: options.maxCostUsd,
+  mode: "square",
+  reasoning: "low",
+  repetitions: options.repetitions,
+  repositoryRoot,
+  requestedModel: options.model,
+  timeoutMs: options.timeoutMs,
+});
+console.error(`eval-run manifest: ${manifestPath}`);
 
 let activeChild: ChildProcess | undefined;
 let shutdownSignal: NodeJS.Signals | undefined;
@@ -167,7 +191,12 @@ async function withComposeDatabase<T>(body: () => Promise<T>): Promise<T> {
     await run("pnpm", ["db:migrate"], environment);
     await run(
       "pnpm",
-      ["exec", "tsx", "evals/square/setup-access.ts"],
+      [
+        "exec",
+        "tsx",
+        "evals/square/setup-access.ts",
+        ...(options.model ? ["--model", options.model] : []),
+      ],
       environment
     );
     return await body();
@@ -181,29 +210,137 @@ async function runEval() {
   console.error(`fake Square at ${fake.url}`);
 
   try {
-    const child = spawn(
-      "pnpm",
-      ["exec", "eve", "eval", "square", ...forwardedArguments],
-      {
-        cwd: repositoryRoot,
-        detached: process.platform !== "win32",
-        env: {
-          ...environment,
-          SQUARE_BASE_URL: fake.url,
-          SQUARE_SANDBOX_ACCESS_TOKEN: "eval-token",
-          SQUARE_ENVIRONMENT: "sandbox",
-        },
-        stdio: "inherit",
-      }
-    );
-    activeChild = child;
+    let failed = false;
+    for (
+      let repetition = 0;
+      repetition < options.repetitions;
+      repetition += 1
+    ) {
+      const attemptId = await beginManifestAttempt(manifestPath);
+      const child = spawn(
+        "pnpm",
+        ["exec", "eve", "eval", "square", ...options.evalArguments],
+        {
+          cwd: repositoryRoot,
+          detached: process.platform !== "win32",
+          env: {
+            ...environment,
+            EVAL_RUN_MANIFEST_ATTEMPT_ID: attemptId,
+            EVAL_RUN_MANIFEST_PATH: manifestPath,
+            SQUARE_BASE_URL: fake.url,
+            SQUARE_SANDBOX_ACCESS_TOKEN: "eval-token",
+            SQUARE_ENVIRONMENT: "sandbox",
+          },
+          stdio: "inherit",
+        }
+      );
+      activeChild = child;
+      const code = await childExitCode(child);
+      if (activeChild === child) activeChild = undefined;
+      await completeManifestAttempt(manifestPath, attemptId, code);
+      failed ||= code !== 0;
+      if (shutdownSignal) return;
+      if (repetition + 1 >= options.repetitions) continue;
 
-    const code = await childExitCode(child);
-    activeChild = undefined;
-    process.exitCode = code ?? 1;
+      const cost = await manifestCostStatus(manifestPath);
+      if (cost.unknown) {
+        throw new Error(
+          "Stopping paid eval repetitions because at least one attempt has unknown cost."
+        );
+      }
+      if (cost.knownCostUsd >= options.maxCostUsd) {
+        throw new Error(
+          `Stopping paid eval repetitions at $${cost.knownCostUsd.toFixed(6)} because it reached --max-cost-usd $${options.maxCostUsd.toFixed(6)}.`
+        );
+      }
+    }
+    process.exitCode = failed ? 1 : 0;
   } finally {
     await fake.close();
   }
+}
+
+function parseSquareEvalOptions(args: string[]) {
+  let maxCostUsd: number | undefined;
+  let model: string | null = null;
+  let repetitions = 1;
+  let withDatabase = false;
+  const evalArguments: string[] = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === "--") continue;
+    if (argument === "--with-database") {
+      withDatabase = true;
+      continue;
+    }
+    if (
+      argument === "--max-cost-usd" ||
+      argument === "--model" ||
+      argument === "--repetitions"
+    ) {
+      const value = args[++index];
+      if (!value || value.startsWith("-"))
+        throw new Error(`${argument} requires a value.`);
+      if (argument === "--max-cost-usd")
+        maxCostUsd = parsePositiveNumber(argument, value);
+      if (argument === "--model") model = parseModelId(value);
+      if (argument === "--repetitions") repetitions = parseRepetitions(value);
+      continue;
+    }
+    evalArguments.push(argument ?? "");
+  }
+  if (maxCostUsd === undefined) {
+    throw new Error(
+      "Paid Square evals require --max-cost-usd <USD> before they start."
+    );
+  }
+  const timeout = readTimeout(evalArguments);
+  return {
+    evalArguments,
+    maxCostUsd,
+    model,
+    repetitions,
+    timeoutMs: timeout ?? 180_000,
+    withDatabase,
+  };
+}
+
+function parsePositiveNumber(option: string, value: string) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1_000) {
+    throw new Error(
+      `${option} must be a number greater than 0 and at most 1000.`
+    );
+  }
+  return parsed;
+}
+
+function parseModelId(value: string) {
+  const model = value.trim();
+  if (!model || model.length > 300) {
+    throw new Error(
+      "--model must be a non-empty model ID of at most 300 characters."
+    );
+  }
+  return model;
+}
+
+function parseRepetitions(value: string) {
+  const repetitions = Number(value);
+  if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 5) {
+    throw new Error("--repetitions must be an integer from 1 to 5.");
+  }
+  return repetitions;
+}
+
+function readTimeout(args: readonly string[]) {
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument?.startsWith("--timeout=")) return Number(argument.slice(10));
+    if (argument === "--timeout") return Number(args[index + 1]);
+  }
+  return undefined;
 }
 
 if (withDatabase) {

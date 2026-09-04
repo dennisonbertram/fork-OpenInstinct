@@ -10,6 +10,7 @@ type StepCompletedEvent = Extract<
   MessageStreamEvent,
   { type: "step.completed" }
 >;
+type StepStartedEvent = Extract<MessageStreamEvent, { type: "step.started" }>;
 type MessageReceivedEvent = Extract<
   MessageStreamEvent,
   { type: "message.received" }
@@ -29,6 +30,14 @@ function stepCompletedEvent(at: string, costUsd: number): StepCompletedEvent {
   };
 }
 
+function stepStartedEvent(at: string, modelId: string): StepStartedEvent {
+  return {
+    data: { modelId, sequence: 0, stepIndex: 0, turnId: "t1" },
+    meta: { at, id: at },
+    type: "step.started",
+  };
+}
+
 function messageReceivedEvent(at: string): MessageReceivedEvent {
   return {
     data: { message: "hi", sequence: 0, turnId: "t1" },
@@ -40,6 +49,7 @@ function messageReceivedEvent(at: string): MessageReceivedEvent {
 function makeCase(id: string, toolNames: readonly string[]): EveEvalResult {
   const events: MessageStreamEvent[] = [
     messageReceivedEvent("2026-09-03T10:00:00.000Z"),
+    stepStartedEvent("2026-09-03T10:00:00.100Z", "openai/gpt-5.6-sol"),
     stepCompletedEvent("2026-09-03T10:00:01.000Z", 0.01),
     stepCompletedEvent("2026-09-03T10:00:02.000Z", 0.02),
   ];
@@ -85,6 +95,7 @@ const artifactSchema = z.object({
       bubbles: z.number(),
       costUsd: z.number().nullable(),
       id: z.string(),
+      modelIds: z.array(z.string()),
       toolCalls: z.record(z.string(), z.number()),
     })
   ),
@@ -114,7 +125,7 @@ describe("squareEvalReporter", () => {
     await rm(directory, { recursive: true, force: true });
   });
 
-  it("writes costUsd and toolCalls per case to the JSON artifact", async () => {
+  it("writes observed model IDs, cost, and tool calls per case to the JSON artifact", async () => {
     const { squareEvalReporter } = await import("../square-reporter");
 
     const evaluations = [
@@ -157,6 +168,7 @@ describe("squareEvalReporter", () => {
     const [square] = parsed.cases;
     expect(square?.id).toBe("square/square/0000");
     expect(square?.costUsd).toBeCloseTo(0.03);
+    expect(square?.modelIds).toEqual(["openai/gpt-5.6-sol"]);
     expect(square?.toolCalls).toEqual({
       send_message: 2,
       square__SearchOrders: 2,

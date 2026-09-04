@@ -24,20 +24,20 @@ pnpm eval:list
 Run the root-agent suite locally, including soft judge thresholds as failures:
 
 ```sh
-pnpm eval:agent
+pnpm eval:agent --max-cost-usd 1
 ```
 
 Run one family while iterating:
 
 ```sh
-pnpm eval:agent --tag safety
-pnpm eval:agent --tag routing
+pnpm eval:agent --max-cost-usd 1 --tag safety
+pnpm eval:agent --max-cost-usd 1 --tag routing
 ```
 
 Produce JUnit output for CI:
 
 ```sh
-pnpm eval:ci
+pnpm eval:ci --max-cost-usd 1
 ```
 
 The agent command loads `.env.local`, starts an isolated Docker Compose
@@ -51,6 +51,41 @@ Agent cases run serially so memory cases cannot leak state into a concurrently
 executing case, and memory cases remove their canaries.
 Judge-backed cases use the judge model in `evals.config.ts`. Full
 event streams and assertion details are written to `.eve/evals/`.
+
+## Paid-run manifest and limits
+
+Real-model supervisors require an explicit `--max-cost-usd <USD>` before they
+start. This is an operator-approved ceiling for the attempt series, not a
+provider price lookup: no price service is consulted. One attempt is the
+default; `--repetitions <1-5>` is opt-in. After an attempt, the supervisor
+stops before another one when cumulative reported cost reaches the ceiling or
+when any cost is unknown. A single attempt can still exceed the supplied value
+because providers report cost only after a call completes.
+
+Each supervisor writes `.eve/eval-runs/<timestamp>-<mode>-<id>.json` before it
+starts work. The manifest records exact Git SHA/dirty state, Node and Eve
+versions, a content hash and paths for the case tree, wall-clock mode,
+requested model, configured reasoning, judge, timeout, concurrency, all
+attempts, verdict counts, and per-case observed `step.started` model IDs.
+The `aggregate` block retains pass/fail/error/skip counts from every attempt
+and p50/p95 whole-eval duration; it never filters failed repetitions out of a
+successful-looking summary.
+Observed model IDs are the evidence of the concrete model actually selected;
+the requested setting is retained only as configuration. Eve 0.49 does not
+emit applied reasoning effort or message-channel delivery acknowledgement in
+eval events, so those fields are explicitly `not-observable-from-eve-events`
+rather than guessed. Costs similarly remain `unknown` unless every completed
+model step reports `usage.costUsd`.
+
+Use the normal workspace model resolver without changing product defaults:
+
+```sh
+pnpm eval:agent --max-cost-usd 1 --model openai/gpt-5.6-sol-fast --tag smoke
+```
+
+The selected model is written only to the isolated Compose workspace through
+the existing settings service. Review the manifest's observed IDs after the
+run; a requested model name alone is not proof of provider selection.
 
 Run the browser benchmark separately because it uses Kernel, real websites,
 and a longer completion loop:

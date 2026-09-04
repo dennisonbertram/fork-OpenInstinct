@@ -1,6 +1,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import {
+  beginManifestAttempt,
+  completeManifestAttempt,
+  createEvalRunManifest,
+  manifestCostStatus,
+} from "../evals/run-manifest.ts";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const composeProject = `open-instinct-evals-${createHash("sha256")
@@ -34,7 +40,21 @@ await runAgentEvals();
 async function runAgentEvals() {
   try {
     requireModelCredentials();
-    const evalArguments = validateEvalArguments(process.argv.slice(2));
+    const options = parseAgentEvalOptions(process.argv.slice(2));
+    const manifestPath = await createEvalRunManifest({
+      caseDirectory: "evals/agent",
+      fixtureClock: null,
+      judgeModel: "openai/gpt-5.4-mini",
+      maxConcurrency: 1,
+      maxCostUsd: options.maxCostUsd,
+      mode: "agent",
+      reasoning: "low",
+      repetitions: options.repetitions,
+      repositoryRoot,
+      requestedModel: options.model,
+      timeoutMs: options.timeoutMs,
+    });
+    console.error(`eval-run manifest: ${manifestPath}`);
     composeAttempted = true;
     const databaseStarted = await requireSuccess(
       "docker",
@@ -62,21 +82,54 @@ async function runAgentEvals() {
 
     const migrated = await requireSuccess("pnpm", ["db:migrate"], environment);
     if (!migrated) return;
-    const exitCode = await run(
-      "pnpm",
-      [
-        "exec",
-        "eve",
-        "eval",
-        "agent",
-        "--strict",
-        "--max-concurrency",
-        "1",
-        ...evalArguments,
-      ],
-      environment
-    );
-    if (!interrupted) process.exitCode = exitCode ?? 1;
+    const setupArguments = ["exec", "tsx", "evals/square/setup-access.ts"];
+    if (options.model) setupArguments.push("--model", options.model);
+    const setup = await requireSuccess("pnpm", setupArguments, environment);
+    if (!setup) return;
+
+    let failed = false;
+    for (
+      let repetition = 0;
+      repetition < options.repetitions;
+      repetition += 1
+    ) {
+      const attemptId = await beginManifestAttempt(manifestPath);
+      const exitCode = await run(
+        "pnpm",
+        [
+          "exec",
+          "eve",
+          "eval",
+          "agent",
+          "--strict",
+          "--max-concurrency",
+          "1",
+          ...options.evalArguments,
+        ],
+        {
+          ...environment,
+          EVAL_RUN_MANIFEST_ATTEMPT_ID: attemptId,
+          EVAL_RUN_MANIFEST_PATH: manifestPath,
+        }
+      );
+      await completeManifestAttempt(manifestPath, attemptId, exitCode);
+      failed ||= exitCode !== 0;
+      if (interrupted) return;
+      if (repetition + 1 >= options.repetitions) continue;
+
+      const cost = await manifestCostStatus(manifestPath);
+      if (cost.unknown) {
+        throw new Error(
+          "Stopping paid eval repetitions because at least one attempt has unknown cost."
+        );
+      }
+      if (cost.knownCostUsd >= options.maxCostUsd) {
+        throw new Error(
+          `Stopping paid eval repetitions at $${cost.knownCostUsd.toFixed(6)} because it reached --max-cost-usd $${options.maxCostUsd.toFixed(6)}.`
+        );
+      }
+    }
+    if (!interrupted) process.exitCode = failed ? 1 : 0;
   } finally {
     if (composeAttempted) {
       const exitCode = await run(
@@ -92,6 +145,81 @@ async function runAgentEvals() {
       }
     }
   }
+}
+
+function parseAgentEvalOptions(args: string[]) {
+  let maxCostUsd: number | undefined;
+  let model: string | undefined;
+  let repetitions = 1;
+  const evalArguments: string[] = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (
+      argument === "--max-cost-usd" ||
+      argument === "--model" ||
+      argument === "--repetitions"
+    ) {
+      const value = args[++index];
+      if (!value || value.startsWith("-"))
+        throw unsupportedEvalArgument(argument);
+      if (argument === "--max-cost-usd")
+        maxCostUsd = parsePositiveNumber(argument, value);
+      if (argument === "--model") model = parseModelId(value);
+      if (argument === "--repetitions") repetitions = parseRepetitions(value);
+      continue;
+    }
+    evalArguments.push(argument ?? "");
+  }
+  if (maxCostUsd === undefined) {
+    throw new Error(
+      "Paid agent evals require --max-cost-usd <USD> before they start."
+    );
+  }
+  const validated = validateEvalArguments(evalArguments);
+  const timeoutArgument = validated.find(
+    (argument) => argument === "--timeout" || argument.startsWith("--timeout=")
+  );
+  const timeoutValue = timeoutArgument?.includes("=")
+    ? timeoutArgument.slice("--timeout=".length)
+    : timeoutArgument
+      ? validated[validated.indexOf(timeoutArgument) + 1]
+      : undefined;
+  return {
+    evalArguments: validated,
+    maxCostUsd,
+    model: model ?? null,
+    repetitions,
+    timeoutMs: timeoutValue ? Number(timeoutValue) : 180_000,
+  };
+}
+
+function parsePositiveNumber(option: string, value: string) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1_000) {
+    throw new Error(
+      `${option} must be a number greater than 0 and at most 1000.`
+    );
+  }
+  return parsed;
+}
+
+function parseModelId(value: string) {
+  const model = value.trim();
+  if (!model || model.length > 300) {
+    throw new Error(
+      "--model must be a non-empty model ID of at most 300 characters."
+    );
+  }
+  return model;
+}
+
+function parseRepetitions(value: string) {
+  const repetitions = Number(value);
+  if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 5) {
+    throw new Error("--repetitions must be an integer from 1 to 5.");
+  }
+  return repetitions;
 }
 
 function validateEvalArguments(args: string[]) {

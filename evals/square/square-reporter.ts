@@ -7,6 +7,7 @@ import { measureWorkerTask } from "@/lib/worker-events";
 
 interface SquareCaseReport {
   readonly id: string;
+  readonly modelIds: readonly string[];
   readonly costUsd: number | null;
   readonly toolCalls: Record<string, number>;
   readonly bubbles: number;
@@ -40,6 +41,13 @@ function summarize(result: EveEvalResult): SquareCaseReport {
     costUsd: metrics.costUsd,
     durationMs: metrics.durationMs,
     id: result.id,
+    modelIds: [
+      ...new Set(
+        result.result.events.flatMap((event) =>
+          event.type === "step.started" ? [event.data.modelId] : []
+        )
+      ),
+    ],
     toolCalls,
   };
 }
