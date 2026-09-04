@@ -54,6 +54,32 @@ A setup may report `eve link` as a prerequisite; run it, then retry the continua
 
 Run the validation the task requests. When it does not establish the behavior you changed, run the narrowest relevant check.
 
+## Development-stage prioritization
+
+This repository is in active development and is not production-ready. Prioritize
+working user journeys, correctness, fast feedback, and automated end-to-end
+confidence over production-grade privacy, retention, and compliance
+infrastructure.
+
+- Do not build new privacy systems solely for hypothetical production needs,
+  including extra telemetry exporters, content-classification pipelines,
+  retention/deletion automation, DLP, or compliance dashboards, unless the user
+  explicitly requests them or they are required to diagnose current development.
+- Development-only trace content capture may remain enabled for isolated local
+  and eval environments that use synthetic or designated test data. Do not route
+  real-user, production, credential, or vault content through those environments.
+- Preserve the safety boundaries already present: never commit or print secrets,
+  never log vault plaintext, do not weaken authentication, tenant isolation, or
+  approval enforcement, and do not broaden content capture as part of unrelated
+  work.
+- Treat metadata-only production traces, approved telemetry destinations,
+  retention and access policies, deletion behavior, and privacy canary tests as
+  blocking production-promotion work. They are not blockers for ordinary feature
+  development before real-user or production traffic.
+- When an audit finds a privacy-hardening gap, label it as a production-readiness
+  item unless it exposes secrets or real-user data, weakens an existing safety
+  boundary, or blocks the requested development workflow.
+
 ## Testing tiers
 
 - Colocate upstream-owned unit tests with their source; keep fork-only pure unit suites in `tests/unit/`, except `agent/` and `db/` tests follow their established local layout.
