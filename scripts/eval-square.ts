@@ -165,6 +165,11 @@ async function withComposeDatabase<T>(body: () => Promise<T>): Promise<T> {
     environment.DATABASE_URL = databaseUrl;
     environment.DATABASE_URL_UNPOOLED = databaseUrl;
     await run("pnpm", ["db:migrate"], environment);
+    await run(
+      "pnpm",
+      ["exec", "tsx", "evals/square/setup-access.ts"],
+      environment
+    );
     return await body();
   } finally {
     await run("docker", composeArguments("down"), inheritedEnvironment);
