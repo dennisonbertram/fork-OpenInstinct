@@ -29,7 +29,12 @@ export const gmailSendSchema = z.object({
 });
 
 export async function ensureGmailConnection(ctx: ToolContext) {
-  await withGmail(ctx, async () => undefined);
+  await withGmail(ctx, async (client) => {
+    await client.users.getProfile(
+      { userId: "me", fields: "emailAddress" },
+      { signal: ctx.abortSignal }
+    );
+  });
 }
 
 export async function searchGmail(
