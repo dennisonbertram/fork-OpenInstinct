@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { defineEval } from "eve/evals";
 import { includes, satisfies } from "eve/evals/expect";
 import type { MessageStreamEvent } from "eve/client";
@@ -23,6 +24,11 @@ function calledToolNames(events: readonly MessageStreamEvent[]): string[] {
  * and ends its turn with the `DELIVERY_COMPLETE` marker, so grade the
  * delivered bubbles rather than the final assistant text.
  */
+const reactionInputSchema = z.object({
+  operation: z.literal("add"),
+  type: z.string(),
+});
+
 export function deliveredText(calls: readonly EveEvalToolCall[]): string {
   return calls
     .flatMap((call) => {
@@ -59,10 +65,21 @@ export default squareCases.map((squareCase) =>
       const deliveries = turn.toolCalls.filter(
         (call) => call.name === "send_message"
       );
+      // A Tapback (react_to_message) is a complete iMessage reply on its own,
+      // for example a heart in answer to "Thanks!".
+      const reactions = turn.toolCalls.flatMap((call) => {
+        if (call.name !== "react_to_message") return [];
+        const parsed = reactionInputSchema.safeParse(call.input);
+        return parsed.success ? [`reacted with a ${parsed.data.type}`] : [];
+      });
       // A non-Linq fixture answers in the assistant text instead.
       const delivered =
-        deliveries.length > 0 ? deliveredText(deliveries) : (t.reply ?? "");
-      const bubbles = deliveries.length > 0 ? deliveries.length : 1;
+        deliveries.length > 0
+          ? deliveredText(deliveries)
+          : reactions.length > 0
+            ? reactions.join("\n\n")
+            : (t.reply ?? "");
+      const bubbles = Math.max(deliveries.length, 1);
 
       await t.require(
         delivered,
