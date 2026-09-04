@@ -33,6 +33,13 @@ export interface SquareCase {
   readonly factsMode?: "all" | "any";
   readonly layout: "normal" | "list";
   readonly tone: string;
+  /** Present for money questions so the fixture cannot hide ambiguous accounting. */
+  readonly sales?: {
+    readonly exclusions: string;
+    readonly location: string;
+    readonly measure: string;
+    readonly period: string;
+  };
 }
 
 interface CustomerName {
@@ -104,16 +111,38 @@ export const squareCases: readonly SquareCase[] = [
   },
   {
     expectTools: [["square__SearchOrders", "square__ListPayments"]],
-    facts: (fixture) => {
-      const total = fixture.orders
-        .filter((order) => order.state === "COMPLETED")
-        .reduce((sum, order) => sum + orderTotal(fixture, order), 0);
-      return [dollars(total)];
-    },
+    facts: () => ["$55.75"],
     forbidTools: writeToolPattern,
     id: "todays-sales-total",
     layout: "normal",
-    prompt: "What were today's total sales?",
+    prompt:
+      "As of 2026-11-02T04:59:59.999Z, what were today's gross completed sales at Default Test Account in America/New_York? Treat today as 2026-11-01 local time, include all pages, and do not subtract refunds.",
+    sales: {
+      exclusions:
+        "canceled, open, yesterday, and other-location orders; refunds are not subtracted",
+      location: "Default Test Account (LQK1QAMZG63BM)",
+      measure: "gross completed sales",
+      period:
+        "2026-11-01 America/New_York inclusive: [2026-11-01T04:00:00.000Z, 2026-11-02T04:59:59.999Z]",
+    },
+    tone: directTone,
+  },
+  {
+    expectTools: [["square__SearchOrders"], ["square__ListPaymentRefunds"]],
+    facts: () => ["$50.50"],
+    forbidTools: writeToolPattern,
+    id: "todays-net-sales-total",
+    layout: "normal",
+    prompt:
+      "As of 2026-11-02T04:59:59.999Z, what were today's net sales after refunds at Default Test Account in America/New_York? Treat today as 2026-11-01 local time and include all pages.",
+    sales: {
+      exclusions:
+        "canceled, open, yesterday, and other-location orders; subtract completed refunds in the same period",
+      location: "Default Test Account (LQK1QAMZG63BM)",
+      measure: "net sales after refunds",
+      period:
+        "2026-11-01 America/New_York inclusive: [2026-11-01T04:00:00.000Z, 2026-11-02T04:59:59.999Z]",
+    },
     tone: directTone,
   },
   {
@@ -193,13 +222,20 @@ export const squareCases: readonly SquareCase[] = [
   },
   {
     expectTools: [["square__ListPaymentRefunds"]],
-    facts: () => ["no", "none", "haven't", "hasn't"],
-    factsMode: "any",
+    facts: () => ["$5.25"],
     forbidTools: writeToolPattern,
     id: "refunds-this-week",
     layout: "normal",
-    prompt: "Have there been any refunds this week?",
-    tone: "states plainly that there were no refunds and does not invent an amount",
+    prompt:
+      "As of 2026-11-02T04:59:59.999Z, how much was refunded this week at Default Test Account in America/New_York? Report the refund total, not net sales.",
+    sales: {
+      exclusions:
+        "refunds outside the stated week and all orders; this is not a net-sales measure",
+      location: "Default Test Account (LQK1QAMZG63BM)",
+      measure: "completed refund total",
+      period: "week ending 2026-11-01 America/New_York",
+    },
+    tone: "states the $5.25 completed refund total plainly and does not call it net sales",
   },
   {
     expectTools: [],
