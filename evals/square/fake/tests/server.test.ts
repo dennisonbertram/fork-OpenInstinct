@@ -217,6 +217,37 @@ describe("fake Square server", () => {
     ).toBe(5575);
   });
 
+  it("honors a smaller requested order limit but caps large requests at the fixture page size", async () => {
+    const body = {
+      location_ids: ["LQK1QAMZG63BM"],
+      query: {
+        filter: {
+          date_time_filter: {
+            created_at: {
+              start_at: "2026-11-01T04:00:00.000Z",
+              end_at: "2026-11-02T04:59:59.999Z",
+            },
+          },
+          state_filter: { states: ["COMPLETED"] },
+        },
+      },
+    };
+
+    const one = await json(
+      await post("/v2/orders/search", { ...body, limit: 1 }),
+      ordersResponseSchema
+    );
+    expect(one.orders.map((order) => order.id)).toEqual(["ORD_0"]);
+    expect(one.cursor).toBeTruthy();
+
+    const large = await json(
+      await post("/v2/orders/search", { ...body, limit: 100 }),
+      ordersResponseSchema
+    );
+    expect(large.orders.map((order) => order.id)).toEqual(["ORD_0", "ORD_1"]);
+    expect(large.cursor).toBeTruthy();
+  });
+
   it("uses numeric fractional-second bounds, rejects the adjacent local day, and rejects malformed or inverted supported ranges", async () => {
     const day = await json(
       await post("/v2/orders/search", {
@@ -374,6 +405,8 @@ describe("fake Square server", () => {
 
     const malformed = await get("/v2/payments?begin_time=not-a-timestamp");
     expect(malformed.status).toBe(400);
+    const nonRfc3339 = await get("/v2/payments?begin_time=2026-11-01");
+    expect(nonRfc3339.status).toBe(400);
     const inverted = await get(
       "/v2/payments?begin_time=2026-11-02T04:59:59.999Z&end_time=2026-11-01T04:00:00.000Z"
     );
@@ -408,6 +441,9 @@ describe("fake Square server", () => {
     expect(outsidePeriod.refunds.map((refund) => refund.id)).toEqual([
       "REF_PREVIOUS_WEEK",
     ]);
+
+    const nonRfc3339 = await get("/v2/refunds?end_time=2026-11-01");
+    expect(nonRfc3339.status).toBe(400);
   });
 
   it("AE2: POST /v2/refunds returns 403 FORBIDDEN", async () => {

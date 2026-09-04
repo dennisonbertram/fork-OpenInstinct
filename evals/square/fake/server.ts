@@ -14,6 +14,7 @@ import { z } from "zod";
 
 const CUSTOMERS_PAGE_SIZE = 2;
 const ORDERS_PAGE_SIZE = 2;
+const rfc3339TimestampSchema = z.iso.datetime({ offset: true });
 
 interface Money {
   amount: number;
@@ -141,8 +142,8 @@ const searchOrdersBodySchema = z.object({
             .object({
               created_at: z
                 .object({
-                  start_at: z.iso.datetime({ offset: true }).optional(),
-                  end_at: z.iso.datetime({ offset: true }).optional(),
+                  start_at: rfc3339TimestampSchema.optional(),
+                  end_at: rfc3339TimestampSchema.optional(),
                 })
                 .optional(),
             })
@@ -191,15 +192,22 @@ function timestamp(value: string): number {
   return parsed;
 }
 
+function rfc3339Timestamp(value: string): number {
+  if (!rfc3339TimestampSchema.safeParse(value).success) {
+    throw new Error(`Invalid RFC 3339 timestamp: ${value}`);
+  }
+  return timestamp(value);
+}
+
 function listTimeRange(url: URL, res: ServerResponse) {
   const beginTime = url.searchParams.get("begin_time");
   const endTime = url.searchParams.get("end_time");
   try {
-    const beginAt = beginTime ? timestamp(beginTime) : undefined;
-    const endAt = endTime ? timestamp(endTime) : undefined;
+    const beginAt = beginTime ? rfc3339Timestamp(beginTime) : undefined;
+    const endAt = endTime ? rfc3339Timestamp(endTime) : undefined;
     if (beginAt !== undefined && endAt !== undefined && beginAt > endAt) {
       invalidRequest(res, "begin_time must not be after end_time.");
-      return;
+      return null;
     }
     return { beginAt, endAt };
   } catch (cause) {
@@ -207,7 +215,7 @@ function listTimeRange(url: URL, res: ServerResponse) {
       res,
       cause instanceof Error ? cause.message : "Invalid timestamp."
     );
-    return;
+    return null;
   }
 }
 
@@ -570,7 +578,7 @@ function handleSearchOrders(
     invalidRequest(res, "cursor is outside the result set for this query.");
     return;
   }
-  const pageSize = body.limit ?? ORDERS_PAGE_SIZE;
+  const pageSize = Math.min(body.limit ?? ORDERS_PAGE_SIZE, ORDERS_PAGE_SIZE);
   const page = matches.slice(start, start + pageSize);
   const result = { orders: page.map((o) => orderObject(fixture, o)) };
   const nextStart = start + page.length;
