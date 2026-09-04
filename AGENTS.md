@@ -73,10 +73,12 @@ boundary, or block the requested development workflow.
   `src/components/ui` and semantic `type-*` typography. Preserve `components.json`
   and local primitive extensions; add primitives with the official shadcn CLI.
   Update the design-system doc when tokens, type roles, variants, or patterns change.
-- **Optional capabilities:** ship as an Eve extension plus MCP server, mounted
-  under `agent/extensions/`. Read [PLUGINS.md](docs/PLUGINS.md) and complete
-  [PLUGIN_TESTING.md](docs/PLUGIN_TESTING.md). Do not build a core plugin loader,
-  registry, or tool catalog.
+- **Integrations and optional capabilities:** choose native tools, OpenAPI, or
+  MCP for the actual service. Package reusable optional capabilities as Eve
+  extensions under `agent/extensions/`; an MCP server is not mandatory. Read
+  [PLUGINS.md](docs/PLUGINS.md) and apply the relevant checks in
+  [PLUGIN_TESTING.md](docs/PLUGIN_TESTING.md). Customer-supplied servers remain
+  future work. Do not build a core plugin loader, registry, or tool catalog.
 - **Configurable agents, managed lines, catalogs, public APIs, webhooks, or shared
   tenants:** read [PRODUCT_DIRECTION.md](docs/PRODUCT_DIRECTION.md) and
   [MULTITENANCY.md](docs/MULTITENANCY.md) before schema/runtime changes. Preserve

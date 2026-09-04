@@ -285,16 +285,16 @@ also defines the `code-card` command and argument colors.
 
 `src/components/ai-elements` holds the chat surface, built on the primitives:
 
-| File                 | Role                                                                                                                                                             |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `conversation.tsx`   | Scrolling message list with stick-to-bottom and a scroll-to-bottom button                                                                                        |
-| `message.tsx`        | Message bubble; user side `bubble-user`, assistant side `bubble-assistant`, both `rounded-bubble`; markdown through `streamdown`; text is `type-supporting-body` |
-| `prompt-input.tsx`   | Composer with command palette, menu, and hover card                                                                                                              |
-| `model-selector.tsx` | Model picker in a `Command` dialog                                                                                                                               |
-| `question.tsx`       | Inline question form                                                                                                                                             |
-| `reasoning.tsx`      | Collapsible reasoning panel                                                                                                                                      |
-| `tool.tsx`           | Collapsible tool call with status icons                                                                                                                          |
-| `shimmer.tsx`        | Text shimmer for streaming, uses `motion/react`                                                                                                                  |
+| File                 | Role                                                                                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `conversation.tsx`   | Scrolling message list with stick-to-bottom and a scroll-to-bottom button                                                                                                            |
+| `message.tsx`        | User bubble in `bubble-user`; assistant replies use open prose with a Jory label. Markdown through `streamdown`, readable line spacing, scrollable code, and `type-supporting-body`. |
+| `prompt-input.tsx`   | Composer with command palette, menu, and hover card                                                                                                                                  |
+| `model-selector.tsx` | Model picker in a `Command` dialog                                                                                                                                                   |
+| `question.tsx`       | Inline question form                                                                                                                                                                 |
+| `reasoning.tsx`      | Collapsible reasoning panel                                                                                                                                                          |
+| `tool.tsx`           | Collapsible tool call with status icons                                                                                                                                              |
+| `shimmer.tsx`        | Text shimmer for streaming, uses `motion/react`                                                                                                                                      |
 
 `src/components/browser/activity-duration-breakdown.tsx` is the color legend
 for browser worker activity kinds; it reads the nine `activity-*` tokens.
@@ -315,6 +315,34 @@ real subagent state, and click-to-open-trace behavior. The upstream demo's
 sample data, timers, custom SVGs, and token classes are not part of the app.
 Keep this pattern at its Activity feature owner until a second real consumer
 justifies promotion to `src/components/ai-elements`.
+
+### 5.2 Chat experience
+
+The chat adopts the visual direction of Beautiful UI's Chat, Prompt Bar and
+Loading State patterns with the existing Jory primitives; no registry runtime
+or foundation styles are installed.
+
+- **Welcome:** a Jory label, one page heading, a spacious white composer and
+  three compact starter buttons. Starters fill and focus the draft without
+  sending it. The user can edit before submitting.
+- **Composer:** a rounded white surface with attachment selection/removal and
+  a navy send control. The session composer stays in normal flex layout so
+  growing drafts never cover the conversation. Existing send, steer and stop
+  behavior is preserved.
+- **Replies:** a `max-w-3xl` reading column with space between messages;
+  user text retains its bubble, while assistant markdown reads as open prose
+  below a Jory label. Long code blocks scroll within the available width.
+- **Progress:** a polite live status says “Jory is working…” during a real
+  turn, or “Working in the browser…” while a browser task is pending. It is
+  independent of the developer Activity flag and shows no raw tool data or
+  internal narration. Reduced motion disables the spinner animation.
+- **Failure:** the normal conversation shows a generic retry message; detailed
+  runtime errors remain in the developer trace.
+
+Pencil section **09 Jory · Beautiful chat flow** illustrates start, work,
+question and result states. The question/result examples express the intended
+journey; this first slice does not add new structured result schemas or change
+the existing question/approval delivery contract.
 
 ## 6. Application shell
 

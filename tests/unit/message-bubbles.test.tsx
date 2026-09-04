@@ -16,9 +16,9 @@ describe("message bubbles", () => {
     expect(html).toContain("group-[.is-user]:rounded-bubble");
   });
 
-  it("gives the assistant side the assistant bubble color", () => {
+  it("gives assistant prose the full reading width without a colored bubble", () => {
     const html = bubble("assistant");
-    expect(html).toContain("group-[.is-assistant]:bg-bubble-assistant");
-    expect(html).toContain("group-[.is-assistant]:rounded-bubble");
+    expect(html).toContain("group-[.is-assistant]:w-full");
+    expect(html).not.toContain("group-[.is-assistant]:bg-bubble-assistant");
   });
 });
