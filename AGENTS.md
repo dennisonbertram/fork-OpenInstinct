@@ -1,243 +1,117 @@
-# eve Agent App
+# OpenInstinct fork
 
-This project uses the eve framework: an agent is a directory of files under `agent/`, and eve compiles and runs it.
+This repository owns one Next.js app and an Eve agent under `agent/`.
+The workspace manager is `/`; agent chat is `/chat`.
+Read [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md) for topology, ownership, storage,
+and the change recipe relevant to your task. Follow links only as needed.
 
-For a content-only change to the root agent's identity, purpose, tone, or response guidelines, edit its existing authored instructions. Fresh projects use `agent/instructions.md`; a project may instead use `agent/instructions.ts` or files under `agent/instructions/`. You do not need to read the framework docs for a content-only instructions change. A fresh project already has its selected model in `agent/agent.ts`; preserve that file unless the user asks to change the model.
+## Work and delivery
 
-## Read the docs before writing code
+- Work only on `dennisonbertram/fork-OpenInstinct`. Upstream
+  `Merit-Systems/OpenInstinct` is read-only: never target it with a push, PR, or
+  issue. Pass `-R dennisonbertram/fork-OpenInstinct` to repository-targeting `gh`
+  commands and verify the owner in returned URLs.
+- The shared main checkout stays on `main`. Make changes in a linked worktree;
+  read-only inspection can use the main checkout. Preserve other agents' work.
+- Before committing, read `git diff --staged` and confirm it contains only your
+  change. Commit, push, open a PR, wait for required checks, and merge when green
+  unless the user says otherwise. Do not bypass checks or unresolved reviews.
+  Then fast-forward the main checkout and remove your clean worktree.
+- Keep discovery bounded: inspect the relevant docs, owning code, and tests;
+  implement the smallest complete requested behavior. Expand investigation when
+  evidence requires it. Summarize the outcome, verification, and any blockers.
 
-```sh
-ls node_modules/eve/docs
-```
+## Development priorities and safety
 
-Start with `docs/README.md`: it maps each task to the page that covers it. Read that page before authoring tools, connections, channels, skills, subagents, schedules, or deployment. In a workspace or local package install, resolve the installed `eve` package location first. If the package docs are missing, use https://eve.dev/docs.
+This project is in active development, not production-ready. Prioritize working
+user journeys, correctness, and fast feedback. Do not add speculative production
+privacy, retention, or compliance systems unless requested or needed for current
+work. Preserve authentication, tenant isolation, approval enforcement, and secret
+boundaries; never print or commit credentials or log vault plaintext.
 
-Use a bounded authoring loop:
+Isolated development/eval traces may capture synthetic or designated test data;
+never feed them real-user, production, credential, or vault content, or broaden
+capture during unrelated work. Metadata-only production traces, approved
+telemetry destinations, retention/access policies, deletion behavior, and
+privacy canaries remain production-promotion gates. Classify hardening gaps as
+production-readiness work unless they expose protected data, weaken an existing
+boundary, or block the requested development workflow.
 
-1. Read the relevant page and inspect only files you will modify or need to imitate.
-2. Stop discovery once the file location, imports, and definition shape are clear. Implement the smallest complete behavior the user requested.
-3. Run one narrow verification. Expand investigation only when it fails or the request needs project-specific details.
+## Code ownership
 
-Follow links or inspect public types only when the routed page leaves the task unanswered. Do not recursively glob `node_modules`, enumerate the entire docs tree, or read unrelated scaffold files when the direct path is known. Package-manager links can hide files from recursive glob tools even though direct reads work.
+- Keep browser execution in `agent/subagents/browser-agent/tools`, with each
+  tool's schema and implementation together. Share Kernel through
+  `src/lib/kernel.ts`; do not add a root browser connection or Kernel extension.
+  Worker `lib/` holds genuinely shared worker code only.
+- Colocate behavior with its owner: agent logic in `agent/`, data access in
+  `db/services`, page/section behavior with its route. Reserve `src/lib` for real
+  cross-feature infrastructure and contracts; do not add a generic `src/modules`.
+- Prefer cohesive call-site code over one-use abstractions. Do not add production
+  factories, dependency bags, setters, or reset hooks solely for tests; mock at
+  the owning/imported boundary.
+- Use lower-case, domain-specific file and folder names. Group related files in
+  a domain folder; avoid catch-all `manager`, `store`, `helpers`, or `utils` files.
+- Reuse owning types or infer from schemas, models, SDKs, and function results.
+  Add named types for real shared/public concepts, not parallel representations.
+- Validate runtime environment variables in `src/env.ts`; worker browser tools
+  require `KERNEL_API_KEY`. Keep root `load_skill` and `connection_search` enabled
+  for Square.
 
-## Prefer an existing integration
+## Read the relevant contract
 
-When a task names an external product or service, search the registry before implementing its integration. For a generic capability, author a tool instead.
+- **Eve changes:** start at the installed `eve/docs/README.md` and read the routed
+  page before authoring runtime features. Resolve package links directly; do not
+  recursively scan `node_modules`. If package docs are absent, use
+  https://eve.dev/docs. For content-only instruction edits, edit the existing
+  authored content under `agent/instructions/`; preserve the selected model
+  unless asked to change it. Framework docs are unnecessary for prose-only edits.
+- **Integrations and deployment:** prefer existing registry integrations, native
+  implementations first. Use Eve's non-interactive installation, linking, and
+  deployment flows; follow the installed integration/deployment docs and
+  [the Vercel runbook](docs/operations/VERCEL.md). Never pass secrets as `--answer`.
+- **Product UI:** read [DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md). Use
+  `src/components/ui` and semantic `type-*` typography. Preserve `components.json`
+  and local primitive extensions; add primitives with the official shadcn CLI.
+  Update the design-system doc when tokens, type roles, variants, or patterns change.
+- **Optional capabilities:** ship as an Eve extension plus MCP server, mounted
+  under `agent/extensions/`. Read [PLUGINS.md](docs/PLUGINS.md) and complete
+  [PLUGIN_TESTING.md](docs/PLUGIN_TESTING.md). Do not build a core plugin loader,
+  registry, or tool catalog.
+- **Configurable agents, managed lines, catalogs, public APIs, webhooks, or shared
+  tenants:** read [PRODUCT_DIRECTION.md](docs/PRODUCT_DIRECTION.md) and
+  [MULTITENANCY.md](docs/MULTITENANCY.md) before schema/runtime changes. Preserve
+  their proposed/implemented distinction in [docs/README.md](docs/README.md).
+- **Agent flow:** update [agent-loop.html](docs/agent-loop.html) when behavior,
+  ownership, file names, or hook events represented there change; inspect the
+  edited diagram in a browser. [Conversation feedback](docs/agent-conversation-feedback.md)
+  is planning evidence, not runtime instructions; images go in `docs/agent-feedback-assets/`.
+- **Upstream syncs:** take selected changes on a topic branch; record take/adapt/skip
+  decisions in the PR. A whole-tree merge needs explicit complete-diff review.
+  Renumber migrations after the fork's last migration. Every sync runs
+  `pnpm eval:contract`; syncs touching `agent/` also run Square evals.
 
-```sh
-eve registry search <query> --json
-eve registry view <item>
-```
+## Verification
 
-Prefer items whose `implementation` is `native`; use Chat SDK adapters when no native channel fits. `registry view` links the item's documentation.
+During development, run the smallest useful regression check for changed behavior.
+Before handoff, run `pnpm check`, `pnpm build`, and `git diff --check`.
+Follow [the guide's verification gates](docs/AGENT_GUIDE.md#verification-gates)
+for test placement, browser QA, startup, and deployment acceptance. Report failed
+or unavailable checks accurately; local checks do not prove production readiness.
 
-Install without driving interactive prompts:
+`./init.sh` is the canonical complete local startup. Changes to prerequisites,
+environment, credentials, ports, health, scripts, startup order, signals, or
+teardown must follow the guide's startup recipe and keep all owning docs/tests
+synchronized. Do not introduce an undocumented second startup path.
 
-```sh
-eve add <item> --non-interactive
-```
+## Square evals: on demand
 
-Exit code 0 means setup completed, 1 failed, and 2 needs an answer or a prerequisite. On exit 2, run the `next.command` from the final NDJSON event. For a non-secret question, replace its `<JSON value>` answer placeholder with the answer you collected; string values need JSON quotes. Never pass a secret in `--answer`. See `docs/install-integrations.mdx` for setup prerequisites.
-
-## Use eve for Vercel operations
-
-Use eve to link and deploy Vercel projects:
-
-```sh
-eve link --non-interactive --project <name-or-id> [--team <team-id-or-slug>]
-eve deploy --non-interactive --yes [--project <name-or-id>]
-```
-
-A setup may report `eve link` as a prerequisite; run it, then retry the continuation. When a completed setup event has `deploymentRequired: true`, run the `next` command it reports.
-
-## Validate the change
-
-Run the validation the task requests. When it does not establish the behavior you changed, run the narrowest relevant check.
-
-## Keep local startup reproducible
-
-`./init.sh` is the canonical zero-configuration entry point for the complete
-local development stack: credentials, Agentation, Compose Postgres, migrations,
-Next.js, and Eve. When a change affects a prerequisite, environment variable,
-credential source, port, health route, package script, startup order, signal,
-or teardown behavior, update all owning surfaces in the same pull request:
-
-- `init.sh` and `tests/unit/init-script.test.ts`;
-- the README local-development quickstart;
-- the command matrix in `docs/AGENT_GUIDE.md`;
-- the local runbook and acceptance path in `docs/operations/VERCEL.md`.
-
-Run the focused init-script tests, `./init.sh --check`, `pnpm check`, and
-`pnpm build`. For a startup or UI change, also run `./init.sh` and verify the
-real browser path, one inference turn, Agentation health and annotations, server
-logs, and clean `Ctrl-C` teardown. Do not introduce an undocumented second
-manual startup path or print credentials while diagnosing bootstrap.
-
-At the end of every completed task, give the user a concise, plain-English
-summary of what you did.
-
-## Development-stage prioritization
-
-This repository is in active development and is not production-ready. Prioritize
-working user journeys, correctness, fast feedback, and automated end-to-end
-confidence over production-grade privacy, retention, and compliance
-infrastructure.
-
-- Do not build new privacy systems solely for hypothetical production needs,
-  including extra telemetry exporters, content-classification pipelines,
-  retention/deletion automation, DLP, or compliance dashboards, unless the user
-  explicitly requests them or they are required to diagnose current development.
-- Development-only trace content capture may remain enabled for isolated local
-  and eval environments that use synthetic or designated test data. Do not route
-  real-user, production, credential, or vault content through those environments.
-- Preserve the safety boundaries already present: never commit or print secrets,
-  never log vault plaintext, do not weaken authentication, tenant isolation, or
-  approval enforcement, and do not broaden content capture as part of unrelated
-  work.
-- Treat metadata-only production traces, approved telemetry destinations,
-  retention and access policies, deletion behavior, and privacy canary tests as
-  blocking production-promotion work. They are not blockers for ordinary feature
-  development before real-user or production traffic.
-- When an audit finds a privacy-hardening gap, label it as a production-readiness
-  item unless it exposes secrets or real-user data, weakens an existing safety
-  boundary, or blocks the requested development workflow.
-
-## Testing tiers
-
-- Colocate upstream-owned unit tests with their source; keep fork-only pure unit suites in `tests/unit/`, except `agent/` and `db/` tests follow their established local layout.
-- Keep fork-owned PGlite, migration, service, and database suites in `tests/integration/`.
-- Put browser journeys in `tests/e2e/` and run them with `pnpm test:e2e`. Playwright
-  boots the app through `scripts/dev.ts`, so it owns Compose, migrations, and
-  teardown; it authenticates once through the local phone-auth bypass before the
-  authenticated specs run.
-- Run `pnpm test:unit`, `pnpm test:integration`, or `pnpm test:coverage`; root Vitest runs both.
-- `REAL_PG` unset auto-detects Compose, `0` skips real Postgres, and `1` requires it.
-
-Playwright e2e boots with `WORKSPACE_SCOPE_ENFORCEMENT=enforce`, so its paths
-exercise the production tenancy posture. Set `CRON_SECRET` in Vercel to enable
-the five-minute webhook drain cron; without it, the route responds with 404.
-The admin webhook drain button remains the supported manual drain path.
-
-## Square evals: on demand, not per pull request
-
-The Square eval gym (`pnpm eval:square`, 12 cases, about 1.5 USD and one
-minute per run) does not run in CI automatically. Run it before you open a
-pull request, and paste its `Results:` line in the PR body, when the change
-touches any of:
-
-- `agent/instructions.md`, `agent/instructions/`, `agent/agent.ts`, or anything under `agent/skills/`
-- `agent/connections/square.ts` or `agent/lib/square/`
-- `agent/lib/linq/reply.ts` (the bubble splitter) or `agent/channels/linq.ts`
-- `evals/square/` or `scripts/eval-square.ts`
-- the model, gateway, or reasoning settings
-
-Run it locally with `pnpm eval:square`, or in GitHub Actions with
-`gh workflow run square-evals.yml -R dennisonbertram/fork-OpenInstinct --ref <branch>`
-(needs the `AI_GATEWAY_API_KEY` repo secret). A red run is a real defect in
-the agent or the case; fix it before merging. The operator steps are in
-`docs/operations/VERCEL.md` under "Run the Square evals".
-
-## Agent conversation feedback
-
-`docs/agent-conversation-feedback.md` is a dated log of user feedback on
-agent conversations. It is review material for planning; it is not a runtime
-instruction file. Save example screenshots under `docs/agent-feedback-assets/`.
-
-## Work in a worktree, merge back through a pull request
-
-More than one agent works in this repository at the same time. The main
-checkout (`/Users/dennison/develop/fork-OpenInstinct` on this machine) is
-shared and stays on `main`; nobody edits or commits there. Start every task in
-a linked worktree:
-
-```sh
-git worktree add .claude/worktrees/<name> -b <branch>   # Claude Code: EnterWorktree
-cd .claude/worktrees/<name>
-```
-
-Commit there, push, open the pull request, and merge it. Then, in the main
-checkout, run `git pull` and remove the worktree with `git worktree remove`.
-Read-only commands (`git status`, `git log`, `cat`, `grep`, the test runners)
-are fine in the main checkout.
-
-Claude Code enforces this with the PreToolUse hook in
-`.claude/hooks/require-worktree.sh` (wired in `.claude/settings.json`): it
-blocks file edits and write-shaped shell commands whose target is the main
-checkout, and allows them in any linked worktree. For a deliberate exception
-set `CLAUDE_ALLOW_MAIN_CHECKOUT=1`. Other agents follow the same rule by
-convention. Before every commit, read `git diff --staged` and confirm it holds
-only your change.
-
-## Upstream syncs
-
-Review `upstream/main` on a short cadence, but intake only selected changes on
-a topic branch. Sort candidates into take, adapt, or skip and record the
-decision in the sync PR. Port a cohesive commit or reimplement the idea against
-the fork's current boundaries; a whole-tree merge requires an explicit review
-of the complete diff. The fork keeps
-`load_skill` and `connection_search` enabled at the root; the Square skill and
-connection need them. Upstream migrations are renumbered after the fork's
-last migration. A sync PR that touches `agent/` runs the Square evals. The
-model-free `pnpm eval:contract` suite is a required gate for every sync.
-
-## Repository is the fork, never upstream
-
-All work happens on `dennisonbertram/fork-OpenInstinct`. Never open pull
-requests, issues, or pushes against the upstream `Merit-Systems/OpenInstinct`.
-Pass `-R dennisonbertram/fork-OpenInstinct` to every `gh` command that targets
-a repository, and check the owner in any URL `gh` prints before reporting it.
-Upstream is a read-only sync source only (see the sync policy in `docs/`).
-
-## Repository contract
-
-- The repository root owns the single Next.js application, Eve agent, and shared UI contract.
-- The workspace manager lives on `/` and the agent chat on `/chat`; browser execution belongs only to the declared browser-agent subagent's flat tool surface under `agent/subagents/browser-agent/tools`.
-- Keep each worker browser tool's schema and implementation together. Share the Kernel SDK client through `src/lib/kernel.ts`; do not add a Kernel extension or root browser connection.
-- `agent/subagents/browser-agent/lib` is for code genuinely shared by worker tools. Group a shared worker domain in a lower-case folder, such as `trace/domains.ts` or `autofill/provider.ts`; do not use it as a holding area for a tool's one-off logic.
-- Validate runtime environment variables through `src/env.ts`. `KERNEL_API_KEY` is required by the worker browser tools.
-- Run `pnpm check` and `pnpm build` before handing off changes.
-
-## Code organization
-
-- Treat `src/lib` as a small shared infrastructure and contract boundary, not a default destination for application code. A file belongs there only when it has real cross-feature ownership; put database access in `db/services`, agent behavior under `agent`, and route or section behavior with its route.
-- Do not add a generic `src/modules` layer. Give code a concrete owner and colocate it there. A route section owns its section components, forms, and local parsing; split it only when the files have distinct responsibilities.
-- Prefer one cohesive call-site file for code used once. Do not add production factories, dependency containers, server wrappers, or files solely to make a unit test easier to mock.
-- Mock imported modules at their owning or external boundary in tests. Do not export mutable dependency bags, dependency setters, reset hooks, or other test-only seams from production modules; keep production exports limited to application behavior and real domain contracts.
-- Use lower-case file and folder names. When several files share a domain prefix, make that prefix a folder and name files for their role, such as `trace/domains.ts` rather than `trace-domains.ts`. Do not introduce camel-case filenames.
-- Avoid catch-all names such as `manager`, `store`, `helpers`, or `utils` for feature ownership. Reuse an existing narrowly named boundary or place the code at the concrete owner instead.
-
-## Design system
-
-Before planning or changing product UI:
-
-- Build from the primitives in `src/components/ui` and the semantic `type-*`
-  typography utilities defined in `src/app/styles/brand/typography.css`.
-- Preserve the current `components.json` primitive base and local extensions;
-  add new primitives with the official shadcn CLI.
-- Read [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md) for the token values,
-  type roles, primitive variants, and page patterns; update it in the same
-  pull request when any of those change.
-
-## Plugins
-
-A new feature that can live outside core ships as a plugin: an eve extension
-package plus an MCP server, mounted by one file under `agent/extensions/`.
-Read [`docs/PLUGINS.md`](docs/PLUGINS.md) before you design one, and run the
-ladder in [`docs/PLUGIN_TESTING.md`](docs/PLUGIN_TESTING.md) before you call
-it done. Do not add a plugin loader, registry, or tool catalog to core; eve
-already provides them.
-
-## Type ownership
-
-- Keep each TypeScript concept anchored to one source of truth.
-- Before adding a `type` or `interface`, search for an existing owning export,
-  schema-derived type, model inference, or function/value type that can be
-  reused or derived.
-- Prefer inference for implementation details and contextual callbacks.
-- Add a named type only for a real domain concept, public boundary, validation
-  source, or meaningfully reused composition.
-- Do not mirror schemas, database rows, router inputs or outputs, SDK payloads,
-  library exports, or function results with parallel interfaces.
+Before opening a PR, run `pnpm eval:square` and include its `Results:` line when
+changing agent instructions (`agent/instructions.md` or `agent/instructions/`),
+`agent/agent.ts`, `agent/skills/`, `agent/connections/square.ts`, `agent/lib/square/`,
+`agent/lib/linq/reply.ts`, `agent/channels/linq.ts`, `evals/square/`,
+`scripts/eval-square.ts`, or model/gateway/reasoning settings. Fix red runs before
+merging. These evals do not run automatically in PR CI; operator steps are in
+[the runbook](docs/operations/VERCEL.md#run-the-square-evals).
 
 <!-- BEGIN:nextjs-agent-rules -->
 
@@ -248,25 +122,3 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
-
-## Agent orientation
-
-Read [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) for the repository topology,
-route map, ownership boundaries, storage rules, change recipes, and verification
-gates. The architecture review and operational contracts are linked from that
-guide.
-
-[`docs/agent-loop.html`](docs/agent-loop.html) is the diagram of how one user
-message becomes one reply (channels, scope, session hooks, turn steps, tool
-branches, bubble delivery). It names files and hook events, so it goes stale.
-When a change touches `agent/channels/`, `agent/hooks/`, `agent/tools/`,
-`agent/skills/`, `agent/connections/`, `agent/subagents/`, `agent/agent.ts`,
-or `agent/lib/linq/reply.ts`, update the diagram in the same pull request.
-Open it in a browser to check the SVG after editing.
-
-For product work involving configurable agents, managed phone lines, MCP/tool
-catalogs, public APIs, webhooks, or shared tenants, read
-[`docs/PRODUCT_DIRECTION.md`](docs/PRODUCT_DIRECTION.md) and
-[`docs/MULTITENANCY.md`](docs/MULTITENANCY.md) before changing schema or runtime
-behavior. They are proposed contracts; preserve the implemented/proposed
-distinction in [`docs/README.md`](docs/README.md).

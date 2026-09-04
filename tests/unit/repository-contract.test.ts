@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const agents = readFileSync("AGENTS.md", "utf8");
+const guide = readFileSync("docs/AGENT_GUIDE.md", "utf8");
 const squareWorkflow = readFileSync(
   ".github/workflows/square-evals.yml",
   "utf8"
@@ -9,19 +10,38 @@ const squareWorkflow = readFileSync(
 
 describe("repository contract", () => {
   it("keeps the fork, validation, architecture, and Square eval guardrails", () => {
-    for (const heading of [
-      "## Testing tiers",
-      "## Square evals: on demand, not per pull request",
-      "## Work in a worktree, merge back through a pull request",
-      "## Repository is the fork, never upstream",
-      "## Repository contract",
-      "## Agent orientation",
+    for (const contract of [
+      "-R dennisonbertram/fork-OpenInstinct",
+      "linked worktree",
+      "git diff --staged",
+      "pnpm check",
+      "pnpm build",
+      "agent/subagents/browser-agent/tools",
+      "docs/AGENT_GUIDE.md#verification-gates",
+      "pnpm eval:square",
+      "Results:",
     ]) {
-      expect(agents).toContain(heading);
+      expect(agents).toContain(contract);
+    }
+
+    for (const contract of [
+      "## Verification gates",
+      "tests/unit/",
+      "tests/integration/",
+      "tests/e2e/",
+      "pnpm test:e2e",
+      "WORKSPACE_SCOPE_ENFORCEMENT=enforce",
+      "./init.sh --check",
+    ]) {
+      expect(guide).toContain(contract);
     }
 
     for (const trigger of [
       "agent/instructions.md",
+      "agent/instructions/",
+      "agent/agent.ts",
+      "agent/skills/",
+      "agent/channels/linq.ts",
       "agent/connections/square.ts",
       "agent/lib/square/",
       "agent/lib/linq/reply.ts",

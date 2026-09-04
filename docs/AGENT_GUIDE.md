@@ -158,13 +158,52 @@ development, may be enabled in preview with
 6. **Change local startup:** preserve `scripts/dev.ts` ownership of Compose,
    signal forwarding, dynamic port injection, migration, and teardown. Keep
    `./init.sh`, its unit tests, the README quickstart, this command matrix, the
-   operations runbook, and `AGENTS.md` synchronized. Verify both Agentation and
-   the application are observable and that an owned sidecar stops on exit.
+   operations runbook synchronized; update `AGENTS.md` if its guidance changes.
+   Verify both Agentation and the application are observable and that an owned
+   sidecar stops on exit.
 7. **Add an optional product capability:** package it as an Eve extension plus
    a skill and credential-brokered MCP connection. Instantiate the contract
    gym before mounting it in the product agent.
 
-## Non-negotiable gates
+## Verification gates
+
+### Test placement and commands
+
+- Colocate upstream-owned unit tests with source. Fork-only pure unit suites go
+  in `tests/unit/`; `agent/` and `db/` tests keep their established local layout.
+- Fork-owned PGlite, migration, service, and database suites go in
+  `tests/integration/`; browser journeys go in `tests/e2e/`.
+- Run `pnpm test:unit`, `pnpm test:integration`, or `pnpm test:coverage` as relevant.
+  Root Vitest runs both unit and integration suites. `REAL_PG` unset auto-detects
+  Compose; `0` skips real Postgres and `1` requires it.
+- `pnpm test:e2e` uses Playwright, which boots through `scripts/dev.ts` and owns
+  Compose, migrations, and teardown. It authenticates through the local phone
+  bypass and runs with `WORKSPACE_SCOPE_ENFORCEMENT=enforce`.
+
+### Local startup and browser acceptance
+
+For changes to prerequisites, environment variables, credential sources, ports,
+health routes, package scripts, startup order, signals, or teardown, update all
+owning surfaces in the same PR: `init.sh`, `tests/unit/init-script.test.ts`, the
+README quickstart, this guide's command matrix, and `operations/VERCEL.md`.
+Run the focused init-script tests and `./init.sh --check`, plus the repository
+checks below. Update `AGENTS.md` only if its entry-point guidance changes.
+
+For startup changes, run `./init.sh` and complete the runbook's
+[local acceptance](operations/VERCEL.md#local-acceptance): real browser path,
+one inference turn, Agentation health/annotations, server logs, and clean
+`Ctrl-C` teardown. Do not print credentials while diagnosing startup.
+
+For UI changes, run the relevant automated checks first, then exercise the real
+user path with `agent-browser`. Inspect the interactive snapshot, affected
+controls, browser errors/console, relevant network requests, and server logs.
+Check Agentation feedback before and during UI work when available, then resolve
+or reply to addressed annotations; if unavailable, report that and continue QA.
+Browser smoke does not replace a durable regression test for changed behavior.
+Run inference acceptance when the change affects chat or agent interaction;
+run the full startup acceptance when it affects startup or lifecycle behavior.
+
+### Handoff and deployment
 
 Before handoff, run `pnpm check`, `pnpm build`, and `git diff --check`. For UI
 changes, use a real local browser smoke after automated checks. For deployment
@@ -172,6 +211,10 @@ changes, prove one complete web-chat turn and one complete Linq turn; health
 alone is insufficient. Do not claim production readiness from local tests.
 
 ## Common traps
+
+- Set `CRON_SECRET` in Vercel to enable the five-minute webhook drain cron;
+  without it, the route responds with 404. The admin webhook drain button is
+  the supported manual drain path.
 
 - `@workflow/world-vercel` and Vercel Connect are not portable-provider support.
 - Local phone code `000000` is a development bypass, not a Linq delivery test.
