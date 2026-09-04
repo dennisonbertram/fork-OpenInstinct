@@ -21,6 +21,7 @@ minimumReleaseAgeExclude:
   - systeminformation
 allowBuilds:
   "@google/genai": false
+  better-sqlite3: true
   cbor-extract: false
   esbuild: true
   protobufjs: false
