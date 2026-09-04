@@ -62,11 +62,11 @@ describe("repository contract", () => {
     );
   });
 
-  it("limits the Square scope-enforcement exception to the test environment", () => {
+  it("runs Square evals with production-shaped scope enforcement", () => {
     const evalStep = squareWorkflow.split("- name: Run square evals")[1];
 
     expect(evalStep).toBeDefined();
-    expect(evalStep).toContain('NODE_ENV: "test"');
-    expect(evalStep).toContain('WORKSPACE_SCOPE_ENFORCEMENT: "off"');
+    expect(evalStep).not.toContain("NODE_ENV:");
+    expect(evalStep).not.toContain("WORKSPACE_SCOPE_ENFORCEMENT:");
   });
 });
