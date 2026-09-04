@@ -208,7 +208,15 @@ never secret values.
 “Let customers add tools” must not mean “execute customer JavaScript inside the
 trusted application runtime.” Use a staged model:
 
-### Stage 1: curated catalog
+### Current scope: our authored integrations
+
+We add and review integrations ourselves. Users can authorize their accounts
+for integrations we ship; arbitrary customer server URLs and package installs
+are outside the current scope. Native tools, OpenAPI connections (Square), and
+MCP connections are distinct choices; extensions package reusable contributions.
+See [PLUGINS.md](PLUGINS.md) for the current implementation guide.
+
+### Stage 1: curated catalog (Proposed product controls)
 
 - Compile reviewed authored tools and MCP/OpenAPI connections with the app.
 - Let each published agent enable a safe subset through Eve dynamic capability
@@ -220,11 +228,12 @@ trusted application runtime.” Use a staged model:
 
 ### Stage 2: customer MCP endpoints through a broker
 
-Current Eve dynamic capabilities cover tools, skills, instructions, subagents,
-and models; connection files are authored/compiled resources. For arbitrary
-customer MCP URLs, put a platform-controlled MCP broker behind one compiled
-connection rather than generating source files or redeploying per tenant. The
-broker should:
+This is future work, not a prerequisite for our authored integrations.
+Installed Eve 0.49.0 supports dynamic connection sets as well as other dynamic
+capabilities; authenticated dynamic entries require a stable `instanceKey`.
+That runtime support does not implement customer endpoint policy. If arbitrary
+customer MCP URLs are introduced, the proposed platform-controlled broker
+should:
 
 - validate Streamable HTTP/SSE transport and tool schemas;
 - block private, loopback, link-local, metadata, and disallowed destinations;

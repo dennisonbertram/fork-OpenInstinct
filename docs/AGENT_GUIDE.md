@@ -161,9 +161,11 @@ development, may be enabled in preview with
    operations runbook synchronized; update `AGENTS.md` if its guidance changes.
    Verify both Agentation and the application are observable and that an owned
    sidecar stops on exit.
-7. **Add an optional product capability:** package it as an Eve extension plus
-   a skill and credential-brokered MCP connection. Instantiate the contract
-   gym before mounting it in the product agent.
+7. **Add an integration:** choose native tools, OpenAPI, or MCP according to
+   the service. Add a skill for useful procedural guidance; package reusable
+   optional capabilities as Eve extensions. Follow `PLUGINS.md` and the relevant
+   checks in `PLUGIN_TESTING.md`; exercise the mount harness for an extension.
+   Customer-supplied servers remain future work.
 
 ## Verification gates
 
