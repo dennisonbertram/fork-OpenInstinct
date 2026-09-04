@@ -5,6 +5,15 @@ name: Square evals
 #   gh workflow run square-evals.yml -R dennisonbertram/fork-OpenInstinct --ref <branch>
 on:
   workflow_dispatch:
+    inputs:
+      run:
+        description: Paid eval target (one target per dispatch)
+        required: true
+        default: square
+        type: choice
+        options:
+          - square
+          - agent-smoke
 
 concurrency:
   group: square-evals-${{ github.ref }}
@@ -42,18 +51,27 @@ jobs:
           fi
 
       - name: Run square evals
+        if: ${{ inputs.run == 'square' }}
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         # No --strict: tone is judged but not gated (docs/SQUARE.md), and --strict
         # fails the run on a judge miss.
-        run: pnpm eval:square --with-database --junit .eve/junit.xml
+        run: pnpm eval:square --max-cost-usd 4 --estimated-cost-usd 4 --with-database --junit .eve/junit.xml
+
+      - name: Run selected agent smoke
+        if: ${{ inputs.run == 'agent-smoke' }}
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+        run: pnpm eval:agent --max-cost-usd 1 --estimated-cost-usd 1 --repetitions 1 --model openai/gpt-5.6-sol-fast --tag smoke --junit .eve/junit.xml
 
       - name: Upload eval artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: square-evals
+          name: paid-eval-${{ inputs.run }}
           path: |
             .eve/evals
+            .eve/eval-runs
             .eve/square-evals
+          include-hidden-files: true
           if-no-files-found: ignore

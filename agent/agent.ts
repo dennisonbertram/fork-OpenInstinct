@@ -5,6 +5,7 @@ import { getGatewayModel } from "@/db/services/settings";
 import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
 import { contractFixtureModel } from "@/evals/contract/fixture-model";
 import { isContractFixtureEnabled } from "@/env";
+import { rootAgentReasoning } from "@/agent/agent-settings";
 
 export default defineAgent({
   experimental: {
@@ -35,7 +36,7 @@ export default defineAgent({
       },
     },
   }),
-  reasoning: "low",
+  reasoning: rootAgentReasoning,
   compaction: {
     thresholdPercent: 0.7,
   },

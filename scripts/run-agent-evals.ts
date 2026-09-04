@@ -1,6 +1,22 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import {
+  beginManifestAttempt,
+  completeManifestAttempt,
+  createEvalRunManifest,
+  manifestCostStatus,
+} from "../evals/run-manifest.ts";
+import {
+  parsePositiveUsd,
+  parseRepetitions,
+  parseTimeoutMs,
+  reserveEstimatedCost,
+} from "../evals/paid-run-policy.ts";
+import { evalRunDefaults } from "../evals/eval-run-defaults.ts";
+import { rootAgentReasoning } from "../agent/agent-settings.ts";
+
+// oxlint-disable eslint/no-await-in-loop -- paid attempts must serialize reservation, execution, and recorded spend.
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const composeProject = `open-instinct-evals-${createHash("sha256")
@@ -34,7 +50,27 @@ await runAgentEvals();
 async function runAgentEvals() {
   try {
     requireModelCredentials();
-    const evalArguments = validateEvalArguments(process.argv.slice(2));
+    const options = parseAgentEvalOptions(process.argv.slice(2));
+    reserveEstimatedCost(options, {
+      actorCostUnaccountable: false,
+      actorCostsUsd: [],
+    });
+    const manifestPath = await createEvalRunManifest({
+      caseDirectory: "evals/agent",
+      fixtureClock: null,
+      effectiveArguments: options.evalArguments,
+      estimatedCostUsd: options.estimatedCostUsd,
+      judgeModel: evalRunDefaults.judgeModel,
+      maxConcurrency: 1,
+      maxCostUsd: options.maxCostUsd,
+      mode: "agent",
+      reasoning: rootAgentReasoning,
+      repetitions: options.repetitions,
+      repositoryRoot,
+      requestedModel: options.model,
+      timeoutMs: options.timeoutMs,
+    });
+    console.error(`eval-run manifest: ${manifestPath}`);
     composeAttempted = true;
     const databaseStarted = await requireSuccess(
       "docker",
@@ -62,21 +98,47 @@ async function runAgentEvals() {
 
     const migrated = await requireSuccess("pnpm", ["db:migrate"], environment);
     if (!migrated) return;
-    const exitCode = await run(
-      "pnpm",
-      [
-        "exec",
-        "eve",
-        "eval",
-        "agent",
-        "--strict",
-        "--max-concurrency",
-        "1",
-        ...evalArguments,
-      ],
-      environment
-    );
-    if (!interrupted) process.exitCode = exitCode ?? 1;
+    const setupArguments = ["exec", "tsx", "evals/square/setup-access.ts"];
+    if (options.model) setupArguments.push("--model", options.model);
+    const setup = await requireSuccess("pnpm", setupArguments, environment);
+    if (!setup) return;
+
+    let failed = false;
+    for (
+      let repetition = 0;
+      repetition < options.repetitions;
+      repetition += 1
+    ) {
+      const attemptId = await beginManifestAttempt(manifestPath);
+      const exitCode = await run(
+        "pnpm",
+        [
+          "exec",
+          "eve",
+          "eval",
+          "agent",
+          "--strict",
+          "--max-concurrency",
+          "1",
+          "--timeout",
+          String(options.timeoutMs),
+          ...options.evalArguments,
+        ],
+        {
+          ...environment,
+          EVAL_RUN_MANIFEST_ATTEMPT_ID: attemptId,
+          EVAL_RUN_MANIFEST_PATH: manifestPath,
+        }
+      );
+      await completeManifestAttempt(manifestPath, attemptId, exitCode);
+      failed ||= exitCode !== 0;
+      if (interrupted) return;
+      if (repetition + 1 >= options.repetitions) continue;
+
+      const cost = await manifestCostStatus(manifestPath);
+      reserveEstimatedCost(options, cost);
+    }
+    if (!interrupted) process.exitCode = failed ? 1 : 0;
   } finally {
     if (composeAttempted) {
       const exitCode = await run(
@@ -92,6 +154,75 @@ async function runAgentEvals() {
       }
     }
   }
+}
+
+function parseAgentEvalOptions(args: string[]) {
+  let estimatedCostUsd: number | undefined;
+  let maxCostUsd: number | undefined;
+  let model: string | undefined;
+  let repetitions = 1;
+  const evalArguments: string[] = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (
+      argument === "--max-cost-usd" ||
+      argument === "--estimated-cost-usd" ||
+      argument === "--model" ||
+      argument === "--repetitions"
+    ) {
+      const value = args[++index];
+      if (!value || value.startsWith("-"))
+        throw unsupportedEvalArgument(argument);
+      if (argument === "--max-cost-usd")
+        maxCostUsd = parsePositiveUsd(argument, value);
+      if (argument === "--estimated-cost-usd")
+        estimatedCostUsd = parsePositiveUsd(argument, value);
+      if (argument === "--model") model = parseModelId(value);
+      if (argument === "--repetitions") repetitions = parseRepetitions(value);
+      continue;
+    }
+    evalArguments.push(argument ?? "");
+  }
+  if (maxCostUsd === undefined) {
+    throw new Error(
+      "Paid agent evals require --max-cost-usd <USD> before they start."
+    );
+  }
+  if (estimatedCostUsd === undefined) {
+    throw new Error(
+      "Paid agent evals require --estimated-cost-usd <USD> before they start."
+    );
+  }
+  const validated = validateEvalArguments(evalArguments);
+  const timeoutArgument = validated.find(
+    (argument) => argument === "--timeout" || argument.startsWith("--timeout=")
+  );
+  const timeoutValue = timeoutArgument?.includes("=")
+    ? timeoutArgument.slice("--timeout=".length)
+    : timeoutArgument
+      ? validated[validated.indexOf(timeoutArgument) + 1]
+      : undefined;
+  return {
+    evalArguments: withoutTimeout(validated),
+    estimatedCostUsd,
+    maxCostUsd,
+    model: model ?? null,
+    repetitions,
+    timeoutMs: timeoutValue
+      ? parseTimeoutMs(timeoutValue)
+      : evalRunDefaults.timeoutMs,
+  };
+}
+
+function parseModelId(value: string) {
+  const model = value.trim();
+  if (!model || model.length > 300) {
+    throw new Error(
+      "--model must be a non-empty model ID of at most 300 characters."
+    );
+  }
+  return model;
 }
 
 function validateEvalArguments(args: string[]) {
@@ -141,6 +272,15 @@ function validateEvalArguments(args: string[]) {
   }
 
   return validated;
+}
+
+function withoutTimeout(args: readonly string[]) {
+  return args.filter(
+    (argument, index) =>
+      !argument.startsWith("--timeout=") &&
+      argument !== "--timeout" &&
+      args[index - 1] !== "--timeout"
+  );
 }
 
 function unsupportedEvalArgument(argument: string) {

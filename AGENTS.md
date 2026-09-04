@@ -107,7 +107,7 @@ synchronized. Do not introduce an undocumented second startup path.
 
 ## Square evals: on demand
 
-Before opening a PR, run `pnpm eval:square` and include its `Results:` line when
+Before opening a PR, run `pnpm eval:square --max-cost-usd <USD> --estimated-cost-usd <USD>` and include its `Results:` line when
 changing agent instructions (`agent/instructions.md` or `agent/instructions/`),
 `agent/agent.ts`, `agent/skills/`, `agent/connections/square.ts`, `agent/lib/square/`,
 `agent/lib/linq/reply.ts`, `agent/channels/linq.ts`, `evals/square/`,

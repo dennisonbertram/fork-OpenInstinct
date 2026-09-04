@@ -5,6 +5,11 @@ verified and when, the operator state of the sandbox deployment, and the
 proposed next steps. Labels follow [`README.md`](README.md): Implemented,
 Verified, Proposed.
 
+> Operator note: real-model Square evals require an explicit cost ceiling, for
+> example `pnpm eval:square --max-cost-usd 4 --estimated-cost-usd 4`. The local fixture is free; model
+> and judge calls are not. See [`evals/square/README.md`](../evals/square/README.md)
+> for repetitions, timeouts, selected-model runs, and manifest interpretation.
+
 ## Integration type (source reviewed 2026-09-04)
 
 **Square is an OpenAPI connection, not an MCP connection.**
@@ -156,11 +161,11 @@ gated.
 **The recorded run was green with the Square skill** (third run below: 12 of 12
 pass, judge 100%). The first two runs were red on the raw agent: 3 of 12,
 then 2 of 12. Since 2026-09-03 the suite runs on demand only: locally with
-`pnpm eval:square`, or in GitHub Actions through
+`pnpm eval:square --max-cost-usd <USD> --estimated-cost-usd <USD>`, or in GitHub Actions through
 `.github/workflows/square-evals.yml` (`workflow_dispatch`). AGENTS.md lists
 the changes that require a run before the pull request opens.
 
-### Tier A: the fake (default, `pnpm eval:square`)
+### Tier A: the fake (default, `pnpm eval:square --max-cost-usd <USD> --estimated-cost-usd <USD>`)
 
 - `evals/square/fake/server.ts` is a hand-written fake of selected Square read
   endpoints, backed by the committed fixture `evals/square/fake/fixture.json`
@@ -176,7 +181,7 @@ the changes that require a run before the pull request opens.
   `SQUARE_SANDBOX_ACCESS_TOKEN` (sandbox-only -- rejected by `src/env.ts`
   when `SQUARE_ENVIRONMENT` is `production`), runs `eve eval square`, and
   stops the fake on exit.
-- Run it with `pnpm eval:square` (add `-- --strict` to fail the process on
+- Run it with `pnpm eval:square --max-cost-usd <USD> --estimated-cost-usd <USD>` (add `--strict` to fail the process on
   any hard-gate miss).
 - `evals/square/square-reporter.ts` writes per-case cost, tool calls, and
   bubble count to `.eve/square-evals/<timestamp>.json` and `latest.json`,
@@ -225,7 +230,13 @@ account instead of the fake.
   [Developer Console](https://developer.squareup.com/console/en/sandbox-test-accounts),
   and use its access token as `SQUARE_SEED_ACCESS_TOKEN`.
 
-### Baseline 2026-09-03 (`pnpm eval:square -- --strict`, 12 cases, total model cost 1.842 USD, 34.5 s)
+### Baseline 2026-09-03 (`pnpm eval:square --max-cost-usd 4 --estimated-cost-usd 4 --strict`, 12 cases, total model cost 1.842 USD, 34.5 s)
+
+### Observed 2026-09-04 (hosted 13-case run 33923112539)
+
+The actor reported $2.8987904. Judge and all-in cost were not observable, so
+this is not a total-cost claim. The 4 USD example is an operator-provided
+preflight reservation, not a provider billing cap or price estimate.
 
 3 passed, 6 failed on real agent defects, 3 scored (hard gates passed, soft
 tone missed). Judge `closedQA` overall 25%.
