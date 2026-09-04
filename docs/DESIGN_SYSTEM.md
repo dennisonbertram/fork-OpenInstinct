@@ -66,33 +66,35 @@ The layout puts both font variables on `<html>`. The family tokens in
 prefix stays `--merit-` from the vendored `@merit-systems/brand` file; the
 names are an upstream artifact and are kept so no `type-*` recipe changes.
 
-Weight tokens: body 400, ui 500, signal 400, emphasis 600, mono 400.
+Weight tokens: body 400, ui 500, signal 400, emphasis 600, display 700, mono 400.
 Tracking tokens: text 0, display -0.022rem, tight -0.015rem, mono 0.
 
 ### 3.2 Type scale
 
 Source: `src/app/styles/brand/typography.css`. Pixel values assume a 16px root.
 
-| Utility                | Family      | Size                                  | Weight  | Tracking  | Line height | Use for                                   |
-| ---------------------- | ----------- | ------------------------------------- | ------- | --------- | ----------- | ----------------------------------------- |
-| `type-product-title`   | Inter Tight | 2.25rem (36)                          | 600     | -0.015rem | 1           | Product name on a landing or sign-in view |
-| `type-page-title`      | Inter Tight | 1.875rem (30)                         | 600     | -0.015rem | 1.2         | The one `h1` of a page                    |
-| `type-section-title`   | Inter Tight | 1.125rem (18)                         | 600     | 0         | 1.35        | `h2` of a page section                    |
-| `type-card-title`      | Inter Tight | 1rem (16)                             | 600     | 0         | 1.35        | Card and dialog titles                    |
-| `type-banner-metric`   | Inter Tight | 1.5rem (24)                           | 600     | 0         | 1           | A single large number                     |
-| `type-body`            | Inter Tight | inherit (16)                          | 400     | 0         | inherit     | Long-form prose                           |
-| `type-supporting-body` | Inter Tight | 0.875rem (14)                         | 400     | 0         | 1.5         | Descriptions, chat text, form help        |
-| `type-label`           | Inter Tight | 0.875rem (14)                         | 500     | 0         | 1.35        | Buttons, row labels, nav items            |
-| `type-input`           | Inter Tight | 1rem (16); 0.875rem at width >= 48rem | 400     | 0         | 1.5         | Text inside inputs                        |
-| `type-caption`         | Inter Tight | 0.75rem (12)                          | 400     | 0         | 1.35        | Secondary text under a label              |
-| `type-micro`           | Inter Tight | 0.6875rem (11)                        | 500     | 0         | 1.25        | Group headings in the sidebar, tags       |
-| `type-code`            | Mono        | 0.875rem (14)                         | 400     | 0         | 1.5         | Code blocks                               |
-| `type-compact-code`    | Mono        | 0.75rem (12)                          | 400     | 0         | 1.35        | Inline code, shortcuts, IDs               |
-| `type-signal`          | Inter Tight | inherit                               | 400     | -0.022rem | inherit     | Display text; sets `text-wrap: balance`   |
-| `type-ui`              | Inter Tight | inherit                               | 500     | 0         | inherit     | Weight-only UI text                       |
-| `type-mono`            | Mono        | inherit                               | 400     | 0         | inherit     | Family-only mono text                     |
-| `type-emphasis`        | inherit     | inherit                               | 600     | inherit   | inherit     | Bold inside a run of text                 |
-| `type-numeric`         | inherit     | inherit                               | inherit | inherit   | inherit     | Tabular lining numerals                   |
+| Utility                | Family      | Size                                   | Weight  | Tracking  | Line height | Use for                                                           |
+| ---------------------- | ----------- | -------------------------------------- | ------- | --------- | ----------- | ----------------------------------------------------------------- |
+| `type-product-title`   | Inter Tight | 2.25rem (36)                           | 600     | -0.015rem | 1           | Product name on a landing or sign-in view                         |
+| `type-page-title`      | Inter Tight | 1.875rem (30)                          | 600     | -0.015rem | 1.2         | The one `h1` of a page                                            |
+| `type-section-title`   | Inter Tight | 1.125rem (18)                          | 600     | 0         | 1.35        | `h2` of a page section                                            |
+| `type-card-title`      | Inter Tight | 1rem (16)                              | 600     | 0         | 1.35        | Card and dialog titles                                            |
+| `type-banner-metric`   | Inter Tight | 1.5rem (24)                            | 600     | 0         | 1           | A single large number                                             |
+| `type-body`            | Inter Tight | inherit (16)                           | 400     | 0         | inherit     | Long-form prose                                                   |
+| `type-supporting-body` | Inter Tight | 0.875rem (14)                          | 400     | 0         | 1.5         | Descriptions, chat text, form help                                |
+| `type-label`           | Inter Tight | 0.875rem (14)                          | 500     | 0         | 1.35        | Buttons, row labels, nav items                                    |
+| `type-input`           | Inter Tight | 1rem (16); 0.875rem at width >= 48rem  | 400     | 0         | 1.5         | Text inside inputs                                                |
+| `type-caption`         | Inter Tight | 0.75rem (12)                           | 400     | 0         | 1.35        | Secondary text under a label                                      |
+| `type-micro`           | Inter Tight | 0.6875rem (11)                         | 500     | 0         | 1.25        | Group headings in the sidebar, tags                               |
+| `type-code`            | Mono        | 0.875rem (14)                          | 400     | 0         | 1.5         | Code blocks                                                       |
+| `type-compact-code`    | Mono        | 0.75rem (12)                           | 400     | 0         | 1.35        | Inline code, shortcuts, IDs                                       |
+| `type-signal`          | Inter Tight | inherit                                | 400     | -0.022rem | inherit     | Display text; sets `text-wrap: balance`                           |
+| `type-ui`              | Inter Tight | inherit                                | 500     | 0         | inherit     | Weight-only UI text                                               |
+| `type-mono`            | Mono        | inherit                                | 400     | 0         | inherit     | Family-only mono text                                             |
+| `type-emphasis`        | inherit     | inherit                                | 600     | inherit   | inherit     | Bold inside a run of text                                         |
+| `type-numeric`         | inherit     | inherit                                | inherit | inherit   | inherit     | Tabular lining numerals                                           |
+| `type-hero`            | Inter Tight | 3.5rem (56); 2.375rem (38) below 40rem | 700     | -0.02em   | 1.02        | The one `h1` of a hero page such as sign-in; `text-wrap: balance` |
+| `type-eyebrow`         | Inter Tight | 0.8125rem (13)                         | 600     | 0.14em    | 1.35        | Uppercase brand or section eyebrow                                |
 
 Scale-only utilities set size and line height and nothing else:
 `type-scale-display` (2.25rem / 0.95), `type-scale-body` (1rem / 1.5),
@@ -209,15 +211,16 @@ size class gets 16px. The `xs` button size uses `size-3` (12px) and `sm` uses
 There are no spacing tokens beyond the Tailwind default scale. These
 conventions are observed in the pages, not defined in a token file.
 
-| Pattern          | Classes                                                                                    | Seen in                              |
-| ---------------- | ------------------------------------------------------------------------------------------ | ------------------------------------ |
-| Page container   | `mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8`           | workspace, vault, chat history pages |
-| Page header      | `type-page-title` then `type-supporting-body text-muted-foreground`                        | chat history, vault, sign-in         |
-| Section          | `<section aria-labelledby>` with `space-y-3` and an `h2.type-section-title`                | workspace page                       |
-| Row list         | `divide-y divide-border/50 border-y border-border/50`; rows `flex items-center gap-3 py-4` | workspace page                       |
-| Row icon well    | `size-9 rounded-md border border-border bg-muted/50 text-muted-foreground`                 | workspace page                       |
-| Narrow form page | `min-h-svh` centered, `max-w-sm space-y-6`                                                 | sign-in page                         |
-| Mobile header    | `h-12 border-b border-border/50 px-4 md:hidden` with `SidebarTrigger`                      | authenticated navigation             |
+| Pattern          | Classes                                                                                                                                                                                                              | Seen in                              |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| Page container   | `mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8`                                                                                                                                     | workspace, vault, chat history pages |
+| Page header      | `type-page-title` then `type-supporting-body text-muted-foreground`                                                                                                                                                  | chat history, vault, sign-in         |
+| Section          | `<section aria-labelledby>` with `space-y-3` and an `h2.type-section-title`                                                                                                                                          | workspace page                       |
+| Row list         | `divide-y divide-border/50 border-y border-border/50`; rows `flex items-center gap-3 py-4`                                                                                                                           | workspace page                       |
+| Row icon well    | `size-9 rounded-md border border-border bg-muted/50 text-muted-foreground`                                                                                                                                           | workspace page                       |
+| Narrow form page | `min-h-svh` centered, `max-w-sm space-y-6`                                                                                                                                                                           | sign-in page                         |
+| Mobile header    | `h-12 border-b border-border/50 px-4 md:hidden` with `SidebarTrigger`                                                                                                                                                | authenticated navigation             |
+| Split auth page  | `grid max-w-5xl items-end gap-10 md:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]`; card `max-w-md rounded-xl bg-card p-8 shadow-card`; mascot column `order-first md:order-none` with the bubble card `hidden md:block` | sign-in page                         |
 
 ## 4. Primitives
 
