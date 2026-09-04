@@ -10,27 +10,29 @@ being considered. Documents use three labels deliberately:
 
 ## Start here
 
-| Reader              | Document                                                           | Purpose                                                                                                         |
-| ------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| Operator            | [`operations/VERCEL.md`](operations/VERCEL.md)                     | Zero-to-running local and Vercel setup, Linq, verification, rollback, and incidents                             |
-| Coding agent        | [`AGENT_GUIDE.md`](AGENT_GUIDE.md)                                 | Repository topology, ownership boundaries, change recipes, and gates                                            |
-| Architect           | [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md)                 | Current system, trust boundaries, findings, and portability limits                                              |
-| Product/engineering | [`PRODUCT_DIRECTION.md`](PRODUCT_DIRECTION.md)                     | Infrastructure-first recommendation, product model, MVP, API, webhooks, and phone lifecycle                     |
-| Platform engineer   | [`MULTITENANCY.md`](MULTITENANCY.md)                               | Tenant isolation contract, migration sequence, quotas, lifecycle, and test strategy                             |
-| Coding agent        | [`agent-loop.html`](agent-loop.html)                               | Diagram of one turn: channels, scope, session hooks, steps, tool branches, bubble delivery (open in a browser)  |
-| Integrations        | [`SQUARE.md`](SQUARE.md)                                           | Per-user Square connection: implemented pieces, sandbox state, verification, and the proposed POS gym           |
-| Product/engineering | [`agent-conversation-feedback.md`](agent-conversation-feedback.md) | Dated log of user feedback on agent conversations; review material, not runtime instructions                    |
-| Design/frontend     | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)                             | The design system as implemented: fonts, type roles, color tokens, radius, motion, primitives, shell, gaps      |
-| Design/frontend     | [`JORY_DESIGN_MERGE.md`](JORY_DESIGN_MERGE.md)                     | Jory's design system inventory, side-by-side with this repository, and the proposed merge decisions             |
-| Plugin author       | [`PLUGINS.md`](PLUGINS.md)                                         | How to build a feature as an eve extension plus an MCP server: limits, identity contract, layout, mount, sale   |
-| Coding agent        | [`CONTRACT_EVALS.md`](CONTRACT_EVALS.md)                           | Implemented model-free PR gate for fork delivery, scope, Square, and plugin-mount contracts                     |
-| Plugin author       | [`PLUGIN_TESTING.md`](PLUGIN_TESTING.md)                           | The five-layer autonomous test ladder for a plugin's MCP server and its mount                                   |
-| Design/frontend     | [`design/`](design/)                                               | Pencil canvas (`design-system.pen`) with both systems drawn, plus the three component catalogs it is built from |
-| Contributor         | [`../README.md`](../README.md)                                     | Product overview and normal development entry points                                                            |
+| Reader                | Document                                                           | Purpose                                                                                                         |
+| --------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Operator              | [`operations/VERCEL.md`](operations/VERCEL.md)                     | Zero-to-running local and Vercel setup, Linq, verification, rollback, and incidents                             |
+| Coding agent          | [`AGENT_GUIDE.md`](AGENT_GUIDE.md)                                 | Repository topology, ownership boundaries, change recipes, and gates                                            |
+| Architect             | [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md)                 | Current system, trust boundaries, findings, and portability limits                                              |
+| Architect/contributor | [`PLATFORM_ARCHITECTURE.md`](PLATFORM_ARCHITECTURE.md)             | Core/Eve/extension/MCP boundaries, credential pattern, provider contract, and gym ladder                        |
+| Product/engineering   | [`PRODUCT_DIRECTION.md`](PRODUCT_DIRECTION.md)                     | Infrastructure-first recommendation, product model, MVP, API, webhooks, and phone lifecycle                     |
+| Platform engineer     | [`MULTITENANCY.md`](MULTITENANCY.md)                               | Tenant isolation contract, migration sequence, quotas, lifecycle, and test strategy                             |
+| Coding agent          | [`agent-loop.html`](agent-loop.html)                               | Diagram of one turn: channels, scope, session hooks, steps, tool branches, bubble delivery (open in a browser)  |
+| Integrations          | [`SQUARE.md`](SQUARE.md)                                           | Per-user Square connection: implemented pieces, sandbox state, verification, and the proposed POS gym           |
+| Product/engineering   | [`agent-conversation-feedback.md`](agent-conversation-feedback.md) | Dated log of user feedback on agent conversations; review material, not runtime instructions                    |
+| Design/frontend       | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)                             | The design system as implemented: fonts, type roles, color tokens, radius, motion, primitives, shell, gaps      |
+| Design/frontend       | [`JORY_DESIGN_MERGE.md`](JORY_DESIGN_MERGE.md)                     | Jory's design system inventory, side-by-side with this repository, and the proposed merge decisions             |
+| Plugin author         | [`PLUGINS.md`](PLUGINS.md)                                         | How to build a feature as an eve extension plus an MCP server: limits, identity contract, layout, mount, sale   |
+| Coding agent          | [`CONTRACT_EVALS.md`](CONTRACT_EVALS.md)                           | Implemented model-free PR gate for fork delivery, scope, Square, and plugin-mount contracts                     |
+| Maintainer            | [`EVE_PATCHES.md`](EVE_PATCHES.md)                                 | Current Eve patch, evidence, ownership, and removal policy                                                      |
+| Plugin author         | [`PLUGIN_TESTING.md`](PLUGIN_TESTING.md)                           | The five-layer autonomous test ladder for a plugin's MCP server and its mount                                   |
+| Design/frontend       | [`design/`](design/)                                               | Pencil canvas (`design-system.pen`) with both systems drawn, plus the three component catalogs it is built from |
+| Contributor           | [`../README.md`](../README.md)                                     | Product overview and normal development entry points                                                            |
 
 ## Current truth
 
-- The application is a single Next.js 16 application with an Eve 0.46 agent.
+- The application is a single Next.js 16 application with an Eve 0.49 agent.
 - Vercel is the supported deployment target. Neon, Kernel, private Vercel Blob,
   Vercel Workflow/AI Gateway, and Vercel Connect are part of the current path.
 - The database and service layer are workspace-scoped, but the product is not

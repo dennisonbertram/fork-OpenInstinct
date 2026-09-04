@@ -13,6 +13,8 @@ The repository is Vercel-first today. Treat self-hosting and multi-tenancy as
 documented direction unless a change explicitly implements them.
 
 Read [`README.md`](README.md) for the documentation map and truth labels.
+Read [`PLATFORM_ARCHITECTURE.md`](PLATFORM_ARCHITECTURE.md) before adding a
+channel provider, extension, skill, MCP service, or credential-bearing tool.
 Product work involving configurable agents, managed lines, MCP/tool catalogs,
 public APIs, or customer webhooks starts with
 [`PRODUCT_DIRECTION.md`](PRODUCT_DIRECTION.md) and
@@ -148,6 +150,9 @@ dispatch. Treat an uncertain dispatch as uncertain; never retry it automatically
    and cross-origin cases. Test both Next proxy behavior and generated Eve routes.
 6. **Change local startup:** preserve `scripts/dev.mjs` ownership of Compose,
    signal forwarding, dynamic port injection, migration, and teardown.
+7. **Add an optional product capability:** package it as an Eve extension plus
+   a skill and credential-brokered MCP connection. Instantiate the contract
+   gym before mounting it in the product agent.
 
 ## Non-negotiable gates
 

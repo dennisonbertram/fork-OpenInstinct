@@ -211,7 +211,7 @@
 
 <main>
   <header>
-    <p class="eyebrow">agent/ · eve 0.46 · read 2026-09-03</p>
+    <p class="eyebrow">agent/ · eve 0.49 · read 2026-09-04</p>
     <h1>OpenInstinct Agent Loop</h1>
     <p>
       How one user message becomes one reply. Every box names the file that owns
@@ -540,9 +540,10 @@
       an exact text reply resumes the parked Eve request rather than starting a
       new model turn. The session, vault, Square grant, and usage ledger all key
       on that scope. The turn runs as a Workflow SDK durable workflow; the
-      accent path is the reply leaving the turn. On iMessage a reply becomes as
-      many bubbles as it has paragraphs and bullets, which is why the eval gym
-      gates bubble count.
+      accent path is the reply leaving the turn. On iMessage each
+      <code>send_message</code> call becomes exactly one provider message; text
+      is never re-split by paragraph or bullet. The provider contract and eval
+      gym gate this mapping, native attachments, Tapbacks, and approval text.
     </figcaption>
   </figure>
 

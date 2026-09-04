@@ -5,7 +5,7 @@ This document is the test plan for one plugin built by
 human, and needs no model provider except the optional last layer. A coding
 agent can run the whole ladder and read pass or fail from exit codes.
 
-Labels: **Verified** was run on 2026-09-03. **Proposed** is the design.
+Labels: **Verified** was run on 2026-09-04. **Proposed** is the design.
 
 ---
 
@@ -162,7 +162,7 @@ Checks, in order:
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------- |
 | C1  | POST without bearer returns 401 with `WWW-Authenticate: Bearer`                                                                                               | MUST                                        | PLUGINS.md 6.4                                                    |
 | C2  | POST with a token signed by a wrong secret returns 401                                                                                                        | MUST                                        | identity contract                                                 |
-| C3  | `initialize` succeeds and `protocolVersion` is one of `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`                                                  | MUST                                        | eve 0.46.1 client list                                            |
+| C3  | `initialize` succeeds and `protocolVersion` is one of `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`                                                  | MUST                                        | eve 0.49.0 client list                                            |
 | C4  | `tools/list` returns at least one tool; every tool has `description` of 20 characters or more                                                                 | MUST                                        | model needs it                                                    |
 | C5  | Every `inputSchema` is valid JSON Schema draft-07 (ajv compiles it) and every property has a `description`                                                    | MUST                                        | host exposes schema verbatim                                      |
 | C6  | Every tool has `annotations` with all four hints present as booleans                                                                                          | MUST                                        | approval policy                                                   |
@@ -207,7 +207,16 @@ for "this input must fail" cases.
 
 ---
 
-## 3. Layer 3: mount test in a harness host (Proposed)
+## 3. Layer 3: mount test in a harness host
+
+**Implemented reference.** `pnpm eval:contract` builds the fixture extension
+under `evals/contract/fixtures/demo-extension`, mounts it in the isolated
+`evals/contract/mount-harness`, and proves a native tool, a namespaced skill,
+and a user-scoped bearer-authenticated MCP read tool. The product agent never
+mounts this fixture.
+
+**Proposed per-plugin form.** A released plugin still needs its own equivalent
+harness in the plugin repository:
 
 The seam between eve and the server is the one thing layers 1 and 2 cannot
 see. Test it in a tiny eve project inside the plugin repository,
@@ -215,7 +224,7 @@ see. Test it in a tiny eve project inside the plugin repository,
 
 ```
 shared/harness-host/
-  package.json                eve 0.46.1 (same as the host), the plugin extensions as workspace deps
+  package.json                eve 0.49.0 (same as the host), the plugin extensions as workspace deps
   agent/
     agent.ts                  model: mockModel(script)
     instructions.md           one line
@@ -276,7 +285,7 @@ All three are gates; `eve eval` exits non-zero on failure.
 
 What layer 3 proves, per plugin:
 
-1. `eve extension build` output mounts in eve 0.46.1 (capability manifest
+1. `eve extension build` output mounts in eve 0.49.0 (capability manifest
    accepted).
 2. The connection resolver mints a token the server accepts.
 3. eve's MCP client negotiates a protocol version with the server.
@@ -343,9 +352,10 @@ No secrets are needed for steps 1 to 4.
 | Layer 1 test file above against the demo server                       | Verified, 6 of 6 tests pass                |
 | Inspector CLI commands and exit codes 0 and 5                         | Verified                                   |
 | `tools/list` schema is JSON Schema draft-07                           | Verified by observation                    |
-| eve 0.46.1 client supports protocol versions 2024-11-05 to 2025-11-25 | Verified in the compiled client            |
+| eve 0.49.0 client supports protocol versions 2024-11-05 to 2025-11-25 | Verified in the compiled client            |
 | `mockModel` callback shape and `t.calledTool` matcher                 | Verified in `node_modules/eve/docs/evals/` |
 | The conformance runner                                                | Not built                                  |
 | The fuzz loop with `json-schema-faker`                                | Not run                                    |
-| The harness host and an eve session calling a plugin tool             | Not run                                    |
+| Reference harness: mount, skill load, and credentialed MCP read       | Verified by `pnpm eval:contract`           |
+| A released plugin's own harness                                       | Not run                                    |
 | Vercel deploy of the Express entry                                    | Not run                                    |

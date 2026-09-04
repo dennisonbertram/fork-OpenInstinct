@@ -1,7 +1,9 @@
 # Upstream sync policy
 
 This fork ships a production product. Upstream (`Merit-Systems/OpenInstinct`)
-is our feature pipeline. This file is the contract for staying current.
+is an optional feature source. This file is the contract for reviewing drift
+without surrendering ownership of the fork's architecture or taking every
+upstream change.
 
 ## Remotes
 
@@ -11,22 +13,28 @@ is our feature pipeline. This file is the contract for staying current.
 
 ## Cadence
 
-Sync weekly, or when the drift watch reports meaningful commits. Small weekly
-merges are the goal; do not let another 81-commit cliff build up.
+Review drift weekly, or when the drift watch reports meaningful commits. Intake
+only changes that solve a current fork need or materially reduce maintenance.
+There is no requirement to merge all upstream commits.
 
 ## Procedure
 
-1. Branch `sync/upstream-YYYYMMDD` from `main`. `git fetch upstream`.
-2. Merge upstream merge-commits chunk by chunk (first-parent order), never
-   rebase published history. Resolve with the standing rule: **upstream's
-   structure, our functionality** — both intents merged in content conflicts.
-3. Gate EVERY chunk: `pnpm check`, synthetic-env `pnpm build`, and
+1. Branch `sync/upstream-YYYYMMDD-<topic>` from `main`. `git fetch upstream`.
+2. Sort candidates into take, adapt, or skip in the PR. Port a small reviewed
+   commit or implement the idea against current fork boundaries. A whole-tree
+   merge is allowed only when its complete diff is deliberately in scope.
+3. Keep intake batches cohesive and review the resulting fork diff, not only
+   upstream commit messages. Never merge upstream blindly.
+4. Gate every batch: `pnpm check`, synthetic-env `pnpm build`, and
    `pnpm test:e2e` (7 specs, enforce posture). Do not pipe test output through
    `tail`/`grep` in a `&&` chain — pipes mask exit codes.
-4. Clear `.next` before dev-server boots after any merge that moves files;
+5. Clear `.next` before dev-server boots after any intake that moves files;
    stale dev caches silently disable `src/proxy.ts` (observed 2026-09-01).
-5. Preview deploy before merging the PR; production deploys on merge and runs
+6. Preview deploy before merging the PR; production deploys on merge and runs
    migrations first.
+
+Eve package upgrades are a separate dependency change. Review
+[`docs/EVE_PATCHES.md`](docs/EVE_PATCHES.md) on every Eve upgrade.
 
 ## Migration numbering (permanent rule)
 

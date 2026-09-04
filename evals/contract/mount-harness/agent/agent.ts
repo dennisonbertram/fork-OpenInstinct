@@ -4,6 +4,7 @@ import {
   type MockModelRequest,
   type MockModelResponse,
 } from "eve/evals";
+import { env } from "../env";
 
 export default defineAgent({
   model: defineDynamic({
@@ -23,9 +24,18 @@ const mountFixtureModel = mockModel({
 });
 
 function respond(request: MockModelRequest): MockModelResponse | string {
-  const match = /^call\s+(\S+)\s+([\s\S]+)$/u.exec(
-    request.lastUserMessage?.trim() ?? ""
-  );
+  if (JSON.stringify(request).includes(env.CONTRACT_MCP_TOKEN)) {
+    throw new Error("The connection credential reached the model request.");
+  }
+
+  const command = request.lastUserMessage?.trim() ?? "";
+  const skill = /^load\s+(\S+)$/u.exec(command)?.[1];
+  if (skill) {
+    if (request.toolResults.length > 0) return "SKILL LOADED";
+    return { toolCalls: [{ name: "load_skill", input: { skill } }] };
+  }
+
+  const match = /^call\s+(\S+)\s+([\s\S]+)$/u.exec(command);
   if (!match?.[1] || !match[2]) throw new Error("Invalid mount command.");
 
   if (request.toolResults.length > 0) {

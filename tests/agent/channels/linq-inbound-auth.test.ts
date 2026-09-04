@@ -2,6 +2,7 @@ import { Message } from "chat";
 import { accessScopeForUser } from "@/lib/access-scope";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as EnvModule from "@/env";
+import { defineInboundProviderContract } from "./provider-contract";
 
 interface AuthUserRow {
   readonly id: string;
@@ -84,6 +85,14 @@ const onMessage = (...args: Parameters<typeof linqChannelConfig.onMessage>) =>
 describe("Linq inbound authentication", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  defineInboundProviderContract("Linq", async () => {
+    const request = new Request("https://assistant.example/eve/v1/linq", {
+      body: "{}",
+      method: "POST",
+    });
+    return (await verifier(request, new Uint8Array())) === false;
   });
 
   it("rejects a webhook without a forwarder credential", async () => {
