@@ -6,6 +6,45 @@ import { ChatConversation } from ".";
 import type { ChatAgent } from "../chat-agent";
 
 describe("chat conversation", () => {
+  it.each(["submitted", "streaming"] as const)(
+    "shows quiet user-facing progress while %s without exposing internal text",
+    (status) => {
+      const agent = {
+        data: { messages: [message("turn-1:user", "Find an option")] },
+        error: undefined,
+        events: [],
+        respond: async () => undefined,
+        status,
+      } satisfies Pick<
+        ChatAgent,
+        "data" | "error" | "events" | "respond" | "status"
+      >;
+      const markup = renderToStaticMarkup(
+        <ChatConversation agent={agent} traceView="imessage" />
+      );
+      expect(markup).toContain("<output");
+      expect(markup).toContain("Jory is working");
+    }
+  );
+
+  it("shows background work even after the parent turn settles", () => {
+    const agent = {
+      data: { messages: [message("turn-1:user", "Find an option")] },
+      error: undefined,
+      events: [workerReceipt("task_worker")],
+      respond: async () => undefined,
+      status: "ready",
+    } satisfies Pick<
+      ChatAgent,
+      "data" | "error" | "events" | "respond" | "status"
+    >;
+    const markup = renderToStaticMarkup(
+      <ChatConversation agent={agent} traceView="imessage" />
+    );
+    expect(markup).toContain("Working in the browser");
+    expect(markup).not.toContain("task_worker");
+  });
+
   it("shows send_message output instead of assistant stream text", () => {
     const agent = {
       data: {
@@ -106,6 +145,7 @@ describe("chat conversation", () => {
     expect(markup).toContain("Try this");
     expect(markup).not.toContain("Request failed");
     expect(markup).not.toContain("Internal runtime failure");
+    expect(markup).toContain("Please try sending your message again.");
   });
 });
 

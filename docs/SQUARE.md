@@ -5,11 +5,37 @@ verified and when, the operator state of the sandbox deployment, and the
 proposed next steps. Labels follow [`README.md`](README.md): Implemented,
 Verified, Proposed.
 
+## Integration type (source reviewed 2026-09-04)
+
+**Square is an OpenAPI connection, not an MCP connection.**
+`agent/connections/square.ts` uses `defineOpenAPIConnection`: Eve derives tools
+from the pinned Square API specification and calls Square REST endpoints.
+`connection_search` and names such as `square__ListCustomers` are shared Eve
+connection conventions; they do not identify the transport as MCP.
+
+Square separately offers an MCP server. Its
+[official MCP documentation](https://developer.squareup.com/docs/mcp) describes
+production-only remote access and a local sandbox option. We do not install or
+call that server in the product's Square integration. No migration is needed
+just to add more of our own integrations; see [PLUGINS.md](PLUGINS.md).
+
+The OAuth credential is keyed by user (`squareSubject`); the installation
+record and access checks are workspace-scoped. The 145-operation allow-list
+is broader than the eight requested OAuth scopes, so it does not establish
+that all 145 operations are usable or tested. The normal auth path checks
+membership and recorded revocation; `src/env.ts` now defaults enforcement on.
+An isolated sandbox static-token path exists for development/evals and is
+rejected when either `SQUARE_ENVIRONMENT` or `VERCEL_ENV` is production.
+
+The deployment and sandbox observations below retain their original dates;
+they were not re-observed as part of this source review.
+
 ## Implemented (merged 2026-09-02, PR #32)
 
 Each OpenInstinct user connects their own Square seller account. The agent
-calls the Square API with that user's token only. No shared Square token
-exists in the deployment.
+calls the Square API with that user's token in the normal OAuth path. The
+recorded deployment below used per-user OAuth; its current configuration has
+not been audited in this documentation review.
 
 | Piece                  | Location                                                           | Notes                                                                                               |
 | ---------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
@@ -127,7 +153,7 @@ Twelve scored cases grade the agent's replies for correctness, tool
 discipline, cost, and iMessage bubble shape. Reply tone is judged but not
 gated.
 
-**The suite is green with the Square skill** (third run below: 12 of 12
+**The recorded run was green with the Square skill** (third run below: 12 of 12
 pass, judge 100%). The first two runs were red on the raw agent: 3 of 12,
 then 2 of 12. Since 2026-09-03 the suite runs on demand only: locally with
 `pnpm eval:square`, or in GitHub Actions through

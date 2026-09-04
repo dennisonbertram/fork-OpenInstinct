@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
+import { ArrowUpIcon } from "lucide-react";
 import {
   PromptInput,
   PromptInputBody,
@@ -6,12 +7,13 @@ import {
   type PromptInputMessage,
   PromptInputSubmit,
   PromptInputTextarea,
-  PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { messageContent } from "../../../_lib/message-input";
 import { hasPendingBackgroundWorker } from "../../_lib/trace-view";
 import { api } from "@/trpc/client";
 import type { ChatAgent } from "../chat-agent";
+
+import { ComposerAttachments } from "../../../_components/composer-attachments";
 
 export function ChatInput({
   agent,
@@ -78,22 +80,32 @@ export function ChatInput({
   };
 
   return (
-    <div className="absolute bottom-0 left-1/2 z-20 mx-auto w-full max-w-3xl -translate-x-1/2 bg-linear-to-t from-background via-background to-transparent px-4 pt-4 pb-6 sm:px-6">
-      <PromptInput compact onSubmit={handleSubmit}>
+    <div className="z-20 mx-auto w-full max-w-3xl shrink-0 bg-background px-4 pt-4 pb-6 sm:px-6">
+      <PromptInput
+        className="[&>[data-slot=input-group]]:rounded-3xl [&>[data-slot=input-group]]:bg-card [&>[data-slot=input-group]]:shadow-card"
+        multiple
+        onSubmit={handleSubmit}
+      >
         <PromptInputBody>
           <PromptInputTextarea
-            className="min-h-0"
+            aria-label="Message Jory"
+            className="min-h-20 px-5 pt-5 pb-2"
             disabled={agent.status === "submitted"}
             placeholder="Send a message…"
           />
         </PromptInputBody>
-        <PromptInputFooter>
-          <PromptInputTools />
+        <PromptInputFooter className="items-end px-3 pb-3">
+          <ComposerAttachments />
           <PromptInputSubmit
+            className="size-10 shrink-0 rounded-full"
             disabled={isRestoring}
             onStop={() => void agent.cancel()}
             status={isBusy ? agent.status : undefined}
-          />
+          >
+            {isBusy ? undefined : (
+              <ArrowUpIcon aria-hidden="true" className="size-4" />
+            )}
+          </PromptInputSubmit>
         </PromptInputFooter>
       </PromptInput>
     </div>
