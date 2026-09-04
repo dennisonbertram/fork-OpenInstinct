@@ -126,17 +126,66 @@ export async function currentKernelPageOrigin({
   return withKernelPage(browserSessionId, signal, async ({ origin }) => origin);
 }
 
+export async function assertKernelFrameOrigin({
+  browserSessionId,
+  expectedOrigin,
+  frameId,
+  signal,
+}: {
+  readonly browserSessionId: string;
+  readonly expectedOrigin: string;
+  readonly frameId: string;
+  readonly signal?: AbortSignal;
+}) {
+  return withKernelPage(
+    browserSessionId,
+    signal,
+    async ({ connection, origin, sessionId }) => {
+      if (origin !== expectedOrigin) {
+        throw new Error(
+          "The browser target no longer matches the approved origin."
+        );
+      }
+      const frames = (
+        await Promise.all(
+          sessionId.map(async (currentSessionId) => {
+            const { frameTree } = frameTreeSchema.parse(
+              await connection.send(
+                "Page.getFrameTree",
+                undefined,
+                currentSessionId
+              )
+            );
+            return flattenFrames(frameTree);
+          })
+        )
+      ).flat();
+      const frame = frames.find(({ id }) => id === frameId);
+      if (!frame || frameOrigin(frame.url) !== expectedOrigin) {
+        throw new Error(
+          "The target frame no longer matches the approved origin."
+        );
+      }
+      return true;
+    }
+  );
+}
+
 export async function fillWithKernelNativeAutofill({
   browserSessionId,
   claims,
   expectedOrigin,
   kind,
+  authorizedFrameId,
+  authorizedFrameOrigin,
   signal,
 }: {
   readonly browserSessionId: string;
   readonly claims: readonly AutofillClaim[];
   readonly expectedOrigin: string;
   readonly kind: NativeAutofillKind;
+  readonly authorizedFrameId?: string;
+  readonly authorizedFrameOrigin?: string;
   readonly signal?: AbortSignal;
 }) {
   const payload =
@@ -156,12 +205,20 @@ export async function fillWithKernelNativeAutofill({
         const filledClaims = await fillNativeLoginControls(
           connection,
           sessionId,
-          claims
+          claims,
+          expectedOrigin
         );
         return { filledClaims, origin };
       }
 
-      const controls = await inspectControls(connection, sessionId, kind);
+      const controls = (
+        await inspectControls(connection, sessionId, kind)
+      ).filter(
+        (control) =>
+          control.origin === (authorizedFrameOrigin ?? expectedOrigin) &&
+          (authorizedFrameId === undefined ||
+            control.frameId === authorizedFrameId)
+      );
       if (controls.length === 0) {
         throw new Error("No visible form control is available for autofill.");
       }
@@ -170,6 +227,12 @@ export async function fillWithKernelNativeAutofill({
       /* oxlint-disable eslint/no-await-in-loop -- Autofill tries controls in priority order and stops after the first accepted target. */
       for (const control of controls) {
         try {
+          await revalidateFrameOrigin(
+            connection,
+            control.sessionId,
+            control.frameId,
+            authorizedFrameOrigin ?? expectedOrigin
+          );
           await markNativeAutofilledControls(connection, control);
           await connection.send(
             "Autofill.trigger",
@@ -199,9 +262,14 @@ export async function fillWithKernelNativeAutofill({
 async function fillNativeLoginControls(
   connection: CdpConnection,
   sessionIds: readonly string[],
-  claims: readonly AutofillClaim[]
+  claims: readonly AutofillClaim[],
+  expectedOrigin: string
 ) {
-  const controls = await inspectNativeLoginControls(connection, sessionIds);
+  const controls = await inspectNativeLoginControls(
+    connection,
+    sessionIds,
+    expectedOrigin
+  );
   const focused = controls.find((control) => control.focused);
   if (!focused) {
     throw new Error(
@@ -222,6 +290,12 @@ async function fillNativeLoginControls(
 
   /* oxlint-disable eslint/no-await-in-loop -- Login fields must be filled in DOM order so page validation sees coherent intermediate state. */
   for (const { control, value } of fills) {
+    await revalidateFrameOrigin(
+      connection,
+      control.sessionId,
+      control.frameId,
+      expectedOrigin
+    );
     const accepted = await fillNativeLoginControl(connection, control, value);
     if (!accepted) {
       throw new Error("The login form rejected secure credential autofill.");
@@ -233,7 +307,8 @@ async function fillNativeLoginControls(
 
 async function inspectNativeLoginControls(
   connection: CdpConnection,
-  sessionIds: readonly string[]
+  sessionIds: readonly string[],
+  expectedOrigin: string
 ) {
   return (
     await Promise.all(
@@ -245,11 +320,19 @@ async function inspectNativeLoginControls(
           );
           return (
             await Promise.all(
-              flattenFrames(frameTree).map(({ id: frameId }) =>
-                inspectNativeLoginFrame(connection, sessionId, frameId).catch(
-                  () => []
-                )
-              )
+              flattenFrames(frameTree).flatMap(({ id: frameId, url }) => {
+                const origin = frameOrigin(url);
+                return origin === expectedOrigin
+                  ? [
+                      inspectNativeLoginFrame(
+                        connection,
+                        sessionId,
+                        frameId,
+                        origin
+                      ).catch(() => []),
+                    ]
+                  : [];
+              })
             )
           ).flat();
         } catch {
@@ -263,7 +346,8 @@ async function inspectNativeLoginControls(
 async function inspectNativeLoginFrame(
   connection: CdpConnection,
   sessionId: string,
-  frameId: string
+  frameId: string,
+  origin: string | undefined
 ) {
   const { executionContextId } = isolatedWorldSchema.parse(
     await connection.send(
@@ -289,7 +373,7 @@ async function inspectNativeLoginFrame(
   return descriptors.flatMap((descriptor) => {
     const classified = classifyNativeLoginControl(descriptor);
     return classified
-      ? [{ ...classified, executionContextId, frameId, sessionId }]
+      ? [{ ...classified, executionContextId, frameId, origin, sessionId }]
       : [];
   });
 }
@@ -385,12 +469,13 @@ async function inspectControls(
           );
           return (
             await Promise.all(
-              flattenFrames(frameTree).map(({ id: frameId }) =>
+              flattenFrames(frameTree).map(({ id: frameId, url }) =>
                 inspectFrameControls(
                   connection,
                   sessionId,
                   frameId,
-                  kind
+                  kind,
+                  frameOrigin(url)
                 ).catch(() => [])
               )
             )
@@ -413,7 +498,8 @@ async function inspectFrameControls(
   connection: CdpConnection,
   sessionId: string,
   frameId: string,
-  kind: "address" | "contact" | "payment"
+  kind: "address" | "contact" | "payment",
+  origin: string | undefined
 ) {
   const { executionContextId } = isolatedWorldSchema.parse(
     await connection.send(
@@ -462,6 +548,7 @@ async function inspectFrameControls(
             frameId,
             index: descriptor.index,
             order,
+            origin,
             sessionId,
             standard: standardAutocomplete(kind, descriptor.autocomplete),
           };
@@ -473,6 +560,34 @@ async function inspectFrameControls(
       })
     )
   ).filter((control) => control !== null);
+}
+
+async function revalidateFrameOrigin(
+  connection: CdpConnection,
+  sessionId: string,
+  frameId: string,
+  expectedOrigin: string
+) {
+  const { frameTree } = frameTreeSchema.parse(
+    await connection.send("Page.getFrameTree", undefined, sessionId)
+  );
+  const frame = flattenFrames(frameTree).find(({ id }) => id === frameId);
+  if (!frame || frameOrigin(frame.url) !== expectedOrigin) {
+    throw new Error(
+      "The autofill target frame no longer matches the approved origin."
+    );
+  }
+}
+
+function frameOrigin(url: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? parsed.origin
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 const controlInspectionExpression = `(() => {

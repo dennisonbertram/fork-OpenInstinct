@@ -307,6 +307,26 @@ export const vaultItems = pgTable(
   ]
 );
 
+export const vaultImportBatches = pgTable(
+  "vault_import_batches",
+  {
+    workspaceId: text("workspace_id").notNull(),
+    batchKey: text("batch_key").notNull(),
+    createdAt: text("created_at").notNull().default(utcTimestampDefault),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.workspaceId, table.batchKey],
+      name: "vault_import_batches_pkey",
+    }),
+    foreignKey({
+      name: "vault_import_batches_workspace_id_fkey",
+      columns: [table.workspaceId],
+      foreignColumns: [workspaces.id],
+    }).onDelete("cascade"),
+  ]
+);
+
 export const settings = pgTable(
   "settings",
   {
@@ -668,6 +688,7 @@ export const apiIdempotencyKeys = pgTable(
     resourceId: text("resource_id"),
     responseStatus: integer("response_status").notNull(),
     createdAt: text("created_at").notNull().default(utcTimestampDefault),
+    leaseExpiresAt: text("lease_expires_at"),
   },
   (table) => [
     foreignKey({
@@ -957,6 +978,8 @@ export const webhookDeliveries = pgTable(
     responseStatus: integer("response_status"),
     outcome: text("outcome").notNull().default("pending"),
     nextAttemptAt: text("next_attempt_at").notNull(),
+    claimToken: text("claim_token"),
+    claimExpiresAt: text("claim_expires_at"),
     createdAt: text("created_at").notNull().default(utcTimestampDefault),
     updatedAt: text("updated_at").notNull().default(utcTimestampDefault),
   },

@@ -13,6 +13,7 @@ import {
 import { requireWorkerScope } from "@/agent/subagents/worker/lib/access";
 import { requireOwnedBrowserSession } from "@/agent/subagents/worker/lib/owned-browser";
 import { executeBrowserLoopTool, modelText } from "../lib/semantic-loop";
+import { isVaultFilledBrowserSession } from "../lib/vault-browser-guard";
 
 /* oxlint-disable anti-slop/no-known-value-widening, anti-slop/no-runtime-typeof, anti-slop/no-unknown-parameters, anti-slop/no-unsafe-dictionary-type -- Browser Loop supplies runtime-selected JSON Schemas and JSON inputs, so this adapter must preserve its dynamic vendor boundary. */
 
@@ -20,9 +21,9 @@ const allSpecs = [
   loop.tools.browser.snapshot(),
   loop.tools.browser.text(),
   loop.tools.browser.find(),
+  loop.tools.browser.navigate(),
   loop.tools.browser.waitFor(),
   loop.tools.browser.act(),
-  loop.tools.playwright(),
 ];
 const specsByName = new Map(allSpecs.map((spec) => [spec.name, spec]));
 const relaxedBrowserActTimeoutMs = 8_000;
@@ -62,12 +63,15 @@ async function executeSemanticTool(
   const scope = await requireWorkerScope(context);
   const { sessionId, toolInput } = splitSessionInput(input);
   await requireOwnedBrowserSession(scope, sessionId);
-  return executeBrowserLoopTool(
+  const output = await executeBrowserLoopTool(
     sessionId,
     spec,
     boundedToolInput(spec, toolInput),
     context.abortSignal
   );
+  return isVaultFilledBrowserSession(sessionId)
+    ? redactVaultFilledBrowserOutput(output)
+    : output;
 }
 
 function boundedToolInput(spec: LoopToolSpec, input: Record<string, unknown>) {
@@ -79,13 +83,24 @@ function boundedToolInput(spec: LoopToolSpec, input: Record<string, unknown>) {
   if (spec.name === "browser_act") {
     return relaxedBrowserActInput(input);
   }
-  if (spec.name === "playwright_execute") {
-    return {
-      ...input,
-      timeout_sec: boundedTimeout(input.timeout_sec, 20),
-    };
-  }
   return input;
+}
+
+function redactVaultFilledBrowserOutput(output: LoopToolExecutionResult) {
+  return {
+    ...output,
+    content: [
+      {
+        type: "text" as const,
+        text: "Sensitive browser content omitted after vault autofill.",
+      },
+    ],
+    details: {
+      statusText: "Sensitive browser content omitted after vault autofill.",
+      skippedActions: output.details.skippedActions,
+      isError: output.details.isError,
+    },
+  };
 }
 
 function boundedTimeout(value: unknown, maximum: number) {
@@ -100,7 +115,7 @@ function toModelOutput(output: LoopToolExecutionResult) {
   }
   const parts = output.content.map((part) =>
     part.type === "text"
-      ? toolOutputPart.text(part.text)
+      ? toolOutputPart.text(redactBrowserValues(part.text))
       : toolOutputPart.file(part.data, { mediaType: part.mimeType })
   );
   return parts.length > 0
@@ -167,6 +182,11 @@ function relaxedBrowserActInput(input: Record<string, unknown>) {
           timeout_ms: _stepTimeoutMs,
           ...action
         } = step;
+        if (action.type === "click" || action.type === "key") {
+          throw new Error(
+            "Consequential browser clicks and keys require commit_browser_action."
+          );
+        }
         return action;
       })
     : relaxed.steps;
@@ -273,8 +293,19 @@ function isBrowserActResult(value: unknown): value is BrowserActResult {
 }
 
 function truncate(value: string, limit: number) {
+  value = redactBrowserValues(value);
   if (value.length <= limit) return value;
   return `${value.slice(0, limit)}\n[truncated ${String(value.length - limit)} characters]`;
+}
+
+function redactBrowserValues(value: string) {
+  return value
+    .replace(/\bvalue\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/giu, "value=[omitted]")
+    .replace(
+      /(["']?value["']?\s*:\s*)(["'][^"']*["']|[^,}\s]+)/giu,
+      "$1[omitted]"
+    )
+    .replace(/\b(?:\d[ -]?){13,19}\b/gu, "[sensitive value omitted]");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

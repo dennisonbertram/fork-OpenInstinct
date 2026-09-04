@@ -7,13 +7,11 @@ import computerAction from "@/agent/subagents/worker/tools/computer_action";
 
 const mocks = {
   batch: vi.spyOn(kernel.browsers.computer, "batch"),
-  readClipboard: vi.spyOn(kernel.browsers.computer, "readClipboard"),
   requireOwnedBrowserSession: vi.spyOn(
     OwnedBrowser,
     "requireOwnedBrowserSession"
   ),
   requireWorkerScope: vi.spyOn(WorkerAccess, "requireWorkerScope"),
-  writeClipboard: vi.spyOn(kernel.browsers.computer, "writeClipboard"),
 };
 
 beforeEach(() => {
@@ -28,21 +26,16 @@ beforeEach(() => {
     workerSessionId: "worker-session-1",
   });
   mocks.batch.mockResolvedValue();
-  mocks.readClipboard.mockResolvedValue({ text: "clipboard value" });
-  mocks.writeClipboard.mockResolvedValue();
 });
 
 describe("worker browser tools", () => {
-  it("sends contiguous computer actions through Kernel batch while preserving read order", async () => {
+  it("sends contiguous reversible computer actions through Kernel batch", async () => {
     const execute = computerAction.execute;
     const context = toolContextFor();
     const result = await execute(
       {
         actions: [
-          { click_mouse: { x: 10, y: 20 }, type: "click_mouse" },
-          { type: "type_text", type_text: { text: "hello" } },
           { sleep: { duration_ms: 100 }, type: "sleep" },
-          { type: "read_clipboard" },
           { scroll: { x: 10, y: 20, delta_y: 4 }, type: "scroll" },
         ],
         session_id: "browser-1",
@@ -50,25 +43,17 @@ describe("worker browser tools", () => {
       context
     );
 
-    expect(mocks.batch).toHaveBeenCalledTimes(2);
-    expect(mocks.batch).toHaveBeenNthCalledWith(
-      1,
+    expect(mocks.batch).toHaveBeenCalledTimes(1);
+    expect(mocks.batch).toHaveBeenCalledWith(
       "browser-1",
       {
         actions: [
-          { click_mouse: { x: 10, y: 20 }, type: "click_mouse" },
-          { type: "type_text", type_text: { text: "hello" } },
           { sleep: { duration_ms: 100 }, type: "sleep" },
+          { scroll: { x: 10, y: 20, delta_y: 4 }, type: "scroll" },
         ],
       },
       { signal: context.abortSignal }
     );
-    expect(mocks.batch.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.readClipboard.mock.invocationCallOrder[0] ?? Infinity
-    );
-    expect(mocks.readClipboard.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.batch.mock.invocationCallOrder[1] ?? Infinity
-    );
-    expect(result).toMatchObject({ data: [{ text: "clipboard value" }] });
+    expect(result).toMatchObject({ data: undefined });
   });
 });

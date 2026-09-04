@@ -1,8 +1,10 @@
+/* oxlint-disable anti-slop/require-safety-comment-for-type-assertion, typescript/no-unsafe-type-assertion -- The fake Node HTTPS transport implements only the request/response event surface exercised by pinned delivery. */
+import { EventEmitter } from "node:events";
 import { createHmac } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   db,
   resetDatabaseForIntegrationTest,
@@ -10,8 +12,50 @@ import {
 } from "@/db";
 import * as schema from "../../db/schema";
 
+interface LookupOptions {
+  readonly all?: boolean;
+  readonly family?: number;
+}
+interface PinnedRequestOptions {
+  readonly headers?: Record<string, string>;
+  readonly hostname?: string;
+  readonly lookup?: (
+    hostname: string,
+    options: LookupOptions,
+    callback: (error: Error | null, address?: string, family?: number) => void
+  ) => void;
+  readonly servername?: string;
+}
+interface FakeRequest extends EventEmitter {
+  end: (body?: string) => void;
+}
+interface FakeResponse extends EventEmitter {
+  destroy: () => void;
+  headers: Record<string, string>;
+  statusCode: number;
+}
+type HttpsRequestMock = (
+  options: PinnedRequestOptions,
+  callback: (response: FakeResponse) => void
+) => FakeRequest;
+
+const dnsMocks = vi.hoisted(() => ({
+  lookup:
+    vi.fn<() => Promise<readonly { address: string; family: number }[]>>(),
+}));
+vi.mock("node:dns/promises", () => dnsMocks);
+const httpsMocks = vi.hoisted(() => ({
+  request: vi.fn<HttpsRequestMock>(),
+}));
+vi.mock("node:https", () => httpsMocks);
+
 const databases: PGlite[] = [];
+beforeEach(() => {
+  dnsMocks.lookup.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+});
 afterEach(async () => {
+  dnsMocks.lookup.mockReset();
+  httpsMocks.request.mockReset();
   resetDatabaseForIntegrationTest();
   await Promise.all(databases.splice(0).map((database) => database.close()));
 });
@@ -334,6 +378,222 @@ describe("webhook outbox", () => {
       (await service.client.query("SELECT outcome FROM webhook_deliveries"))
         .rows
     ).toEqual([{ outcome: "dead" }]);
+  });
+
+  it.each([
+    ["loopback", [{ address: "127.0.0.1", family: 4 }]],
+    ["RFC1918", [{ address: "10.0.0.8", family: 4 }]],
+    ["link-local", [{ address: "169.254.169.254", family: 4 }]],
+    ["IPv6 loopback", [{ address: "::1", family: 6 }]],
+    ["mapped private IPv6", [{ address: "::ffff:192.168.1.10", family: 6 }]],
+    [
+      "mixed public and private answers",
+      [
+        { address: "93.184.216.34", family: 4 },
+        { address: "192.168.1.10", family: 4 },
+      ],
+    ],
+  ])(
+    "fails closed when a hostname resolves to %s",
+    async (_name, addresses) => {
+      const service = await loadService();
+      const lookup = dnsMocks.lookup.mockResolvedValue(addresses);
+
+      await expect(
+        service.webhooks.registerWebhookEndpoint(service.alice, {
+          url: "https://private-host.example.test",
+          subscribedEvents: ["agent.published"],
+        })
+      ).rejects.toThrow(/public HTTPS|public addresses/i);
+      expect(lookup).toHaveBeenCalled();
+      lookup.mockReset();
+    }
+  );
+
+  it("rechecks DNS at delivery and rejects a public-to-private rebinding", async () => {
+    const service = await loadService();
+    const lookup = dnsMocks.lookup.mockResolvedValue([
+      { address: "93.184.216.34", family: 4 },
+    ]);
+    const registered = await service.webhooks.registerWebhookEndpoint(
+      service.alice,
+      {
+        url: "https://rebind.example.test",
+        subscribedEvents: ["agent.published"],
+      }
+    );
+    await service.webhooks.emitWebhookEvent(service.database, service.alice, {
+      type: "agent.published",
+      payload: { agentId: "a", revisionId: "r" },
+    });
+    lookup.mockResolvedValue([{ address: "10.0.0.8", family: 4 }]);
+    let fetches = 0;
+    await service.webhooks.drainWebhookDeliveries({
+      fetchImpl: async () => {
+        fetches += 1;
+        return new Response(null, { status: 204 });
+      },
+    });
+
+    expect(fetches).toBe(0);
+    expect(
+      (await service.client.query("SELECT outcome FROM webhook_deliveries"))
+        .rows
+    ).toEqual([{ outcome: "dead" }]);
+    expect(registered.endpoint.url).toBe("https://rebind.example.test/");
+    lookup.mockReset();
+  });
+
+  it.each([
+    ["private IPv4", "10.0.0.8", 4],
+    ["private IPv6", "::1", 6],
+    ["mapped private IPv6", "::ffff:192.168.1.10", 6],
+  ])(
+    "pins the connection away from a %s DNS rebinding",
+    async (_name, privateAddress, privateFamily) => {
+      const service = await loadService();
+      httpsMocks.request.mockImplementation((_options, callback) => {
+        const request = new EventEmitter() as FakeRequest;
+        request.end = () => {
+          const response = new EventEmitter() as FakeResponse;
+          response.headers = {};
+          response.statusCode = 204;
+          response.destroy = vi.fn<() => void>();
+          callback(response);
+          response.emit("end");
+        };
+        return request;
+      });
+      dnsMocks.lookup
+        .mockReset()
+        .mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }])
+        .mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }]);
+      await service.webhooks.registerWebhookEndpoint(service.alice, {
+        url: "https://connection-race.example.test",
+        subscribedEvents: ["agent.published"],
+      });
+      await service.webhooks.emitWebhookEvent(service.database, service.alice, {
+        type: "agent.published",
+        payload: { agentId: "a", revisionId: "r" },
+      });
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => {
+        throw new Error("The default transport must use pinned HTTPS.");
+      };
+      try {
+        // DNS changes after validation, immediately before a vulnerable
+        // hostname-based connection would be made.
+        dnsMocks.lookup.mockResolvedValue([
+          { address: privateAddress, family: privateFamily },
+        ]);
+        await service.webhooks.drainWebhookDeliveries();
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+
+      expect(httpsMocks.request).toHaveBeenCalledTimes(1);
+      const firstCall = httpsMocks.request.mock.calls[0];
+      if (!firstCall) throw new Error("Expected a pinned HTTPS request.");
+      const [options] = firstCall;
+      expect(options.hostname).toBe("93.184.216.34");
+      expect(options.servername).toBe("connection-race.example.test");
+      expect(options.headers?.host).toBe("connection-race.example.test");
+      const lookup = options.lookup;
+      if (!lookup) throw new Error("Expected a pinned lookup callback.");
+      const connection = await new Promise<{
+        address?: string;
+        family?: number;
+      }>((resolve, reject) => {
+        lookup("connection-race.example.test", {}, (error, address, family) => {
+          if (error) reject(error);
+          else resolve({ address, family });
+        });
+      });
+      expect(connection).toEqual({ address: "93.184.216.34", family: 4 });
+      expect(connection.address).not.toBe(privateAddress);
+    }
+  );
+
+  it("does not buffer an untrusted webhook response body", async () => {
+    const service = await loadService();
+    const response = new EventEmitter() as FakeResponse;
+    response.headers = {};
+    response.statusCode = 200;
+    response.destroy = vi.fn<() => void>();
+    httpsMocks.request.mockImplementation((_options, callback) => {
+      const request = new EventEmitter() as FakeRequest;
+      request.end = () => {
+        callback(response);
+        // A response may be arbitrarily large or never terminate. The
+        // delivery result must be available from headers alone.
+        response.emit("data", Buffer.alloc(16 * 1024 * 1024));
+      };
+      return request;
+    });
+    await service.webhooks.registerWebhookEndpoint(service.alice, {
+      url: "https://large-response.example.test",
+      subscribedEvents: ["agent.published"],
+    });
+    await service.webhooks.emitWebhookEvent(service.database, service.alice, {
+      type: "agent.published",
+      payload: { agentId: "a", revisionId: "r" },
+    });
+
+    await expect(service.webhooks.drainWebhookDeliveries()).resolves.toEqual({
+      dead: 0,
+      delivered: 1,
+      failed: 0,
+    });
+    expect(response.destroy).toHaveBeenCalledTimes(1);
+    expect(response.listenerCount("data")).toBe(0);
+  });
+
+  it("does not hold endpoint or delivery locks while an outbound fetch is pending", async () => {
+    const service = await loadService();
+    const registered = await service.webhooks.registerWebhookEndpoint(
+      service.alice,
+      {
+        url: "https://slow.example.test",
+        subscribedEvents: ["agent.published"],
+      }
+    );
+    await service.webhooks.emitWebhookEvent(service.database, service.alice, {
+      type: "agent.published",
+      payload: { agentId: "a", revisionId: "r" },
+    });
+    let releaseFetch!: (response: Response) => void;
+    let markFetchStarted!: () => void;
+    const fetchStarted = new Promise<void>((resolve) => {
+      markFetchStarted = resolve;
+    });
+    const fetchReleased = new Promise<Response>((resolve) => {
+      releaseFetch = resolve;
+    });
+    const draining = service.webhooks.drainWebhookDeliveries({
+      fetchImpl: async () => {
+        markFetchStarted();
+        return await fetchReleased;
+      },
+    });
+    await fetchStarted;
+    const disableStartedAt = performance.now();
+    const disabling = service.webhooks.disableWebhookEndpoint(
+      service.alice,
+      registered.endpoint.id
+    );
+    const disabledWithoutWaitingForFetch = await Promise.race([
+      disabling.then(() => true),
+      new Promise<false>((resolve) => {
+        setTimeout(() => {
+          resolve(false);
+        }, 250);
+      }),
+    ]);
+    releaseFetch(new Response(null, { status: 204 }));
+    await Promise.all([draining, disabling]);
+    expect(disabledWithoutWaitingForFetch).toBe(true);
+    expect(performance.now() - disableStartedAt).toBeLessThan(500);
   });
 
   it("keeps publishing available when endpoint storage is unavailable", async () => {

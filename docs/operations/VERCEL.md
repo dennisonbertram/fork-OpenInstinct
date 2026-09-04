@@ -500,11 +500,39 @@ curl --fail --silent --show-error \
 
 ## Tenant bootstrap and verification
 
-The current system may create a personal workspace lazily during the first
-scoped manager/session operation. Do not call this true multi-tenancy. A future
-bootstrap should extend the workspace with lifecycle/policy state and create
-its owner membership, installation mappings, quota, and audit baseline in one
-server-side operation.
+Authenticated request admission creates the deterministic personal workspace
+and its sole owner membership on first use, then verifies both before returning
+the scope. Linq may also create one default personal agent and revision when the
+same sole verified owner starts a first conversation. Ambiguous ownership or
+multiple active agents fails closed; no path selects one arbitrarily. These
+compatibility bootstraps do not constitute complete multi-tenancy: installation
+mappings, quota, repair workflows, and audit baselines still need explicit
+operator readiness before promotion.
+
+### Tenancy enforcement preflight
+
+Before enabling or promoting a production deployment, run the read-only
+readiness report against the intended database from an isolated operator
+environment:
+
+```bash
+pnpm tenancy:readiness
+```
+
+The JSON output contains counts only: total workspaces; missing, revoked, or
+ambiguous active owners; workspaces with zero or multiple active agents; and
+stale active bindings or installations. Do not copy row identifiers, phone
+numbers, provider subjects, credentials, or message data into tickets. Any
+non-zero repair-blocked count requires an owner-reviewed repair plan before
+production enforcement. Never resolve ambiguity by selecting an arbitrary
+owner or agent.
+
+Promotion gates are: a reviewed source SHA and migration set, a backup and
+restore rehearsal, a clean readiness report (or explicitly approved repair
+queue), `WORKSPACE_SCOPE_ENFORCEMENT=enforce` in production, and the two-tenant
+authorization/lifecycle/binding acceptance matrix. Production must not be
+recovered by setting the flag to `off`; isolate the affected workspace or
+rollback to the last compatible deployment instead.
 
 Acceptance checklist:
 
@@ -632,7 +660,10 @@ treated as exposed even when the repository scan is clean.
    history. Use a forward-compatible repair migration or restore rehearsal.
 4. If credentials or encryption material may be exposed, revoke/rotate them
    before promotion and verify the new deployment environment.
-5. Re-run the health, web-chat, Linq, isolation, and artifact acceptance checks.
+5. Re-run the readiness report. If counts indicate missing, revoked, or
+   ambiguous ownership, keep the affected workspace blocked and route it to
+   repair; do not disable shared production isolation.
+6. Re-run the health, web-chat, Linq, isolation, and artifact acceptance checks.
 
 ## Backup and restore rehearsal
 

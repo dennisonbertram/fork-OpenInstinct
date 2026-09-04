@@ -30,7 +30,11 @@ import { listBrowserTraces } from "@/db/services/browser-traces";
 import { saveChat } from "@/db/services/chats";
 import { replaceUserProfile } from "@/db/services/user-profile";
 import { selectGatewayModel } from "@/db/services/settings";
-import { deleteVaultItem, saveVaultItem } from "@/db/services/vault";
+import {
+  deleteVaultItem,
+  saveVaultItem,
+  saveVaultItems,
+} from "@/db/services/vault";
 import type { AccessScope } from "@/lib/access-scope";
 import { saveChatSchema } from "@/lib/chat";
 import { env } from "@/env";
@@ -554,11 +558,7 @@ export const appRouter = createTRPCRouter({
       .mutation(({ ctx, input }) => saveVaultItem(ctx.scope, input)),
     import: protectedProcedure
       .input(vaultImportItemsSchema)
-      .mutation(async ({ ctx, input }) => {
-        /* oxlint-disable eslint/no-await-in-loop -- Import preserves source order and avoids concurrent writes to the same vault scope. */
-        for (const item of input) await saveVaultItem(ctx.scope, item);
-        /* oxlint-enable eslint/no-await-in-loop */
-      }),
+      .mutation(({ ctx, input }) => saveVaultItems(ctx.scope, input)),
     remove: protectedProcedure
       .input(z.object({ id: z.string().min(1) }))
       .mutation(({ ctx, input }) => deleteVaultItem(ctx.scope, input.id)),

@@ -57,8 +57,9 @@ describe("Eve channel authentication", () => {
     expect(await denied.text()).toBe(await unauthenticated.text());
   });
 
-  it("keeps scope verification disabled by default", async () => {
+  it("requires membership verification by default before session admission", async () => {
     const route = sessionStreamRoute();
+    verifyScopeAccessMock.mockResolvedValue(undefined);
 
     const responsePromise = route.handler(
       new Request(
@@ -67,13 +68,23 @@ describe("Eve channel authentication", () => {
       unexpectedRouteContext()
     );
     await vi.runAllTimersAsync();
-    await responsePromise;
+    const response = await responsePromise;
 
-    expect(verifyScopeAccessMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(401);
+    expect(verifyScopeAccessMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "better-auth:user-1" })
+    );
+    expect(isSessionOwnedMock).not.toHaveBeenCalled();
   });
 
   it("checks decoded session route ids against workspace ownership", async () => {
     const route = sessionStreamRoute();
+    verifyScopeAccessMock.mockResolvedValue({
+      membershipStatus: "active",
+      role: "owner",
+      userId: "better-auth:user-1",
+      workspaceId: "workspace-1",
+    });
 
     const responsePromise = route.handler(
       new Request(

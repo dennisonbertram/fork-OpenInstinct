@@ -59,6 +59,10 @@ export function modelText(output: LoopToolExecutionResult) {
     .join("\n");
 }
 
+export function browserRefStateForSession(sessionId: string) {
+  return refStates.get()[sessionId];
+}
+
 async function resourcesFor(sessionId: string, signal?: AbortSignal) {
   const cached = resourcesBySession.get(sessionId);
   if (cached) return cached;

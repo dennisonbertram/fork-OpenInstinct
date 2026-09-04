@@ -54,9 +54,7 @@ export async function verifyScopeAccess(
     .where(eq(workspaces.id, scope.workspaceId))
     .limit(1);
 
-  if (!row) {
-    return { ...scope, membershipStatus: "active", role: "owner" };
-  }
+  if (!row) return undefined;
   if (
     (row.lifecycleState !== "trial" && row.lifecycleState !== "active") ||
     row.membershipStatus !== "active" ||
@@ -109,9 +107,9 @@ export async function assertWorkspaceOperable(scope: AccessScope) {
     .where(eq(workspaces.id, scope.workspaceId))
     .limit(1);
 
-  // A deterministic first-run scope has not been provisioned yet; preserve the
-  // same admission behavior as verifyScopeAccess until ensureScope creates it.
-  if (!workspace) return;
+  // Authenticated request admission owns first-run bootstrap. Guarded services
+  // must reject an unverified workspace when called through any other path.
+  if (!workspace) throw new WorkspaceNotOperableError(undefined);
   if (
     workspace.lifecycleState !== "trial" &&
     workspace.lifecycleState !== "active"

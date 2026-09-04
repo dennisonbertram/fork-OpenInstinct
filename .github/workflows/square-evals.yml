@@ -33,8 +33,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Require the AI Gateway credential
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         run: |
-          if [ -z "${{ secrets.AI_GATEWAY_API_KEY }}" ]; then
+          if [ -z "$AI_GATEWAY_API_KEY" ]; then
             echo "::error::AI_GATEWAY_API_KEY secret is not set; the evals cannot call the model."
             exit 1
           fi
@@ -42,7 +44,6 @@ jobs:
       - name: Run square evals
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-          WORKSPACE_SCOPE_ENFORCEMENT: "off"
         # No --strict: tone is judged but not gated (docs/SQUARE.md), and --strict
         # fails the run on a judge miss.
         run: pnpm eval:square --with-database --junit .eve/junit.xml

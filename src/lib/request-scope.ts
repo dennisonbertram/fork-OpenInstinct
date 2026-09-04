@@ -2,13 +2,14 @@ import { headers } from "next/headers";
 import { cache } from "react";
 import { getAuthSession } from "@/auth/session";
 import { accessScopeForUser, type AccessScope } from "@/lib/access-scope";
-import { verifyScopeAccess } from "@/db/services/scope";
+import { ensureScope, verifyScopeAccess } from "@/db/services/scope";
 import { isWorkspaceScopeEnforcementEnabled } from "@/env";
 
 export const requestScopeDependencies = {
   getAuthSession,
   headers,
   isWorkspaceScopeEnforcementEnabled,
+  ensureScope,
   verifyScopeAccess,
 };
 
@@ -21,11 +22,12 @@ export function createRequireRequestScope(
     );
     if (!session) throw new UnauthenticatedError();
     const scope = accessScopeForUser(`better-auth:${session.user.id}`);
-    if (!dependencies.isWorkspaceScopeEnforcementEnabled()) return scope;
-
     const verifiedScope = await dependencies.verifyScopeAccess(scope);
-    if (!verifiedScope) throw new UnauthenticatedError();
-    return verifiedScope;
+    if (verifiedScope) return verifiedScope;
+    await dependencies.ensureScope(scope);
+    const bootstrappedScope = await dependencies.verifyScopeAccess(scope);
+    if (!bootstrappedScope) throw new UnauthenticatedError();
+    return bootstrappedScope;
   });
 }
 

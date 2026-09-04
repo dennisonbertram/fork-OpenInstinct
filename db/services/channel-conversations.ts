@@ -2,12 +2,18 @@ import { randomUUID } from "node:crypto";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { accessScopeForUser } from "@/lib/access-scope";
 import {
+  agentManifestContentDigest,
+  type AgentManifest,
+} from "@/lib/agent-manifest";
+import {
+  agentRevisions,
   agents,
   channelConversations,
   channelParticipants,
   db,
   phoneIdentities,
   platformLines,
+  workspaceMemberships,
 } from "@/db";
 import { recordAuditEvent } from "./audit";
 
@@ -25,6 +31,13 @@ const bindingSelection = {
   updatedAt: channelConversations.updatedAt,
   workspaceId: channelConversations.workspaceId,
 };
+
+const legacyPersonalAgentManifest = {
+  capabilities: [],
+  instructions: "You are a helpful personal assistant.",
+  modelPolicy: { tier: "standard" },
+  version: 1,
+} satisfies AgentManifest;
 
 function activeBindingConditions({
   provider,
@@ -121,9 +134,12 @@ export async function createConversationBinding({
       )
       .for("update")
       .limit(2);
-    if (activeAgents.length !== 1) return undefined;
-    const [agent] = activeAgents;
-    if (!agent?.activeRevisionId) return undefined;
+    let [agent] = activeAgents;
+    if (activeAgents.length === 0) {
+      agent = await reconcileLegacyPersonalAgent(transaction, scope, userId);
+    }
+    if (activeAgents.length > 1 || !agent) return undefined;
+    if (!agent.activeRevisionId) return undefined;
 
     await transaction
       .insert(platformLines)
@@ -218,6 +234,65 @@ export async function createConversationBinding({
     });
   }
   return binding;
+}
+
+async function reconcileLegacyPersonalAgent(
+  transaction: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  scope: ReturnType<typeof accessScopeForUser>,
+  userId: string
+) {
+  if (
+    accessScopeForUser(`better-auth:${userId}`).workspaceId !==
+    scope.workspaceId
+  ) {
+    return undefined;
+  }
+
+  const owners = await transaction
+    .select({ userId: workspaceMemberships.userId })
+    .from(workspaceMemberships)
+    .where(
+      and(
+        eq(workspaceMemberships.workspaceId, scope.workspaceId),
+        eq(workspaceMemberships.role, "owner"),
+        eq(workspaceMemberships.status, "active")
+      )
+    )
+    .limit(2);
+  if (owners.length !== 1 || owners[0]?.userId !== scope.userId)
+    return undefined;
+
+  const agentId = randomUUID();
+  const revisionId = randomUUID();
+  const now = new Date().toISOString();
+  await transaction.insert(agents).values({
+    activeRevisionId: null,
+    createdAt: now,
+    displayName: "Personal assistant",
+    id: agentId,
+    slug: "personal-assistant",
+    status: "draft",
+    updatedAt: now,
+    workspaceId: scope.workspaceId,
+  });
+  await transaction.insert(agentRevisions).values({
+    agentId,
+    contentDigest: agentManifestContentDigest(legacyPersonalAgentManifest),
+    createdAt: now,
+    createdByUserId: scope.userId,
+    id: revisionId,
+    manifest: legacyPersonalAgentManifest,
+    revisionNumber: 1,
+    workspaceId: scope.workspaceId,
+  });
+  const [agent] = await transaction
+    .update(agents)
+    .set({ activeRevisionId: revisionId, status: "active", updatedAt: now })
+    .where(
+      and(eq(agents.id, agentId), eq(agents.workspaceId, scope.workspaceId))
+    )
+    .returning({ id: agents.id, activeRevisionId: agents.activeRevisionId });
+  return agent;
 }
 
 // Lifecycle close handling arrives with the channel webhook slice.

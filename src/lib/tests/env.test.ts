@@ -26,12 +26,14 @@ describe("environment", () => {
   });
 
   it("exports the validated environment", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", "production");
     const { env, isWorkspaceScopeEnforcementEnabled } = await import("@/env");
 
     expect(env).toMatchObject(requiredEnvironment);
     expect(env.CRON_SECRET).toBeUndefined();
-    expect(env.WORKSPACE_SCOPE_ENFORCEMENT).toBe("off");
-    expect(isWorkspaceScopeEnforcementEnabled()).toBe(false);
+    expect(env.WORKSPACE_SCOPE_ENFORCEMENT).toBe("enforce");
+    expect(isWorkspaceScopeEnforcementEnabled()).toBe(true);
   });
 
   it("defaults Square environment to sandbox and connector uid to unset", async () => {
@@ -132,6 +134,16 @@ describe("environment", () => {
     const { isWorkspaceScopeEnforcementEnabled } = await import("@/env");
 
     expect(isWorkspaceScopeEnforcementEnabled()).toBe(true);
+  });
+
+  it("rejects disabling workspace scope enforcement in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("WORKSPACE_SCOPE_ENFORCEMENT", "off");
+
+    await expect(import("@/env")).rejects.toThrow(
+      "Invalid environment variables"
+    );
   });
 
   it("provides the Google connector default without enabling Linq", async () => {

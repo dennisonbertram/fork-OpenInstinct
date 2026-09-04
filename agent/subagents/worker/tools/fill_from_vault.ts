@@ -11,6 +11,7 @@ import {
 } from "../lib/autofill/native";
 import { vaultAutofillProvider } from "../lib/autofill/provider";
 import { materializeAutofillClaims } from "../lib/autofill/service";
+import { markVaultFilledBrowserSession } from "../lib/vault-browser-guard";
 
 const inputSchema = z.object({
   browserSessionId: z.string().trim().min(1).max(500),
@@ -45,6 +46,11 @@ export default defineTool({
         "Native browser autofill currently supports only logins, cards, contacts, and addresses."
       );
     }
+    if (item.kind === "payment") {
+      throw new Error(
+        "Payment vault values can only be injected inside an approved place_order commit."
+      );
+    }
     if (item.kind === "login") {
       const browser = await kernel.browsers.retrieve(
         input.browserSessionId,
@@ -63,13 +69,11 @@ export default defineTool({
       signal: context.abortSignal,
     });
     const surfaceKind =
-      item.kind === "payment"
-        ? "payment-card"
-        : item.kind === "login"
-          ? "credentials"
-          : item.kind === "contact"
-            ? "contact"
-            : "postal-address";
+      item.kind === "login"
+        ? "credentials"
+        : item.kind === "contact"
+          ? "contact"
+          : "postal-address";
     const tokens = nativeAutofillTokens[item.kind];
     const surface = {
       fields: tokens.map((token) => ({ score: 100, token })),
@@ -94,6 +98,7 @@ export default defineTool({
       kind: item.kind,
       signal: context.abortSignal,
     });
+    markVaultFilledBrowserSession(input.browserSessionId);
 
     return {
       filledClaims: result.filledClaims,

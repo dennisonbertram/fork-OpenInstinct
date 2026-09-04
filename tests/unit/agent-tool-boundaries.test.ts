@@ -56,8 +56,10 @@ describe("root and worker capability boundaries", () => {
       "ask_question.ts",
       "bash.ts",
       "capture_browser_image.ts",
+      "commit_browser_action.ts",
       "computer_action.ts",
       "fill_from_vault.ts",
+      "interact_browser_element.ts",
       "list_vault.ts",
       "load_skill.ts",
       "manage_browsers.ts",
@@ -127,13 +129,13 @@ describe("root and worker capability boundaries", () => {
       "Never use the browser for general web search"
     );
     expect(workerInstructions).toContain(
-      "Use `playwright_execute` as the primary browser execution surface"
+      "Use `browser_snapshot`, `browser_text`, or `browser_find`"
     );
     expect(workerInstructions).toContain(
-      "Prefer one bounded program per page state"
+      "Arbitrary Playwright/JavaScript evaluation is not available"
     );
     expect(workerInstructions).toContain(
-      "`browser_act` dispatches actions and returns the successor state"
+      "`browser_act` is an internal execution primitive and rejects click/key steps"
     );
     expect(existsSync(`${workerRoot}/lib/browser-contract.ts`)).toBe(false);
     expect(existsSync(`${workerRoot}/lib/browser-runtime.ts`)).toBe(false);

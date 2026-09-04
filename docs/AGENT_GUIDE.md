@@ -73,11 +73,11 @@ accessScopeForUser("better-auth:<userId>")
           +--> Kernel profile and private image namespace
 ```
 
-`requireRequestScope()` is the server entrypoint for web requests. Eve channel
-auth maps the authenticated request to the same scope. Linq maps a verified
-phone to Better Auth and otherwise retains a provider principal; this is an
-important trust/product decision for future multi-tenancy. Never accept a
-client-supplied workspace ID as authority.
+`requireRequestScope()` is the server entrypoint for web requests. It and Eve
+channel auth require an active verified membership. Linq admits only a verified
+phone identity with an active scope and a durable provider-conversation binding
+owned by that workspace; missing or ambiguous bindings fail closed. Never
+accept a client-supplied workspace ID as authority.
 
 ## Browser-worker boundary
 
@@ -89,8 +89,12 @@ check before Kernel calls.
 
 Use `list_vault` for safe metadata, then `fill_from_vault` with only the opaque
 handle and browser session ID. Never return or inspect injected values. Keep
-external action approval explicit in the assignment; the current browser tool
-boundary still needs deterministic approval enforcement before production use.
+routine inspection and reversible preparation on the curated semantic tools.
+Raw Playwright, coordinate mutation, clipboard access, and model-facing clicks
+are unavailable. Submit, purchase, message, and delete actions converge on the
+Eve-approved commit tool, which rechecks the owned browser, exact origin,
+frame, observed ref, label, action class, and material terms immediately before
+dispatch. Treat an uncertain dispatch as uncertain; never retry it automatically.
 
 ## Storage and migration rules
 

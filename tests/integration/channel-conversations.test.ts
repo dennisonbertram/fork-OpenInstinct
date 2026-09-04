@@ -75,12 +75,22 @@ describe("channel conversation bindings", () => {
     ).resolves.toMatchObject({ rows: [{ role: "owner", status: "active" }] });
   });
 
-  it("fails closed when the workspace has zero or multiple active agents", async () => {
+  it("reconciles a provably owned legacy workspace before its first binding", async () => {
     const service = await loadService();
-    await expect(
-      service.conversations.createConversationBinding(bindingInput)
-    ).resolves.toBeUndefined();
 
+    const binding =
+      await service.conversations.createConversationBinding(bindingInput);
+
+    expect(binding).toMatchObject({ workspaceId: service.alice.workspaceId });
+    await expect(
+      service.client.query(
+        `SELECT count(*)::int AS count FROM agents WHERE workspace_id = '${service.alice.workspaceId}' AND status = 'active' AND active_revision_id IS NOT NULL`
+      )
+    ).resolves.toMatchObject({ rows: [{ count: 1 }] });
+  });
+
+  it("fails closed when the workspace has multiple active agents", async () => {
+    const service = await loadService();
     await service.createActiveAgent("first");
     await service.createActiveAgent("second");
     await expect(
@@ -151,7 +161,7 @@ describe("channel conversation bindings", () => {
 
     await expect(
       service.conversations.createConversationBinding(bindingInput)
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ workspaceId: service.alice.workspaceId });
   });
 
   it("requires a verified phone identity owned by the calling user", async () => {

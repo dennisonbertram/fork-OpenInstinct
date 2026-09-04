@@ -15,6 +15,13 @@ interface RequestOptions {
   signal: AbortSignal;
 }
 
+vi.hoisted(() => {
+  // This suite covers Google transport and Connect-token behavior, not tenant
+  // admission; isolate it from the external lifecycle lookup fixture.
+  vi.stubEnv("NODE_ENV", "test");
+  vi.stubEnv("WORKSPACE_SCOPE_ENFORCEMENT", "off");
+});
+
 const calendarMock = vi.spyOn(CalendarApi, "calendar");
 const gmailMock = vi.spyOn(GmailApi, "gmail");
 const peopleMock = vi.spyOn(PeopleApi, "people");

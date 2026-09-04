@@ -76,11 +76,10 @@ beforeEach(() => {
 });
 
 describe("Linq channel scope", () => {
-  it("does not verify membership while enforcement is off", async () => {
-    expect(
-      await linqChannelConfig.onMessage(context(), message())
-    ).not.toBeNull();
-    expect(mocks.verifyScope).not.toHaveBeenCalled();
+  it("requires membership verification before authorizing a channel message", async () => {
+    mocks.verifyScope.mockResolvedValue(undefined);
+    expect(await linqChannelConfig.onMessage(context(), message())).toBeNull();
+    expect(mocks.verifyScope).toHaveBeenCalled();
   });
   it("drops a denied scope while enforcement is on", async () => {
     mocks.enabled.mockReturnValue(true);
@@ -89,11 +88,6 @@ describe("Linq channel scope", () => {
       linqChannelConfig.onMessage(context(), message())
     ).resolves.toBeNull();
   });
-  it("does not resolve conversation bindings while enforcement is off", async () => {
-    await linqChannelConfig.onMessage(context(), message());
-    expect(mocks.resolveBinding).not.toHaveBeenCalled();
-    expect(mocks.createBinding).not.toHaveBeenCalled();
-  });
   it("drops an existing binding owned by another workspace", async () => {
     allowAlice();
     mocks.resolveBinding.mockResolvedValue(binding("workspace:other"));
@@ -101,11 +95,11 @@ describe("Linq channel scope", () => {
       linqChannelConfig.onMessage(context("linq:chat-1:dm"), message())
     ).resolves.toBeNull();
   });
-  it("preserves behavior when no active agent can create a binding", async () => {
+  it("fails closed when no active agent can create a binding", async () => {
     allowAlice();
     expect(
       await linqChannelConfig.onMessage(context("linq:chat-1:dm"), message())
-    ).not.toBeNull();
+    ).toBeNull();
     expect(mocks.createBinding).toHaveBeenCalledOnce();
   });
   it("records the Linq installation for a newly bound workspace", async () => {

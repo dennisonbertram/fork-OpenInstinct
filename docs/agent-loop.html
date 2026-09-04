@@ -96,6 +96,9 @@
     color: var(--ink);
     font-family: var(--sans);
   }
+  svg text {
+    fill: currentColor;
+  }
   svg .mono {
     font-family: var(--mono);
   }
@@ -307,9 +310,11 @@
         <text x="312" y="224" font-size="12" class="mono">
           personal:&lt;hash&gt;
         </text>
-        <text x="312" y="252" font-size="12">enforcement flag on: scope</text>
+        <text x="312" y="252" font-size="12">
+          active membership + channel binding
+        </text>
         <text x="312" y="268" font-size="12">
-          must verify or the turn is dropped
+          must verify; uncertainty drops the turn
         </text>
 
         <!-- arrows in -->
@@ -527,11 +532,12 @@
     </div>
     <figcaption>
       One turn end to end. Both channels resolve to the same principal and
-      workspace scope before eve sees the message, so the session, the vault,
-      the Square grant, and the usage ledger all key on that scope. The turn
-      runs as a Workflow SDK durable workflow; the accent path is the reply
-      leaving the turn. On iMessage a reply becomes as many bubbles as it has
-      paragraphs and bullets, which is why the eval gym gates bubble count.
+      verified workspace scope before eve sees the message; Linq also resolves
+      an owned conversation binding. The session, vault, Square grant, and usage
+      ledger all key on that scope. The turn runs as a Workflow SDK durable
+      workflow; the accent path is the reply leaving the turn. On iMessage a
+      reply becomes as many bubbles as it has paragraphs and bullets, which is
+      why the eval gym gates bubble count.
     </figcaption>
   </figure>
 
@@ -686,18 +692,16 @@
           worker subagent (its own session, model, sandbox, browser)
         </text>
         <text x="660" y="220" font-size="11" class="mono muted">
-          agent/subagents/worker · zai/glm-5.2 · Kernel browser
-          (src/lib/kernel.ts)
+          agent/subagents/worker · Kernel browser
         </text>
-        <text x="660" y="238" font-size="11">
-          only agent that touches a browser or injects vault secrets;
+        <text x="660" y="234" font-size="11">
+          curated observation + preparation; vault output stays opaque;
         </text>
-        <text x="660" y="252" font-size="11">
-          one bounded assignment in, one final_output matching the
-          task-completion schema out;
+        <text x="660" y="250" font-size="11">
+          external mutations converge on one Eve-approved exact-ref commit;
         </text>
         <text x="660" y="266" font-size="11">
-          runs in the background, so the root turn parks until the child settles
+          the root turn parks for approval or until the child settles
         </text>
 
         <!-- results back to model -->
@@ -729,11 +733,9 @@
         <text x="32" y="242" font-size="13" font-weight="600" class="park-text">
           Turn parks, holds no compute
         </text>
-        <text x="32" y="264" font-size="12">
-          human approval for a purchase or send
-        </text>
+        <text x="32" y="264" font-size="12">one approval: purchase · send</text>
         <text x="32" y="280" font-size="12">
-          Square sign-in link (OAuth callback)
+          submit · delete · OAuth callback
         </text>
         <text x="32" y="296" font-size="12">worker still running</text>
         <text x="32" y="318" font-size="11.5" class="muted">
@@ -859,8 +861,8 @@
         </li>
         <li>
           <strong>The root has no browser tools.</strong> Browser work is
-          delegated with a Task line and an output schema; the worker's 14 tools
-          live under its own directory and are invisible to the root.
+          delegated with a Task line and an output schema; the worker's 16 tool
+          modules live under its own directory and are invisible to the root.
         </li>
         <li>
           <strong>Schedules carry no user.</strong> A cron turn has no

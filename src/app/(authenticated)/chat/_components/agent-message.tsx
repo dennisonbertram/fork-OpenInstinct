@@ -16,6 +16,7 @@ import {
   XCircleIcon,
 } from "lucide-react";
 import { useState } from "react";
+import { z } from "zod";
 import {
   Message,
   MessageContent,
@@ -536,11 +537,17 @@ function InputRequestActions({
   const selectedOption = inputRequest.options?.find(
     (option) => option.id === inputResponse?.optionId
   );
+  const approvalSummary = browserCommitApprovalSummary(part);
 
   return (
     <Alert variant="warning">
       <AlertTitle>{inputRequest.prompt}</AlertTitle>
       <AlertDescription>
+        {approvalSummary ? (
+          <p className="wrap-break-word whitespace-pre-wrap">
+            {approvalSummary}
+          </p>
+        ) : null}
         {inputResponse ? (
           <p>
             Responded:{" "}
@@ -575,6 +582,64 @@ function InputRequestActions({
     </Alert>
   );
 }
+
+function browserCommitApprovalSummary(
+  part: EveDynamicToolPart
+): string | undefined {
+  if (part.toolName !== "commit_browser_action") return undefined;
+  const parsed = browserCommitApprovalProjection.safeParse(part.input);
+  if (!parsed.success) return undefined;
+  const { origin: pageOrigin, payment, terms } = parsed.data;
+
+  switch (terms.kind) {
+    case "place_order": {
+      const paymentOrigin = payment?.origin;
+      const paymentDisclosure =
+        paymentOrigin && paymentOrigin !== pageOrigin
+          ? ` Payment form: ${paymentOrigin}.`
+          : "";
+      return `Purchase ${String(terms.quantity)} × ${terms.item} (${terms.option}) from ${terms.merchant} for ${terms.total}.${paymentDisclosure}`;
+    }
+    case "send_message": {
+      return `Send to ${terms.recipient}: ${terms.content}`;
+    }
+    case "delete": {
+      return `Delete ${terms.target}. Impact: ${terms.impact}`;
+    }
+    case "submit": {
+      return `Submit: ${terms.description}`;
+    }
+    default:
+      return undefined;
+  }
+}
+
+const approvalText = z.string().trim().min(1);
+const browserCommitApprovalProjection = z.object({
+  origin: z.url(),
+  payment: z.object({ origin: z.url() }).optional(),
+  terms: z.discriminatedUnion("kind", [
+    z.object({
+      item: approvalText,
+      kind: z.literal("place_order"),
+      merchant: approvalText,
+      option: approvalText,
+      quantity: z.number().int().positive(),
+      total: approvalText,
+    }),
+    z.object({
+      content: approvalText,
+      kind: z.literal("send_message"),
+      recipient: approvalText,
+    }),
+    z.object({
+      impact: approvalText,
+      kind: z.literal("delete"),
+      target: approvalText,
+    }),
+    z.object({ description: approvalText, kind: z.literal("submit") }),
+  ]),
+});
 
 function partKey(part: EveMessagePart, index: number): string {
   switch (part.type) {

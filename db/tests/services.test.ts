@@ -25,6 +25,7 @@ describe("database services", () => {
     await applyInitialMigration(client);
     await applyBrowserImageMigration(client);
     await applyWorkspaceTenancyMigration(client);
+    await applyUsageBudgetMigration(client);
     await applyBrowserTraceTelemetryMigration(client);
 
     const pgliteDatabase = drizzle(client, { schema });
@@ -389,6 +390,18 @@ async function applyWorkspaceTenancyMigration(database: PGlite) {
 async function applyBrowserTraceTelemetryMigration(database: PGlite) {
   const migration = await readFile(
     new URL("../migrations/0013_browser_trace_telemetry.sql", import.meta.url),
+    "utf8"
+  );
+  /* oxlint-disable eslint/no-await-in-loop -- SQL migration statements must execute in file order. */
+  for (const statement of migration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await database.exec(statement);
+  }
+  /* oxlint-enable eslint/no-await-in-loop */
+}
+
+async function applyUsageBudgetMigration(database: PGlite) {
+  const migration = await readFile(
+    new URL("../migrations/0009_dusty_star_brand.sql", import.meta.url),
     "utf8"
   );
   /* oxlint-disable eslint/no-await-in-loop -- SQL migration statements must execute in file order. */

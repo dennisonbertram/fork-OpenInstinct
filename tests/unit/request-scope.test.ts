@@ -11,10 +11,12 @@ const isWorkspaceScopeEnforcementEnabled =
   vi.fn<typeof requestScopeDependencies.isWorkspaceScopeEnforcementEnabled>();
 const verifyScopeAccess =
   vi.fn<typeof requestScopeDependencies.verifyScopeAccess>();
+const ensureScope = vi.fn<typeof requestScopeDependencies.ensureScope>();
 const requireRequestScope = createRequireRequestScope({
   getAuthSession,
   headers,
   isWorkspaceScopeEnforcementEnabled,
+  ensureScope,
   verifyScopeAccess,
 });
 
@@ -29,14 +31,35 @@ beforeEach(() => {
     },
   });
   isWorkspaceScopeEnforcementEnabled.mockReturnValue(false);
+  ensureScope.mockResolvedValue(undefined);
 });
 
 describe("request scope", () => {
-  it("does not verify membership while enforcement is off", async () => {
+  it("requires a verified membership for every authenticated request", async () => {
+    verifyScopeAccess.mockResolvedValue({
+      membershipStatus: "active",
+      role: "owner",
+      userId: "better-auth:user-1",
+      workspaceId: "workspace-1",
+    });
+
     await expect(requireRequestScope()).resolves.toMatchObject({
+      membershipStatus: "active",
+      role: "owner",
       userId: "better-auth:user-1",
     });
-    expect(verifyScopeAccess).not.toHaveBeenCalled();
+    expect(verifyScopeAccess).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "better-auth:user-1" })
+    );
+  });
+
+  it("fails closed when membership or lifecycle admission is denied", async () => {
+    verifyScopeAccess.mockResolvedValue(undefined);
+
+    await expect(requireRequestScope()).rejects.toBeInstanceOf(
+      UnauthenticatedError
+    );
+    expect(verifyScopeAccess).toHaveBeenCalled();
   });
 
   it("rejects denied scopes while enforcement is on", async () => {
