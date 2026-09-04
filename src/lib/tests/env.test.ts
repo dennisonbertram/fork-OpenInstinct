@@ -36,6 +36,56 @@ describe("environment", () => {
     expect(isWorkspaceScopeEnforcementEnabled()).toBe(true);
   });
 
+  it("keeps developer features off in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("FEATURE_DEVELOPER_ACTIVITY", "on");
+
+    const { isFeatureEnabled } = await import("@/env");
+
+    expect(isFeatureEnabled("developerActivity")).toBe(false);
+  });
+
+  it("keeps developer features off in self-hosted production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", undefined);
+    vi.stubEnv("FEATURE_DEVELOPER_ACTIVITY", "on");
+
+    const { isFeatureEnabled } = await import("@/env");
+
+    expect(isFeatureEnabled("developerActivity")).toBe(false);
+  });
+
+  it("enables developer activity by default only on local development", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("VERCEL_ENV", undefined);
+    vi.stubEnv("FEATURE_DEVELOPER_ACTIVITY", "");
+
+    const { isFeatureEnabled } = await import("@/env");
+
+    expect(isFeatureEnabled("developerActivity")).toBe(true);
+  });
+
+  it("allows preview to opt into developer activity", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("FEATURE_DEVELOPER_ACTIVITY", "on");
+
+    const { isFeatureEnabled } = await import("@/env");
+
+    expect(isFeatureEnabled("developerActivity")).toBe(true);
+  });
+
+  it("allows local development to turn developer activity off", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("VERCEL_ENV", undefined);
+    vi.stubEnv("FEATURE_DEVELOPER_ACTIVITY", "off");
+
+    const { isFeatureEnabled } = await import("@/env");
+
+    expect(isFeatureEnabled("developerActivity")).toBe(false);
+  });
+
   it("defaults Square environment to sandbox and connector uid to unset", async () => {
     vi.stubEnv("SQUARE_ENVIRONMENT", "");
     vi.stubEnv("SQUARE_CONNECTOR_UID", "");

@@ -32,6 +32,10 @@ These rules come from `AGENTS.md` ("Design system") and from the code.
 5. Give every primitive a `data-slot` attribute. The compatibility styles in
    `shadcn.css` key on it.
 6. Icons come from `lucide-react` only.
+7. Treat external copy-paste registries as design references, not foundation
+   packages. Adapt one component at a time at its concrete application owner,
+   retain this system's primitives and tokens, pin the reviewed upstream
+   revision, and record its license in `THIRD_PARTY_NOTICES.md`.
 
 ## 2. Stack
 
@@ -295,6 +299,23 @@ also defines the `code-card` command and argument colors.
 `src/components/browser/activity-duration-breakdown.tsx` is the color legend
 for browser worker activity kinds; it reads the nine `activity-*` tokens.
 
+### 5.1 Beautiful UI intake
+
+[Beautiful UI](https://www.beautifului.dev/) publishes MIT-licensed,
+shadcn-compatible copy-paste source for AI interface patterns. It is not a
+runtime package. Do not install its `foundation` registry item: its global
+color, type, radius, shadow, body, and dark-mode rules conflict with the Jory
+foundation in section 3.
+
+The first adopted pattern is the compact task-row presentation in the chat
+Activity card. It is adapted from Beautiful UI `Task Rows` at revision
+`06557d7ff33a1eb70d5987bae9ac4c70fa0e20c4`. The application keeps the
+existing `Button`, `Badge`, semantic `type-*` and color tokens, Lucide icon,
+real subagent state, and click-to-open-trace behavior. The upstream demo's
+sample data, timers, custom SVGs, and token classes are not part of the app.
+Keep this pattern at its Activity feature owner until a second real consumer
+justifies promotion to `src/components/ai-elements`.
+
 ## 6. Application shell
 
 Source: `src/app/(authenticated)/layout.tsx` and `_components`.
@@ -346,6 +367,9 @@ Each item is verified against the named file on 2026-09-03.
 - **New primitive:** `pnpm dlx shadcn@latest add <name>`, then add
   `data-slot`, replace raw text classes with `type-*`, and add a row to
   section 4.
+- **External registry pattern:** inspect the pinned registry source and diff,
+  then adapt only the needed behavior at its concrete owner. Do not import a
+  registry's global foundation. Record the source revision and license.
 - **New variant:** add it to the `cva` map in the primitive file, add a row
   to section 4, and give it a "use for" sentence.
 - **New color:** add the value to `foundation.css` with the source hex in a

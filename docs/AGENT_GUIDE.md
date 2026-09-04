@@ -133,6 +133,12 @@ dispatch. Treat an uncertain dispatch as uncertain; never retry it automatically
 | Eve process             | `pnpm start:eve`             | Run under a supervisor with persistent `.eve` state when self-hosting.                       |
 | Vercel deployment       | `pnpm deploy` / `eve deploy` | Follow `docs/operations/VERCEL.md`; operator action.                                         |
 
+Developer-only chat activity is controlled by the server-side
+`developerActivity` feature in `src/env.ts`. It defaults on only for local
+development, may be enabled in preview with
+`FEATURE_DEVELOPER_ACTIVITY=on`, and is hard-disabled in production. Set it to
+`off` in `.env.local` and restart to verify the normal user surface.
+
 ## Change recipes
 
 1. **Add a scoped data field:** update the owning schema, migration, service,

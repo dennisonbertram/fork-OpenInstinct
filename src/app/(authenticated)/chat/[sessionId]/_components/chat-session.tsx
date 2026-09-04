@@ -9,9 +9,11 @@ import { ChatInput } from "./input";
 import { useSessionAgent } from "./use-session-agent";
 
 export function ChatSession({
+  developerActivityEnabled,
   initialUsage,
   sessionId,
 }: {
+  readonly developerActivityEnabled: boolean;
   readonly initialUsage?: ChatUsage;
   readonly sessionId: string;
 }) {
@@ -34,14 +36,16 @@ export function ChatSession({
         />
         <ChatInput agent={agent} sessionId={sessionId} />
       </div>
-      <SubagentPanel
-        events={agent.events}
-        historyComplete={!agent.hasOlder}
-        initialUsage={initialUsage}
-        onTraceViewChange={setTraceView}
-        sessionId={sessionId}
-        traceView={traceView}
-      />
+      {developerActivityEnabled ? (
+        <SubagentPanel
+          events={agent.events}
+          historyComplete={!agent.hasOlder}
+          initialUsage={initialUsage}
+          onTraceViewChange={setTraceView}
+          sessionId={sessionId}
+          traceView={traceView}
+        />
+      ) : null}
     </div>
   );
 }

@@ -79,7 +79,7 @@ export function ActivityCard({
                   {doneCount} done
                 </span>
               </div>
-              <div>
+              <div className="space-y-2">
                 {sessions.map((session) => {
                   const status =
                     statuses.get(session.childSessionId) ?? "starting";
@@ -88,9 +88,11 @@ export function ActivityCard({
                       eventsBySession.get(session.childSessionId) ?? []
                     ) ?? session.task;
                   return (
+                    // Presentation adapted from Beautiful UI "Task Rows" at
+                    // revision 06557d7ff33a1eb70d5987bae9ac4c70fa0e20c4.
                     <Button
                       aria-label={`${agentLabel(session.name)} task, ${status}`}
-                      className="rounded-lg p-3"
+                      className="min-h-11 rounded-full px-2.5 py-2"
                       data-task-session={session.childSessionId}
                       key={session.childSessionId}
                       onClick={() => {
@@ -99,6 +101,7 @@ export function ActivityCard({
                       type="button"
                       variant="surface"
                     >
+                      <StatusIndicator status={status} />
                       <span className="min-w-0 flex-1">
                         <span className="type-supporting-body block truncate">
                           {agentLabel(session.name)}
@@ -107,7 +110,6 @@ export function ActivityCard({
                           {task ?? "Open to load task details"}
                         </span>
                       </span>
-                      <StatusIndicator status={status} />
                       <ChevronRightIcon
                         aria-hidden="true"
                         className="text-muted-foreground"
