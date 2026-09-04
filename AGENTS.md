@@ -120,6 +120,17 @@ set `CLAUDE_ALLOW_MAIN_CHECKOUT=1`. Other agents follow the same rule by
 convention. Before every commit, read `git diff --staged` and confirm it holds
 only your change.
 
+## Upstream syncs
+
+Merge `upstream/main` into a branch on a short cadence; do not cherry-pick.
+Before resolving conflicts, sort every upstream pull request into take,
+adapt, or skip, and write the adapt decisions in the sync PR. The fork keeps
+`load_skill` and `connection_search` enabled at the root; the Square skill and
+connection need them. Upstream migrations are renumbered after the fork's
+last migration. A sync PR that touches `agent/` runs the Square evals, and
+once [`docs/CONTRACT_EVALS.md`](docs/CONTRACT_EVALS.md) is built, the
+contract evals are a required gate for every sync.
+
 ## Repository is the fork, never upstream
 
 All work happens on `dennisonbertram/fork-OpenInstinct`. Never open pull
