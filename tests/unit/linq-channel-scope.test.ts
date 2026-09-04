@@ -2,6 +2,18 @@ import { Message } from "chat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { accessScopeForUser } from "@/lib/access-scope";
 
+interface PendingInputStateFixture {
+  readonly requests: readonly {
+    readonly allowFreeform?: boolean;
+    readonly options?: readonly {
+      readonly id: string;
+      readonly label: string;
+    }[];
+    readonly requestId: string;
+  }[];
+  readonly workspaceId: string;
+}
+
 const mocks = vi.hoisted(() => ({
   claimInboundMessage: vi.fn<() => Promise<boolean>>(),
   createBinding:
@@ -25,6 +37,15 @@ const mocks = vi.hoisted(() => ({
     vi.fn<() => Promise<{ readonly workspaceId: string } | undefined>>(),
   verifyScope:
     vi.fn<() => Promise<{ readonly workspaceId: string } | undefined>>(),
+  deleteState: vi.fn<(key: string) => Promise<void>>(),
+  getState: vi.fn<(key: string) => Promise<PendingInputStateFixture | null>>(),
+}));
+vi.mock("@chat-adapter/state-pg", () => ({
+  createPostgresState: () => ({
+    delete: mocks.deleteState,
+    get: mocks.getState,
+    set: vi.fn<() => void>(),
+  }),
 }));
 vi.mock("@/auth", () => ({
   getAuth: vi.fn<
@@ -72,7 +93,7 @@ function context(threadId?: string): Context {
   return identity as Context;
 }
 
-function message(id = "linq-message-1") {
+function message(id = "linq-message-1", text = "list my vault items") {
   return new Message({
     attachments: [],
     author: {
@@ -89,7 +110,7 @@ function message(id = "linq-message-1") {
       edited: false,
     },
     raw: {},
-    text: "list my vault items",
+    text,
     threadId: "linq:dm:chat-1",
   });
 }
@@ -103,6 +124,8 @@ beforeEach(() => {
   mocks.createBinding.mockResolvedValue(undefined);
   mocks.claimInboundMessage.mockResolvedValue(true);
   mocks.recordInstallation.mockResolvedValue(undefined);
+  mocks.deleteState.mockResolvedValue(undefined);
+  mocks.getState.mockResolvedValue(null);
 });
 
 describe("Linq channel scope", () => {
@@ -180,6 +203,56 @@ describe("Linq channel scope", () => {
       messageId: "linq-message-retried",
       workspaceId,
     });
+  });
+  it("turns an exact approval reply into the pending Eve input response", async () => {
+    allowAlice();
+    mocks.resolveBinding.mockResolvedValue(binding(workspaceId));
+    mocks.getState.mockResolvedValue({
+      requests: [
+        {
+          allowFreeform: false,
+          options: [
+            { id: "approve", label: "Approve" },
+            { id: "cancel", label: "Cancel" },
+          ],
+          requestId: "approval-1",
+        },
+      ],
+      workspaceId,
+    });
+
+    await expect(
+      linqChannelConfig.onMessage(
+        context("linq:chat-1:dm"),
+        message("linq-message-approval", "  approve  ")
+      )
+    ).resolves.toMatchObject({
+      inputResponseStateKey: "pending-input:linq:chat-1:dm",
+      inputResponses: [{ optionId: "approve", requestId: "approval-1" }],
+    });
+    expect(mocks.deleteState).not.toHaveBeenCalled();
+  });
+  it("does not consume pending input owned by another workspace", async () => {
+    allowAlice();
+    mocks.resolveBinding.mockResolvedValue(binding(workspaceId));
+    mocks.getState.mockResolvedValue({
+      requests: [
+        {
+          allowFreeform: false,
+          options: [{ id: "approve", label: "Approve" }],
+          requestId: "approval-other",
+        },
+      ],
+      workspaceId: "workspace:other",
+    });
+
+    await expect(
+      linqChannelConfig.onMessage(
+        context("linq:chat-1:dm"),
+        message("linq-message-approval", "approve")
+      )
+    ).resolves.not.toHaveProperty("inputResponses");
+    expect(mocks.deleteState).not.toHaveBeenCalled();
   });
   it("does not attempt a binding when the phone identity belongs to another user", async () => {
     mocks.enabled.mockReturnValue(true);

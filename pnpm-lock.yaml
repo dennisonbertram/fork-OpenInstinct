@@ -14,6 +14,9 @@ importers:
       '@base-ui/react':
         specifier: ^1.7.0
         version: 1.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@chat-adapter/state-pg':
+        specifier: 4.34.0
+        version: 4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)
       '@googleapis/calendar':
         specifier: ^16.0.0
         version: 16.0.0(supports-color@7.2.0)
@@ -23,6 +26,9 @@ importers:
       '@googleapis/people':
         specifier: ^8.0.0
         version: 8.0.0(supports-color@7.2.0)
+      '@linqapp/chat-sdk-adapter':
+        specifier: 0.5.1
+        version: 0.5.1(chat@4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3))
       '@linqapp/sdk':
         specifier: 0.47.1
         version: 0.47.1
@@ -80,6 +86,9 @@ importers:
       better-auth:
         specifier: 1.7.2
         version: 1.7.2(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.5)(pg@8.23.0))(next@16.3.3(@babel/core@7.29.7(supports-color@7.2.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.62.1)(@types/node@24.13.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(pg@8.23.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@4.1.11)
+      chat:
+        specifier: 4.34.0
+        version: 4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -141,9 +150,6 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.5.8
         version: 0.5.8
-      '@linqapp/chat-sdk-adapter':
-        specifier: 0.5.1
-        version: 0.5.1(chat@4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3))
       '@next/env':
         specifier: 16.3.3
         version: 16.3.3
@@ -168,9 +174,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: 4.1.11
         version: 4.1.11(vitest@4.1.11)
-      chat:
-        specifier: 4.34.0
-        version: 4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
@@ -605,6 +608,10 @@ packages:
 
   '@bytecodealliance/preview2-shim@0.17.6':
     resolution: {integrity: sha512-n3cM88gTen5980UOBAD6xDcNNL3ocTK8keab21bpx1ONdA+ARj7uD1qoFxOWCyKlkpSi195FH+GeAut7Oc6zZw==}
+
+  '@chat-adapter/state-pg@4.34.0':
+    resolution: {integrity: sha512-Z/SgoLUO0eRHpNEiuRz1NvaHizUAGPnFPc3hHmF9RrEExHGrXNMxuArk+9444wZ+Ahev0EoIXdGRVKm6FQLMzQ==}
+    engines: {node: '>=20'}
 
   '@chevrotain/types@11.1.2':
     resolution: {integrity: sha512-U+HFai5+zmJCkK86QsaJtoITlboZHBqrVketcO2ROv865xfCMSFpELQoz1GkX5GzME8pTa+3kbKrZHQtI0gdbw==}
@@ -8028,6 +8035,16 @@ snapshots:
   '@braintree/sanitize-url@7.1.2': {}
 
   '@bytecodealliance/preview2-shim@0.17.6': {}
+
+  '@chat-adapter/state-pg@4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)':
+    dependencies:
+      chat: 4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)
+      pg: 8.23.0
+    transitivePeerDependencies:
+      - ai
+      - pg-native
+      - supports-color
+      - zod
 
   '@chevrotain/types@11.1.2': {}
 

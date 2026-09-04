@@ -1,10 +1,7 @@
-import type { LinqChannelConfig } from "eve/channels/linq";
 import { Message } from "chat";
 import { accessScopeForUser } from "@/lib/access-scope";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as EnvModule from "@/env";
-// oxlint-disable-next-line import/no-unassigned-import -- Loads the production module so the mocked channel factory can capture its configuration.
-import "@/agent/channels/linq";
 
 interface AuthUserRow {
   readonly id: string;
@@ -12,8 +9,6 @@ interface AuthUserRow {
 }
 
 const capture = vi.hoisted(() => ({
-  // SAFETY: The mocked channel factory replaces this value during module loading.
-  config: undefined as LinqChannelConfig | undefined,
   findOne: vi.fn<() => Promise<AuthUserRow | null>>(),
   // The fork verifies the workspace scope and binds the conversation before it
   // mints a principal. Stub those stores so this suite stays a pure auth test.
@@ -34,6 +29,14 @@ const capture = vi.hoisted(() => ({
     >(),
   verifyScope:
     vi.fn<() => Promise<{ readonly workspaceId: string } | undefined>>(),
+  getState: vi.fn<() => Promise<null>>(),
+}));
+vi.mock("@chat-adapter/state-pg", () => ({
+  createPostgresState: () => ({
+    delete: vi.fn<() => Promise<void>>(),
+    get: capture.getState,
+    set: vi.fn<() => Promise<void>>(),
+  }),
 }));
 vi.mock("@/db/services/scope", () => ({
   verifyScopeAccess: capture.verifyScope,
@@ -65,27 +68,16 @@ vi.mock("@/env", async (importOriginal) => {
 vi.mock("@vercel/connect/eve", () => ({
   connectLinqCredentials: () => ({ apiKey: async () => "linq-test-api-key" }),
 }));
-vi.mock(import("eve/channels/linq"), async (importOriginal) => {
-  const original = await importOriginal();
-  return {
-    ...original,
-    linqChannel(config: LinqChannelConfig) {
-      capture.config = config;
-      return original.linqChannel(config);
-    },
-  };
-});
 vi.mock("@/auth", () => ({
   getAuth: async () => ({
     $context: Promise.resolve({ adapter: { findOne: capture.findOne } }),
   }),
 }));
 
-const verifier = capture.config?.credentials?.webhookVerifier;
-const onMessage = capture.config?.onMessage;
-if (!verifier || !onMessage) {
-  throw new Error("The Linq channel must verify webhooks and route messages.");
-}
+const { linqChannelConfig } = await import("@/agent/channels/linq");
+const verifier = linqChannelConfig.credentials.webhookVerifier;
+const onMessage = (...args: Parameters<typeof linqChannelConfig.onMessage>) =>
+  linqChannelConfig.onMessage(...args);
 
 describe("Linq inbound authentication", () => {
   beforeEach(() => {
@@ -163,9 +155,7 @@ describe("Linq inbound authentication", () => {
   });
 });
 
-type InboundContext = Parameters<
-  NonNullable<LinqChannelConfig["onMessage"]>
->[0];
+type InboundContext = Parameters<typeof onMessage>[0];
 
 interface ThreadIdentity {
   readonly thread: Pick<InboundContext["thread"], "id">;
