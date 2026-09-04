@@ -9,8 +9,15 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/image", () => ({
-  default: ({ alt, src }: { readonly alt: string; readonly src: unknown }) =>
-    createElement("img", { alt, src: String(src) }),
+  default: ({
+    alt,
+    src,
+    className,
+  }: {
+    readonly alt: string;
+    readonly src: unknown;
+    readonly className?: string;
+  }) => createElement("img", { alt, src: String(src), className }),
 }));
 
 vi.mock("@/lib/request-scope", () => ({
@@ -46,15 +53,24 @@ describe("authenticated layout", () => {
     });
     const html = renderToStaticMarkup(layout);
     const expectedWordmark = renderToStaticMarkup(
-      createElement("img", { alt: "", src: String(joryWordmark) })
+      createElement("img", {
+        alt: "",
+        src: String(joryWordmark),
+        className: "h-6 w-auto",
+      })
     );
     const expectedAvatar = renderToStaticMarkup(
       // SAFETY: Vite resolves image imports to URLs; Next declares StaticImageData.
-      createElement("img", { alt: "", src: String(joryAvatar as unknown) })
+      createElement("img", {
+        alt: "",
+        src: String(joryAvatar as unknown),
+        className: "size-9 shrink-0 rounded-full bg-muted object-contain p-0.5",
+      })
     ).replace(/<link[^>]*\/>/g, "");
 
     expect(html).toMatch(/<a[^>]*aria-label="Jory"[^>]*href="\/"/);
-    expect(html).toContain(`${expectedWordmark}${expectedAvatar}</a>`);
+    expect(html).toContain(`${expectedAvatar}${expectedWordmark}</a>`);
+    expect(html).toMatch(/<a[^>]*class="[^"]*items-center[^"]*"[^>]*href="\/"/);
     expect(html).not.toContain("OpenInstinct");
   });
 });
