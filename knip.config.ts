@@ -18,6 +18,10 @@ export default {
         "evals/evals.config.ts",
         // Spawned by the Square eval harness after its Compose database migrates.
         "evals/square/setup-access.ts",
+        // Spawned by the isolated conversation evaluation supervisor.
+        "evals/conversation/run.ts",
+        "evals/conversation/setup.ts",
+        "evals/conversation/preload.mjs",
         // Playwright discovers e2e specs and the auth setup via testMatch, not imports.
         "tests/e2e/**/*.ts",
         "taze.config.ts",

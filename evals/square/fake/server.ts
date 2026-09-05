@@ -742,6 +742,20 @@ async function route(
     );
     return;
   }
+  if (method === "GET" && path.startsWith("/v2/orders/")) {
+    const order = fixture.orders.find(
+      (candidate) =>
+        candidate.id === decodeURIComponent(path.slice("/v2/orders/".length))
+    );
+    if (order) sendJson(res, 200, { order: orderObject(fixture, order) });
+    else
+      sendJson(
+        res,
+        404,
+        errorEnvelope("INVALID_REQUEST_ERROR", "NOT_FOUND", "Order not found.")
+      );
+    return;
+  }
   if (method === "GET" && path === "/v2/payments") {
     handleListPayments(fixture, url, res);
     return;
@@ -759,9 +773,9 @@ async function route(
 }
 
 export async function startFakeSquare(
-  options: { port?: number } = {}
+  options: { port?: number; fixture?: Fixture } = {}
 ): Promise<{ url: string; close(): Promise<void> }> {
-  const fixture = loadFixture();
+  const fixture = fixtureSchema.parse(options.fixture ?? loadFixture());
 
   const server = createServer((req, res) => {
     route(fixture, req, res).catch((cause: unknown) => {

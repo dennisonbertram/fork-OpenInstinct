@@ -29,7 +29,23 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   });
 }
 
-await runAgentEvals();
+if (process.argv.includes("--conversation-baseline")) {
+  const code = await run(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      "evals/conversation/run.ts",
+      ...process.argv
+        .slice(2)
+        .filter((arg) => arg !== "--conversation-baseline"),
+    ],
+    inheritedEnvironment
+  );
+  process.exitCode = code ?? 1;
+} else {
+  await runAgentEvals();
+}
 
 async function runAgentEvals() {
   try {
