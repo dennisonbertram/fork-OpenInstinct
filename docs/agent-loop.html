@@ -884,7 +884,22 @@
           <strong>The root has no browser tools.</strong> Browser work is
           delegated with a Task line and an output schema; the browser-agent's
           16 tool modules live under its own directory and are invisible to the
-          root.
+          root. The worker uses an image-capable model to inspect screenshots.
+          Snapshots and element searches provide opaque target tokens bound to
+          the exact observed frame and label for guarded actions. The worker is
+          instructed to start login assignments with a profile writer and verify
+          a specific postcondition after committing. Vault-filled pages expose
+          only safe text verification status, while masked image capture remains
+          available in the same browser. Explicit signup autofill fills the
+          saved password and confirmation in the focused registration form;
+          ordinary login autofill still excludes new-password fields. An
+          explicit compatibility flag accepts a mislabeled sole password only in
+          a focused sign-in form with an unambiguous Login/Sign in control;
+          registration, reset/change, OTP, and multiple-password forms remain
+          excluded. Registration is verified and captured before closing the
+          writer. A following login form uses a fresh profile writer to observe
+          its own targets. Text-bearing evidence starts at a 320px viewport (up
+          to 360px when needed) and uses a focused crop for phone chat.
         </li>
         <li>
           <strong>A scheduled run is its own channel and turn.</strong>
@@ -899,7 +914,15 @@
         <li>
           <strong>Web chat and iMessage share one agent.</strong> Different
           channel files, same instructions, tools, and scope derivation. Only
-          the delivery step differs.
+          the delivery step differs. A message marked <code>final: true</code>
+          closes messaging for that turn; Linq first waits for provider
+          acceptance and treats a failed send as unconfirmed. Later sends after
+          confirmed completion are rejected and the next step omits messaging
+          tools. Web chat keeps its session observer open while waiting and
+          retires delivered or cancelled worker observers; worker approvals
+          appear in the normal conversation without requiring the developer
+          trace. Parent completion receipts also settle the task sidebar,
+          without polling or opening another child stream.
         </li>
       </ul>
     </div>

@@ -95,6 +95,7 @@ export function QuestionRequest({
 }
 
 export function InputRequestActions({
+  title,
   canRespond,
   onInputResponses,
   part,
@@ -102,6 +103,7 @@ export function InputRequestActions({
   readonly canRespond: boolean;
   readonly onInputResponses: RespondToAgentInput;
   readonly part: EveDynamicToolPart;
+  readonly title?: string;
 }) {
   const inputRequest = part.toolMetadata?.eve?.inputRequest;
   if (!inputRequest) return null;
@@ -114,7 +116,7 @@ export function InputRequestActions({
 
   return (
     <Alert variant="warning">
-      <AlertTitle>{inputRequest.prompt}</AlertTitle>
+      <AlertTitle>{title ?? inputRequest.prompt}</AlertTitle>
       <AlertDescription>
         {approvalSummary ? (
           <p className="wrap-break-word whitespace-pre-wrap">

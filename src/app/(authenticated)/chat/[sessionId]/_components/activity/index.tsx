@@ -17,7 +17,10 @@ import {
 } from "@/app/_lib/subagent-sessions";
 import type { ChatUsage } from "@/lib/chat";
 import { cn } from "@/lib/utils";
-import type { TraceView } from "../../_lib/trace-view";
+import {
+  settledBackgroundWorkerTasks,
+  type TraceView,
+} from "../../_lib/trace-view";
 import { ActivityCard } from "./card";
 import { TracePreview } from "./preview";
 import { useChatUsage } from "./use-chat-usage";
@@ -85,16 +88,19 @@ export function SubagentPanel({
   const selected = sessions.find(
     (session) => session.childSessionId === selectedId
   );
-  const statuses = useMemo(
-    () =>
-      new Map(
-        sessions.map((session) => [
+  const statuses = useMemo(() => {
+    const settled = settledBackgroundWorkerTasks(events);
+    return new Map(
+      sessions.map((session) => {
+        const taskId = session.completion?.backgroundTask?.taskId;
+        return [
           session.childSessionId,
-          getSubagentStatus([], session),
-        ])
-      ),
-    [sessions]
-  );
+          (taskId ? settled.get(taskId) : undefined) ??
+            getSubagentStatus([], session),
+        ];
+      })
+    );
+  }, [events, sessions]);
   const workingCount = [...statuses.values()].filter((status) =>
     ["starting", "working"].includes(status)
   ).length;

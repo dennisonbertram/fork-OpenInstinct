@@ -37,54 +37,19 @@ export function useSessionAgent(sessionId: string): ChatAgent {
   const [error, setError] = useState<Error>();
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const historyRef = useRef(history);
+  const loadedSessionId = useRef<string | undefined>(undefined);
   const operationRef = useRef<Promise<void> | undefined>(undefined);
 
   useEffect(() => {
     historyRef.current = history;
   }, [history]);
 
-  const followActiveTurn = useCallback(
-    async (startIndex: number, signal?: AbortSignal) => {
-      const session = client.sessions.attach(sessionId, {
-        streamIndex: startIndex,
-      });
-      let nextIndex = startIndex;
-      for await (const event of session.stream({ signal, startIndex })) {
-        nextIndex += 1;
-        appendSessionEvent(historyRef, setHistory, event, nextIndex);
-        setStatus("streaming");
-        if (isCurrentTurnBoundaryEvent(event)) break;
-      }
-    },
-    [sessionId]
-  );
-
-  const catchUp = useCallback(
-    async (signal?: AbortSignal) => {
-      const current = historyRef.current;
-      if (!current) return;
-
-      const session = client.sessions.attach(sessionId, {
-        streamIndex: current.endIndex,
-      });
-      let nextIndex = current.endIndex;
-      let latest = current.events.at(-1);
-      for await (const event of session.stream({
-        follow: false,
-        signal,
-        startIndex: nextIndex,
-      })) {
-        nextIndex += 1;
-        latest = event;
-        appendSessionEvent(historyRef, setHistory, event, nextIndex);
-      }
-
-      if (latest && !isCurrentTurnBoundaryEvent(latest)) {
-        await followActiveTurn(nextIndex, signal);
-      }
-    },
-    [followActiveTurn, sessionId]
-  );
+  const [observerVersion, setObserverVersion] = useState(0);
+  const observerController = useRef<AbortController | undefined>(undefined);
+  const observerRunning = useRef(false);
+  const operationCompletion = useRef<
+    PromiseWithResolvers<undefined> | undefined
+  >(undefined);
 
   const runOperation = useCallback((operation: () => Promise<void>) => {
     const activeOperation = operationRef.current;
@@ -98,49 +63,102 @@ export function useSessionAgent(sessionId: string): ChatAgent {
 
   useEffect(() => {
     const controller = new AbortController();
-
-    void readLatestSessionHistory(sessionId, controller.signal)
-      .then(async (latest) => {
-        if (controller.signal.aborted) return undefined;
-        historyRef.current = latest;
-        setHistory(latest);
-        const tail = latest.events.at(-1);
-        if (tail && !isCurrentTurnBoundaryEvent(tail)) {
-          setStatus("streaming");
-          await runOperation(async () => {
-            await followActiveTurn(latest.endIndex, controller.signal);
-          });
-        }
+    observerController.current = controller;
+    void (async () => {
+      const restored =
+        loadedSessionId.current === sessionId ? historyRef.current : undefined;
+      const latest =
+        restored ??
+        (await readLatestSessionHistory(sessionId, controller.signal));
+      if (controller.signal.aborted) return;
+      loadedSessionId.current = sessionId;
+      historyRef.current = latest;
+      setHistory(latest);
+      const tail = latest.events.at(-1);
+      if (
+        tail?.type === "session.completed" ||
+        tail?.type === "session.failed"
+      ) {
         setStatus("ready");
-        return undefined;
-      })
-      .catch((cause: unknown) => {
-        if (controller.signal.aborted) return undefined;
-        setError(toError(cause));
-        setStatus("error");
-        return undefined;
+        return;
+      }
+      setStatus(
+        !tail || isCurrentTurnBoundaryEvent(tail) ? "ready" : "streaming"
+      );
+      const session = client.sessions.attach(sessionId, {
+        streamIndex: latest.endIndex,
       });
-
-    return () => {
-      controller.abort();
-    };
-  }, [followActiveTurn, runOperation, sessionId]);
-
-  const resume = useCallback(
-    () =>
-      runOperation(async () => {
-        setStatus("resuming");
-        setError(undefined);
-        try {
-          await catchUp();
+      let nextIndex = latest.endIndex;
+      const observedIds = new Set(latest.events.map((event) => event.meta.id));
+      const pendingAuthorizations = new Set<string>();
+      for (const event of latest.events) {
+        if (
+          event.type === "authorization.required" &&
+          event.data.webhookUrl !== undefined
+        )
+          pendingAuthorizations.add(event.data.name);
+        if (event.type === "authorization.completed")
+          pendingAuthorizations.delete(event.data.name);
+      }
+      observerRunning.current = true;
+      for await (const event of session.stream({
+        signal: controller.signal,
+        startIndex: nextIndex,
+        streamReconnectPolicy: {
+          streamIdleReconnectPolicy: {
+            baseDelayMs: 1_000,
+            maxDelayMs: 5_000,
+            maxAttempts: Number.MAX_SAFE_INTEGER,
+          },
+        },
+      })) {
+        controller.signal.throwIfAborted();
+        if (observedIds.has(event.meta.id)) continue;
+        observedIds.add(event.meta.id);
+        nextIndex += 1;
+        appendSessionEvent(historyRef, setHistory, event, nextIndex);
+        if (
+          event.type === "authorization.required" &&
+          event.data.webhookUrl !== undefined
+        )
+          pendingAuthorizations.add(event.data.name);
+        if (event.type === "authorization.completed")
+          pendingAuthorizations.delete(event.data.name);
+        if (isCurrentTurnBoundaryEvent(event)) {
           setStatus("ready");
-        } catch (cause) {
-          setError(toError(cause));
-          setStatus("error");
+          if (
+            event.type !== "session.waiting" ||
+            pendingAuthorizations.size === 0
+          )
+            operationCompletion.current?.resolve(undefined);
+          if (event.type !== "session.waiting") break;
+        } else {
+          setStatus("streaming");
         }
-      }),
-    [catchUp, runOperation]
-  );
+      }
+      observerRunning.current = false;
+    })().catch((cause: unknown) => {
+      if (controller.signal.aborted) return;
+      observerRunning.current = false;
+      operationCompletion.current?.reject(cause);
+      setError(toError(cause));
+      setStatus("error");
+    });
+    return () => {
+      observerRunning.current = false;
+      controller.abort();
+      operationCompletion.current?.reject(
+        new Error("The conversation was closed.")
+      );
+    };
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Retry deliberately recreates the observer from its authoritative cursor.
+  }, [observerVersion, sessionId]);
+
+  const resume = useCallback(async () => {
+    setError(undefined);
+    setStatus("resuming");
+    setObserverVersion((value) => value + 1);
+  }, []);
 
   const send = useCallback(
     async <TOutput>(
@@ -148,43 +166,59 @@ export function useSessionAgent(sessionId: string): ChatAgent {
       options?: SendTurnOptions<TOutput>
     ) => {
       const activeOperation = operationRef.current;
-      if (activeOperation && options?.turnPolicy === "steer") {
+      if (activeOperation) {
         const current = historyRef.current;
         if (!current) throw new Error("The conversation is still loading.");
+        if (!observerRunning.current)
+          throw new Error("Reconnect the conversation before responding.");
         const session = client.sessions.attach(sessionId, {
           streamIndex: current.endIndex,
         });
-        await session.send(message, options);
+        await session.send(message, {
+          ...options,
+          turnPolicy: options?.turnPolicy ?? "steer",
+        });
         await activeOperation;
-        await resume();
         return;
       }
 
       await runOperation(async () => {
         const current = historyRef.current;
         if (!current) throw new Error("The conversation is still loading.");
+        if (!observerRunning.current)
+          throw new Error("Reconnect the conversation before responding.");
         setError(undefined);
         setStatus("submitted");
         const session = client.sessions.attach(sessionId, {
           streamIndex: current.endIndex,
         });
-        let nextIndex = current.endIndex;
+        const completion = Promise.withResolvers<undefined>();
+        operationCompletion.current = completion;
+        void completion.promise.catch(() => undefined);
+        const abort = () => {
+          completion.reject(options?.signal?.reason);
+        };
+        options?.signal?.addEventListener("abort", abort, { once: true });
         try {
-          const response = await session.send(message, options);
-          for await (const event of response) {
-            nextIndex += 1;
-            appendSessionEvent(historyRef, setHistory, event, nextIndex);
-            setStatus("streaming");
-          }
+          options?.signal?.throwIfAborted();
+          await session.send(message, {
+            ...options,
+            signal: options?.signal ?? observerController.current?.signal,
+          });
+          await completion.promise;
           setStatus("ready");
         } catch (cause) {
           setError(toError(cause));
           setStatus("error");
           throw cause;
+        } finally {
+          options?.signal?.removeEventListener("abort", abort);
+          if (operationCompletion.current === completion)
+            operationCompletion.current = undefined;
         }
       });
     },
-    [resume, runOperation, sessionId]
+    [runOperation, sessionId]
   );
 
   const respond = useCallback(
@@ -195,24 +229,36 @@ export function useSessionAgent(sessionId: string): ChatAgent {
       await runOperation(async () => {
         const current = historyRef.current;
         if (!current) throw new Error("The conversation is still loading.");
+        if (!observerRunning.current)
+          throw new Error("Reconnect the conversation before responding.");
         setError(undefined);
         setStatus("submitted");
         const session = client.sessions.attach(sessionId, {
           streamIndex: current.endIndex,
         });
-        let nextIndex = current.endIndex;
+        const completion = Promise.withResolvers<undefined>();
+        operationCompletion.current = completion;
+        void completion.promise.catch(() => undefined);
+        const abort = () => {
+          completion.reject(options?.signal?.reason);
+        };
+        options?.signal?.addEventListener("abort", abort, { once: true });
         try {
-          const response = await session.respond(inputResponses, options);
-          for await (const event of response) {
-            nextIndex += 1;
-            appendSessionEvent(historyRef, setHistory, event, nextIndex);
-            setStatus("streaming");
-          }
+          options?.signal?.throwIfAborted();
+          await session.respond(inputResponses, {
+            ...options,
+            signal: options?.signal ?? observerController.current?.signal,
+          });
+          await completion.promise;
           setStatus("ready");
         } catch (cause) {
           setError(toError(cause));
           setStatus("error");
           throw cause;
+        } finally {
+          options?.signal?.removeEventListener("abort", abort);
+          if (operationCompletion.current === completion)
+            operationCompletion.current = undefined;
         }
       });
     },

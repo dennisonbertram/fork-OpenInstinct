@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   loop,
   type BrowserActResult,
@@ -12,7 +13,16 @@ import {
 } from "eve/tools";
 import { requireWorkerScope } from "@/agent/subagents/browser-agent/lib/access";
 import { requireOwnedBrowserSession } from "@/agent/subagents/browser-agent/lib/owned-browser";
-import { executeBrowserLoopTool, modelText } from "../lib/semantic-loop";
+import {
+  browserRefStateForSession,
+  executeBrowserLoopTool,
+  modelText,
+} from "../lib/semantic-loop";
+import {
+  browserActionTargets,
+  browserActionTargetsJson,
+  redactBrowserValues,
+} from "../lib/browser-action-targets";
 import { isVaultFilledBrowserSession } from "../lib/vault-browser-guard";
 
 /* oxlint-disable anti-slop/no-known-value-widening, anti-slop/no-runtime-typeof, anti-slop/no-unknown-parameters, anti-slop/no-unsafe-dictionary-type -- Browser Loop supplies runtime-selected JSON Schemas and JSON inputs, so this adapter must preserve its dynamic vendor boundary. */
@@ -71,7 +81,32 @@ async function executeSemanticTool(
   );
   return isVaultFilledBrowserSession(sessionId)
     ? redactVaultFilledBrowserOutput(output)
-    : output;
+    : withActionTargets(output, spec, sessionId);
+}
+
+function withActionTargets(
+  output: LoopToolExecutionResult,
+  spec: LoopToolSpec,
+  sessionId: string
+): LoopToolExecutionResult {
+  if (spec.name !== "browser_snapshot" && spec.name !== "browser_find")
+    return output;
+  const targets = browserActionTargets(
+    sessionId,
+    modelText(output),
+    browserRefStateForSession(sessionId)
+  );
+  if (targets.length === 0) return output;
+  return {
+    ...output,
+    content: [
+      ...output.content,
+      {
+        type: "text",
+        text: `Observed action targets (pass target_ref and target_token into interact_browser_element or commit_browser_action; display_label is for choosing the target only; use browser_find if your target is absent):\n${browserActionTargetsJson(targets)}`,
+      },
+    ],
+  };
 }
 
 function boundedToolInput(spec: LoopToolSpec, input: Record<string, unknown>) {
@@ -86,13 +121,38 @@ function boundedToolInput(spec: LoopToolSpec, input: Record<string, unknown>) {
   return input;
 }
 
+// Keep the vendor's finite verification evidence, never page-derived text.
+const vaultWaitEvidenceSchema = z.object({
+  status: z.enum(["satisfied", "timed_out", "unverifiable", "interrupted"]),
+  evidence: z.enum(["preexisting", "newly_verified", "failed", "unverifiable"]),
+  elapsed_ms: z.number().nonnegative(),
+  final: z.object({ truth: z.boolean().optional() }),
+  reason: z
+    .enum([
+      "navigation",
+      "dialog",
+      "target_changed",
+      "target_detached",
+      "stale_ref",
+      "observation_failed",
+      "incomplete_observation",
+    ])
+    .optional(),
+});
+
 function redactVaultFilledBrowserOutput(output: LoopToolExecutionResult) {
+  const wait = vaultWaitEvidenceSchema.safeParse(
+    output.details.readResults?.find((read) => read.type === "browser_wait_for")
+      ?.result
+  );
   return {
     ...output,
     content: [
       {
         type: "text" as const,
-        text: "Sensitive browser content omitted after vault autofill.",
+        text: wait.success
+          ? `Browser wait verification: ${JSON.stringify(wait.data)}. Sensitive browser content omitted after vault autofill.`
+          : "Sensitive browser content omitted after vault autofill.",
       },
     ],
     details: {
@@ -136,7 +196,9 @@ function withSessionId(spec: LoopToolSpec) {
   const schema: Record<string, unknown> = {
     ...(spec.name === "browser_act"
       ? relaxedBrowserActSchema(spec.declaration.parameters)
-      : spec.declaration.parameters),
+      : spec.name === "browser_wait_for"
+        ? atomicLocationWaitSchema(spec.declaration.parameters)
+        : spec.declaration.parameters),
   };
   const properties = isRecord(schema.properties) ? schema.properties : {};
   const required = Array.isArray(schema.required)
@@ -158,6 +220,44 @@ function withSessionId(spec: LoopToolSpec) {
     required: ["session_id", ...required],
     type: "object",
   };
+}
+
+// Avoid optional URL/title operators becoming empty/false placeholders in model calls.
+// Deliberate conjunctions remain expressible through the vendor's `all` leaves.
+function atomicLocationWaitSchema(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) return {};
+  const schema = structuredClone(value);
+  const properties = isRecord(schema.properties) ? schema.properties : {};
+  function visit(condition: unknown) {
+    if (!isRecord(condition)) return;
+    if (Array.isArray(condition.anyOf)) condition.anyOf.forEach(visit);
+    const fields = isRecord(condition.properties) ? condition.properties : {};
+    for (const group of [fields.all, fields.any]) {
+      if (isRecord(group)) visit(group.items);
+    }
+    const type = isRecord(fields.type) ? fields.type : undefined;
+    const variants = type && Array.isArray(type.anyOf) ? type.anyOf : [];
+    if (
+      variants.length === 0 ||
+      !variants.every(
+        (variant) =>
+          isRecord(variant) &&
+          (variant.const === "url" || variant.const === "title")
+      )
+    )
+      return;
+    const required = Array.isArray(condition.required)
+      ? condition.required
+      : [];
+    const operator = ["equals", "contains", "changed"].find((key) =>
+      required.includes(key)
+    );
+    if (!operator) return;
+    condition.properties = { type: fields.type, [operator]: fields[operator] };
+    condition.additionalProperties = false;
+  }
+  visit(properties.expect);
+  return schema;
 }
 
 function toolDescription(spec: LoopToolSpec) {
@@ -296,16 +396,6 @@ function truncate(value: string, limit: number) {
   value = redactBrowserValues(value);
   if (value.length <= limit) return value;
   return `${value.slice(0, limit)}\n[truncated ${String(value.length - limit)} characters]`;
-}
-
-function redactBrowserValues(value: string) {
-  return value
-    .replace(/\bvalue\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/giu, "value=[omitted]")
-    .replace(
-      /(["']?value["']?\s*:\s*)(["'][^"']*["']|[^,}\s]+)/giu,
-      "$1[omitted]"
-    )
-    .replace(/\b(?:\d[ -]?){13,19}\b/gu, "[sensitive value omitted]");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

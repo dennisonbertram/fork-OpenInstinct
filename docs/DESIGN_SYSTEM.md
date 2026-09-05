@@ -424,3 +424,19 @@ Each item is verified against the named file on 2026-09-03.
   utility to `typography.css`, then add a row to section 3.2.
 - Run `pnpm check` and `pnpm build`, then open the affected page in a
   browser before you hand off.
+
+### Browser approvals in chat
+
+Pending delegated browser approvals and questions appear above the message
+composer in both normal and developer views. The warning alert shows the
+action's material terms and response buttons, without tool arguments, vault
+identifiers, or private traces. Responses target the child session that owns
+the request. Controls disable while submitting; failures show a generic retry
+message. Resolved requests disappear. The developer task trace remains read-only.
+The mounted conversation continues observing later task-result turns after an
+idle boundary, so delegated results arrive without refreshing the page.
+The Activity task badges and working/done counts use the parent conversation’s
+confirmed completion, failure, and cancellation receipts; opening a child trace
+is not required to see settled work. Pending input remains unsettled.
+
+Source: `src/app/(authenticated)/chat/[sessionId]/_components/activity/pending-actions.tsx`.

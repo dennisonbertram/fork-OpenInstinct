@@ -11,7 +11,8 @@ export default defineDynamic({
       const worker = defineAgent({
         description:
           "Execute one bounded browser assignment for the root coordinator, including secure vault autofill, transaction preparation, optional durable browser images, human-takeover handoff, cleanup, and a concise verified result. Every initial and resumed call must include the task-completion outputSchema required by the root instructions.",
-        model: "zai/glm-5.2",
+        // Browser evidence requires native image input as well as tool calls.
+        model: "openai/gpt-5.6-sol-fast",
         reasoning: "low",
         outputSchema: taskCompletionSchema,
         compaction: {

@@ -46,7 +46,7 @@ const inputSchema = z.object({
 
 const manageBrowsers = defineTool({
   description:
-    'Manage browser sessions backed by the workspace persistent profile. Create read-only browsers by default so tasks can run in parallel. Immediately before a login, replace that task browser with one created using save_changes: true, then delete it after authentication so the session is saved. Only one profile writer may be active. Use "list" or "get" to inspect sessions.',
+    'Manage browser sessions backed by the workspace persistent profile. Create read-only browsers by default so tasks can run in parallel. If the assignment explicitly requires signing in, create with save_changes: true immediately. Otherwise replace a read-only browser only when login becomes necessary. Verify authentication and capture any requested confirmation before deleting the writer so the session is saved. Only one profile writer may be active. Use "list" or "get" to inspect sessions.',
   inputSchema,
   async execute(input, context) {
     const scope = await requireWorkerScope(context);
