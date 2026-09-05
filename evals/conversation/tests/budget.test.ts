@@ -6,7 +6,7 @@ import {
   tool,
   stepCountIs,
 } from "ai";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -501,5 +501,123 @@ describe("paid conversation budget", () => {
       await proxy.close();
       await rm(outputDir, { recursive: true, force: true });
     }
+  });
+  it("raises an explicitly authorized ceiling without losing previous charges", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jory-budget-raised-"));
+    const ledgerDirectory = join(root, "ledger");
+    const upstream = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({ providerMetadata: { gateway: { cost: 0.01 } } })
+        )
+    );
+    const options = {
+      ledgerDirectory,
+      authHeaders: {},
+      agentModel: "agent",
+      judgeModel: "judge",
+      models: { agent: price, judge: price },
+      fetch: upstream,
+    };
+    const first = await startBudgetGateway({
+      ...options,
+      budgetUsd: 10,
+      outputDir: join(root, "first"),
+    });
+    await fetch(`${first.url}/v4/ai/language-model`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${first.token}`,
+        "ai-language-model-id": "agent",
+      },
+      body: JSON.stringify(body),
+    }).then((response) => response.text());
+    await first.close();
+    await expect(
+      startBudgetGateway({
+        ...options,
+        budgetUsd: 0.005,
+        outputDir: join(root, "too-low"),
+      })
+    ).rejects.toThrow("below existing charged or reserved spend");
+    const second = await startBudgetGateway({
+      ...options,
+      budgetUsd: 20,
+      outputDir: join(root, "second"),
+      verifiedNativeBudget: {
+        keyId: "key_test",
+        limitUsd: 18,
+        refreshPeriod: "none",
+        verifiedAt: new Date().toISOString(),
+      },
+    });
+    try {
+      expect(second.snapshot().chargedOrReservedUsd).toBe(0.01);
+      await fetch(`${second.url}/v4/ai/language-model`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${second.token}`,
+          "ai-language-model-id": "agent",
+        },
+        body: JSON.stringify(body),
+      }).then((response) => response.text());
+      expect(second.snapshot().budgetUsd).toBe(20);
+      expect(second.snapshot().chargedOrReservedUsd).toBe(0.02);
+      expect(second.snapshot().requests.map((row) => row.id)).toEqual([1, 2]);
+      expect(second.snapshot().requests.map((row) => row.runId)).toEqual([
+        "first",
+        "second",
+      ]);
+      expect(upstream).toHaveBeenCalledTimes(2);
+    } finally {
+      await second.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it("resumes the same output only when its charge history matches the cumulative ledger", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jory-budget-resume-"));
+    const outputDir = join(root, "run");
+    const upstream = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({ providerMetadata: { gateway: { cost: 0.01 } } })
+        )
+    );
+    const options = {
+      budgetUsd: 10,
+      ledgerDirectory: join(root, "ledger"),
+      outputDir,
+      authHeaders: {},
+      agentModel: "agent",
+      judgeModel: "judge",
+      models: { agent: price, judge: price },
+      fetch: upstream,
+    };
+    const first = await startBudgetGateway(options);
+    await fetch(`${first.url}/v4/ai/language-model`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${first.token}`,
+        "ai-language-model-id": "agent",
+      },
+      body: JSON.stringify(body),
+    }).then((response) => response.text());
+    await first.close();
+    const resumed = await startBudgetGateway({
+      ...options,
+      budgetUsd: 20,
+      resumeOutput: true,
+    });
+    expect(resumed.snapshot().chargedOrReservedUsd).toBe(0.01);
+    expect(resumed.snapshot().requests).toHaveLength(1);
+    await resumed.close();
+    await writeFile(
+      join(outputDir, "budget.json"),
+      JSON.stringify({ requests: [] })
+    );
+    await expect(
+      startBudgetGateway({ ...options, resumeOutput: true })
+    ).rejects.toThrow("history disagrees");
+    await rm(root, { recursive: true, force: true });
   });
 });

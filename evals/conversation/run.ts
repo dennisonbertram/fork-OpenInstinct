@@ -3,7 +3,7 @@
 /* oxlint-disable eslint/no-await-in-loop -- trials and lifecycle steps must run serially for fixture isolation and shared spending attribution. */
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createGateway } from "ai";
@@ -20,21 +20,97 @@ import {
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const inherited = { ...process.env };
-const runId = new Date().toISOString().replaceAll(/[:.]/gu, "-");
-const outputDir = join(root, ".eve/conversation-baseline", runId);
 const args = process.argv.slice(2);
-if (args.length !== 2 || args[0] !== "--budget-usd" || Number(args[1]) !== 10) {
+const budgetUsd = Number(args[1]);
+const resumeId = args[2] === "--resume" ? args[3] : undefined;
+if (
+  args[0] !== "--budget-usd" ||
+  ![10, 20].includes(budgetUsd) ||
+  !(args.length === 2 || (args.length === 4 && resumeId)) ||
+  (resumeId && !/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/u.test(resumeId))
+) {
   throw new Error(
-    "Use --conversation-baseline --budget-usd 10; the suite owns cases, trials, model, and isolation."
+    "Use --conversation-baseline --budget-usd 10|20 [--resume run-id]; use only the explicitly authorized cumulative budget."
   );
 }
+const checkpointId = new Date().toISOString().replaceAll(/[:.]/gu, "-");
+const runId = resumeId ?? checkpointId;
+const outputDir = join(root, ".eve/conversation-baseline", runId);
 const records = makeTrialManifest();
-await mkdir(outputDir, { recursive: true });
-for (const record of records) await writeTrial(outputDir, record);
-await writeFile(
-  join(outputDir, "manifest.json"),
-  JSON.stringify(records, null, 2)
-);
+const resumedProvenance = resumeId
+  ? z
+      .object({
+        status: z.literal("interrupted"),
+        cleanup: z.literal("completed"),
+        commitSha: z.string().regex(/^[a-f0-9]{40}$/u),
+        agentSourceHash: z.string(),
+        rubricHash: z.string(),
+        scenarioHash: z.string(),
+        agentModel: z.string(),
+        judgeModel: z.string(),
+      })
+      .parse(
+        JSON.parse(await readFile(join(outputDir, "provenance.json"), "utf8"))
+      )
+  : undefined;
+if (resumedProvenance) {
+  const previousBudget = z
+    .object({
+      poisoned: z.literal(false),
+      requests: z.array(
+        z.object({
+          trialKey: z.string().nullable(),
+          costUsd: z.number(),
+          status: z.literal("reconciled"),
+        })
+      ),
+    })
+    .parse(JSON.parse(await readFile(join(outputDir, "budget.json"), "utf8")));
+  const previousManifest = z
+    .array(z.object({ key: z.string() }))
+    .parse(
+      JSON.parse(await readFile(join(outputDir, "manifest.json"), "utf8"))
+    );
+  if (
+    JSON.stringify(previousManifest.map((record) => record.key)) !==
+    JSON.stringify(records.map((record) => record.key))
+  )
+    throw new Error("Resume manifest differs from the authored suite");
+  for (const [index, scheduled] of records.entries()) {
+    const prior = await readTrial(outputDir, scheduled.key);
+    if (
+      prior.status === "completed" &&
+      !["pending"].includes(prior.judge.status)
+    )
+      records[index] = prior;
+    else if (
+      prior.status !== "blocked" ||
+      prior.turns.length !== 0 ||
+      previousBudget.requests.some((request) => request.trialKey === prior.key)
+    )
+      throw new Error(
+        `Resume refuses to replace an attempted trial: ${prior.key}`
+      );
+  }
+  const checkpoint = join(outputDir, "checkpoints", checkpointId);
+  await mkdir(checkpoint, { recursive: true });
+  for (const name of [
+    "provenance.json",
+    "summary.json",
+    "report.md",
+    "budget.json",
+    "native-budget-verification.json",
+  ])
+    await copyFile(join(outputDir, name), join(checkpoint, name));
+} else {
+  await mkdir(outputDir, { recursive: true });
+  for (const record of records) await writeTrial(outputDir, record);
+  await writeFile(
+    join(outputDir, "manifest.json"),
+    JSON.stringify(records, null, 2),
+    { flag: "wx" }
+  );
+}
 console.log(`Conversation baseline artifacts: ${outputDir}`);
 
 const project = `jory-conversation-${randomBytes(6).toString("hex")}`;
@@ -77,7 +153,7 @@ async function command(
   });
   const code = await new Promise<number | null>((resolveCode, reject) => {
     current.once("error", reject);
-    current.once("exit", resolveCode);
+    current.once("close", resolveCode);
   });
   if (child === current) child = undefined;
   return { code, output, errors };
@@ -120,7 +196,7 @@ interface BaselineProvenance {
   judgeOutputTokenCap: number;
   nativeBudget?: {
     keyId: string;
-    limitUsd: 8;
+    limitUsd: number;
     refreshPeriod: "none";
     verifiedAt: string;
   };
@@ -145,10 +221,12 @@ interface BaselineProvenance {
   error?: string;
   cleanup?: string;
   squareRegressionGate?: { exitCode: number | null; results: string | null };
+  resumedFromCheckpoint?: string;
+  retainedCompletedTrials?: number;
 }
 const provenance: BaselineProvenance = {
   status: "initializing",
-  budgetUsd: 10,
+  budgetUsd,
   scenarioCount: 20,
   variantCount: 21,
   plannedTrials: 63,
@@ -160,6 +238,12 @@ const provenance: BaselineProvenance = {
   judgeOutputTokenCap: 2048,
   searchReservationHeadroomUsd: 2,
 };
+if (resumeId) {
+  provenance.resumedFromCheckpoint = checkpointId;
+  provenance.retainedCompletedTrials = records.filter(
+    (record) => record.status === "completed"
+  ).length;
+}
 try {
   for (const name of [
     ".env",
@@ -236,8 +320,13 @@ try {
     throw new Error("Dedicated Gateway key is missing, inactive, or expired");
   const quota = z
     .object({
-      limitAmount: z.literal(8),
-      currentSpend: z.number().nonnegative().max(8),
+      limitAmount: z
+        .union([z.literal(8), z.literal(18)])
+        .refine((value) => value === budgetUsd - 2),
+      currentSpend: z
+        .number()
+        .nonnegative()
+        .max(budgetUsd - 2),
       includeByokInQuota: z.literal(true),
       refreshPeriod: z.literal("none"),
       active: z.literal(true),
@@ -315,6 +404,45 @@ try {
   }
   provenance.harnessSourceHash = harnessHash.digest("hex");
 
+  if (resumedProvenance) {
+    const agentDrift = await command(
+      "git",
+      [
+        "diff",
+        resumedProvenance.commitSha,
+        "--",
+        "agent",
+        "db/services/settings.ts",
+      ],
+      cleanEnvironment,
+      true
+    );
+    const measurementDrift = await command(
+      "git",
+      [
+        "diff",
+        "HEAD",
+        "--",
+        "evals/conversation/execute.ts",
+        "evals/conversation/fixtures.ts",
+        "evals/conversation/preload.mjs",
+        "evals/conversation/setup.ts",
+      ],
+      cleanEnvironment,
+      true
+    );
+    if (
+      agentDrift.code !== 0 ||
+      agentDrift.output.trim() ||
+      measurementDrift.code !== 0 ||
+      measurementDrift.output.trim() ||
+      resumedProvenance.agentSourceHash !== provenance.agentSourceHash ||
+      resumedProvenance.rubricHash !== provenance.rubricHash ||
+      resumedProvenance.scenarioHash !== provenance.scenarioHash
+    )
+      throw new Error("Resume requires the same agent, scenarios, and rubric");
+  }
+
   databaseAttempted = true;
   if (
     (
@@ -363,6 +491,14 @@ try {
   const agentModel = modelLine?.slice("CONVERSATION_MODEL=".length);
   if (!agentModel) throw new Error("Missing configured model metadata");
   const judgeModel = "openai/gpt-5.4-mini";
+  if (
+    resumedProvenance &&
+    (resumedProvenance.agentModel !== agentModel ||
+      resumedProvenance.judgeModel !== judgeModel)
+  )
+    throw new Error(
+      "Resume model or judge differs from the paused measurement"
+    );
   provenance.agentModel = agentModel;
   provenance.judgeModel = judgeModel;
   provenance.reasoning = "low";
@@ -441,7 +577,7 @@ try {
     JSON.stringify(provenance, null, 2)
   );
   budget = await startBudgetGateway({
-    budgetUsd: 10,
+    budgetUsd,
     outputDir,
     ledgerDirectory: join(root, ".eve/conversation-baseline/budget-control"),
     authHeaders,
@@ -449,6 +585,7 @@ try {
     agentModel,
     judgeModel,
     verifiedNativeBudget,
+    resumeOutput: Boolean(resumeId),
   });
   fixtures = await startConversationFixtures();
   Object.assign(cleanEnvironment, {
@@ -470,6 +607,7 @@ try {
     NODE_OPTIONS: `--import ${join(root, "evals/conversation/preload.mjs")}`,
   });
   for (const trial of records) {
+    if (trial.status === "completed") continue;
     const group =
       trial.variant === "never-connected"
         ? "disconnected"
@@ -580,34 +718,52 @@ try {
       process.exitCode = 1;
     } else provenance.cleanup = "completed";
   }
-  const final: TrialRecord[] = [];
-  for (const { key } of records) {
-    const record = await readTrial(outputDir, key);
-    if (record.status === "pending" || record.status === "running") {
-      record.status = "blocked";
-      record.reason =
-        provenance.error ??
-        "Trial did not settle; inspect runner and budget evidence";
-      await writeTrial(outputDir, record);
+  if (resumedProvenance && !budget && provenance.cleanup !== "failed") {
+    const checkpoint = join(outputDir, "checkpoints", checkpointId);
+    await writeFile(
+      join(checkpoint, "resume-error.json"),
+      JSON.stringify(provenance, null, 2)
+    );
+    // No paid requests were dispatched. Keep the prior evidence and resume point intact.
+    for (const name of [
+      "provenance.json",
+      "summary.json",
+      "report.md",
+      "budget.json",
+      "native-budget-verification.json",
+    ])
+      await copyFile(join(checkpoint, name), join(outputDir, name));
+  } else {
+    const final: TrialRecord[] = [];
+    for (const { key } of records) {
+      const record = await readTrial(outputDir, key);
+      if (record.status === "pending" || record.status === "running") {
+        record.status = "blocked";
+        record.reason =
+          provenance.error ??
+          "Trial did not settle; inspect runner and budget evidence";
+        await writeTrial(outputDir, record);
+      }
+      final.push(record);
     }
-    final.push(record);
+    await writeReport(outputDir, {
+      provenance: { ...provenance },
+      records: final,
+      budget: budget?.snapshot() ?? {
+        budgetUsd,
+        verifiedNativeBudget: null,
+        searchHeadroomUsd: null,
+        chargedOrReservedUsd: 0,
+        poisoned: false,
+        requests: [],
+      },
+    });
+    await writeFile(
+      join(outputDir, "provenance.json"),
+      JSON.stringify(provenance, null, 2)
+    );
+    console.log(`Report: ${join(outputDir, "report.md")}`);
+    if (final.some((record) => record.status === "blocked"))
+      process.exitCode = 1;
   }
-  await writeReport(outputDir, {
-    provenance: { ...provenance },
-    records: final,
-    budget: budget?.snapshot() ?? {
-      budgetUsd: 10,
-      verifiedNativeBudget: null,
-      searchHeadroomUsd: null,
-      chargedOrReservedUsd: 0,
-      poisoned: false,
-      requests: [],
-    },
-  });
-  await writeFile(
-    join(outputDir, "provenance.json"),
-    JSON.stringify(provenance, null, 2)
-  );
-  console.log(`Report: ${join(outputDir, "report.md")}`);
-  if (final.some((record) => record.status === "blocked")) process.exitCode = 1;
 }

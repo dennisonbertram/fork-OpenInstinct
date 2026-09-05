@@ -21,7 +21,7 @@ interface Reservation {
 }
 interface VerifiedNativeBudget {
   keyId: string;
-  limitUsd: 8;
+  limitUsd: 8 | 18;
   refreshPeriod: "none";
   verifiedAt: string;
 }
@@ -29,6 +29,7 @@ export interface BudgetGatewayOptions {
   budgetUsd: number;
   outputDir: string;
   ledgerDirectory?: string;
+  resumeOutput?: boolean;
   authHeaders: Record<string, string>;
   models: Record<string, ModelPrice>;
   agentModel: string;
@@ -199,14 +200,13 @@ function responseCost(text: string, streaming: boolean): number | null {
 }
 
 export async function startBudgetGateway(options: BudgetGatewayOptions) {
-  if (!(options.budgetUsd > 0 && options.budgetUsd <= 10))
-    throw new Error("Budget must be positive and at most $10");
+  if (!(options.budgetUsd > 0 && options.budgetUsd <= 20))
+    throw new Error("Budget must be positive and at most $20");
   const nativeBudget = options.verifiedNativeBudget;
   if (
     nativeBudget &&
-    (options.budgetUsd !== 10 ||
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- Validate the supervisor contract at the runtime boundary, including JavaScript callers.
-      nativeBudget.limitUsd !== 8 ||
+    (![10, 20].includes(options.budgetUsd) ||
+      nativeBudget.limitUsd !== options.budgetUsd - 2 ||
       // oxlint-disable-next-line typescript/no-unnecessary-condition -- Validate the supervisor contract at the runtime boundary, including JavaScript callers.
       nativeBudget.refreshPeriod !== "none" ||
       !/^[a-zA-Z0-9_-]{1,128}$/u.test(nativeBudget.keyId) ||
@@ -234,12 +234,17 @@ export async function startBudgetGateway(options: BudgetGatewayOptions) {
   const ledgerPath = join(ledgerDirectory, "budget.json");
   const ledger: Reservation[] = [];
   let poisoned = false;
+  let existingLedger = false;
   if (options.ledgerDirectory) {
     try {
       const previous: unknown = JSON.parse(await readFile(ledgerPath, "utf8"));
+      existingLedger = true;
       if (
         !record(previous) ||
-        previous.budgetUsd !== options.budgetUsd ||
+        typeof previous.budgetUsd !== "number" ||
+        !Number.isFinite(previous.budgetUsd) ||
+        previous.budgetUsd <= 0 ||
+        previous.budgetUsd > 20 ||
         typeof previous.poisoned !== "boolean" ||
         !Array.isArray(previous.requests)
       )
@@ -286,6 +291,13 @@ export async function startBudgetGateway(options: BudgetGatewayOptions) {
                 : null,
         });
       }
+      if (
+        ledger.reduce((sum, row) => sum + (row.costUsd ?? row.reservedUsd), 0) >
+        options.budgetUsd
+      )
+        throw new Error(
+          "Authorized ceiling is below existing charged or reserved spend"
+        );
       poisoned = previous.poisoned;
     } catch (error) {
       if (
@@ -326,11 +338,32 @@ export async function startBudgetGateway(options: BudgetGatewayOptions) {
   };
   // Refuse to overwrite an earlier run's report; cumulative state lives separately.
   try {
-    await writeFile(
-      join(options.outputDir, "budget.json"),
-      JSON.stringify(snapshot(), null, 2),
-      { mode: 0o600, flag: "wx" }
-    );
+    if (options.resumeOutput) {
+      if (!existingLedger || ledgerDirectory === options.outputDir)
+        throw new Error(
+          "Resume requires a separate existing cumulative ledger"
+        );
+      const report: unknown = JSON.parse(
+        await readFile(join(options.outputDir, "budget.json"), "utf8")
+      );
+      if (
+        !record(report) ||
+        !Array.isArray(report.requests) ||
+        report.requests.length !== ledger.length ||
+        report.requests.some(
+          (row, index) => JSON.stringify(row) !== JSON.stringify(ledger[index])
+        )
+      )
+        throw new Error(
+          "Resume report request history disagrees with cumulative ledger"
+        );
+    } else {
+      await writeFile(
+        join(options.outputDir, "budget.json"),
+        JSON.stringify(snapshot(), null, 2),
+        { mode: 0o600, flag: "wx" }
+      );
+    }
   } catch (error) {
     await rm(lock, { recursive: true });
     throw error;
