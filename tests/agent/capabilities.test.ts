@@ -12,6 +12,21 @@ import vault from "@/agent/tools/vault";
 const groupedTools = [calendar, contacts, gmail, messaging, schedules, vault];
 
 describe("authored mode capability matrix", () => {
+  it.each(["linq-message", "scheduled-worker"])(
+    "requires a fresh model step between browser tool calls in %s mode",
+    async (authenticator) => {
+      const resolve = browserAgent.events["turn.started"];
+      if (!resolve) throw new Error("Browser agent resolver unavailable");
+      const worker = await resolve({}, dynamicContext(authenticator));
+      expect(worker).toMatchObject({
+        model: "openai/gpt-5.6-sol-fast",
+        modelOptions: {
+          providerOptions: { openai: { parallelToolCalls: false } },
+        },
+      });
+    }
+  );
+
   it("gives interactive turns the authored coordinator capabilities", async () => {
     expect(await authoredCapabilities("linq-message")).toEqual([
       "browser-agent",
