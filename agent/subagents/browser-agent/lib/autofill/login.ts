@@ -1,5 +1,7 @@
 import type { AutofillClaim } from "./protocol";
 
+export type NativeLoginPurpose = "login" | "signup";
+
 export const nativeLoginAutofillTokens = [
   "username",
   "email",
@@ -15,6 +17,8 @@ export interface NativeLoginControlDescriptor {
   readonly label: string;
   readonly name: string;
   readonly type: string;
+  readonly submitLabels?: readonly string[];
+  readonly formLabel?: string;
 }
 
 export interface ClassifiedNativeLoginControl extends NativeLoginControlDescriptor {
@@ -23,22 +27,26 @@ export interface ClassifiedNativeLoginControl extends NativeLoginControlDescript
 }
 
 export function classifyNativeLoginControl(
-  descriptor: NativeLoginControlDescriptor
+  descriptor: NativeLoginControlDescriptor,
+  purpose: NativeLoginPurpose = "login"
 ): ClassifiedNativeLoginControl | null {
-  const autocompleteTokens = descriptor.autocomplete
-    .toLowerCase()
-    .split(/\s+/u)
-    .filter(Boolean);
-  if (
-    autocompleteTokens.some((token) =>
-      ["new-password", "one-time-code"].includes(token)
-    )
-  ) {
-    return null;
-  }
+  const autocompleteTokens = new Set(
+    descriptor.autocomplete.toLowerCase().split(/\s+/u).filter(Boolean)
+  );
+  if (autocompleteTokens.has("one-time-code")) return null;
+  if (purpose === "signup") {
+    if (autocompleteTokens.has("current-password")) return null;
+    if (descriptor.type === "password") {
+      return {
+        ...descriptor,
+        score: autocompleteTokens.has("new-password") ? 100 : 90,
+        token: "current-password",
+      };
+    }
+  } else if (autocompleteTokens.has("new-password")) return null;
 
   for (const token of nativeLoginAutofillTokens) {
-    if (autocompleteTokens.includes(token)) {
+    if (autocompleteTokens.has(token)) {
       return { ...descriptor, score: 100, token };
     }
   }
@@ -76,7 +84,8 @@ export function classifyNativeLoginControl(
 
 export function selectNativeLoginFills<T extends ClassifiedNativeLoginControl>(
   controls: readonly T[],
-  claims: readonly Pick<AutofillClaim, "token" | "value">[]
+  claims: readonly Pick<AutofillClaim, "token" | "value">[],
+  purpose: NativeLoginPurpose = "login"
 ) {
   const focused = controls.find((control) => control.focused);
   if (!focused) return [];
@@ -97,11 +106,13 @@ export function selectNativeLoginFills<T extends ClassifiedNativeLoginControl>(
     if (value !== undefined) selected.push({ control: identifier, value });
   }
 
-  const password = sameSurface.find(
+  const passwords = sameSurface.filter(
     (control) =>
       control.token === "current-password" && values.has(control.token)
   );
-  if (password) {
+  for (const password of purpose === "signup"
+    ? passwords
+    : passwords.slice(0, 1)) {
     const value = values.get(password.token);
     if (value !== undefined) selected.push({ control: password, value });
   }
@@ -124,6 +135,10 @@ export const nativeLoginControlInspectionExpression = `(() => {
       .join(" ");
     const resolvedFormIndex = element.form ? forms.indexOf(element.form) : -1;
     return [{
+      submitLabels: element.form ? Array.from(document.querySelectorAll("button,input"))
+        .filter(control => control.form === element.form && ["submit", "image"].includes(control.type) && !control.matches(":disabled") && getComputedStyle(control).display !== "none" && getComputedStyle(control).visibility !== "hidden" && control.getClientRects().length > 0)
+        .map(control => control.tagName === "BUTTON" ? control.textContent || "" : control.getAttribute(control.type === "image" ? "alt" : "value") || "") : [],
+      formLabel: element.form ? [element.form.id, element.form.getAttribute("name") || "", element.form.getAttribute("aria-label") || "", ...Array.from(element.form.querySelectorAll("h1,h2,h3,h4,h5,h6"), heading => heading.textContent || "")].join(" ") : "",
       autocomplete: element.autocomplete || "",
       focused: document.activeElement === element,
       formIndex: resolvedFormIndex >= 0 ? resolvedFormIndex : null,
@@ -174,4 +189,59 @@ function normalizeText(value: string) {
     .toLowerCase()
     .replaceAll(/[^a-z0-9]+/gu, " ")
     .trim();
+}
+
+export function classifyNativeLoginControls(
+  descriptors: readonly NativeLoginControlDescriptor[],
+  purpose: NativeLoginPurpose = "login",
+  allowNewPasswordField = false
+) {
+  let compatibilityTarget: NativeLoginControlDescriptor | undefined;
+  if (allowNewPasswordField) {
+    const focused = descriptors.find((control) => control.focused);
+    const sameForm = focused
+      ? descriptors.filter((control) => control.formIndex === focused.formIndex)
+      : [];
+    const passwords = sameForm.filter((control) => control.type === "password");
+    const candidate = passwords.length === 1 ? passwords[0] : undefined;
+    const hintTokens = new Set(
+      candidate?.autocomplete.toLowerCase().split(/\s+/u)
+    );
+    const submitLabels = candidate?.submitLabels?.map(normalizeText) ?? [];
+    const hasNonLoginIntent =
+      /\b(?:register|registration|signup|sign up|reset|change|recover|new password|confirm|repeat|current password|old password)\b/u.test(
+        normalizeText(
+          [candidate?.formLabel, candidate?.label, candidate?.name].join(" ")
+        )
+      );
+    if (
+      purpose !== "login" ||
+      !focused ||
+      focused.formIndex === null ||
+      !candidate ||
+      !hintTokens.has("new-password") ||
+      hintTokens.has("current-password") ||
+      sameForm.some((control) =>
+        control.autocomplete
+          .toLowerCase()
+          .split(/\s+/u)
+          .includes("one-time-code")
+      ) ||
+      submitLabels.length !== 1 ||
+      !/^(?:login|log in|sign in)$/u.test(submitLabels[0] ?? "") ||
+      hasNonLoginIntent
+    ) {
+      throw new Error(
+        "New-password compatibility requires one unambiguous sign-in form and password field."
+      );
+    }
+    compatibilityTarget = candidate;
+  }
+  return descriptors.flatMap((descriptor) => {
+    const classified: ClassifiedNativeLoginControl | null =
+      descriptor === compatibilityTarget
+        ? { ...descriptor, score: 100, token: "current-password" }
+        : classifyNativeLoginControl(descriptor, purpose);
+    return classified ? [classified] : [];
+  });
 }

@@ -128,7 +128,10 @@ export const squareCases: readonly SquareCase[] = [
     tone: directTone,
   },
   {
-    expectTools: [["square__SearchOrders"], ["square__ListPaymentRefunds"]],
+    expectTools: [
+      ["square__SearchOrders", "square__ListPayments"],
+      ["square__ListPaymentRefunds"],
+    ],
     facts: () => ["$50.50"],
     forbidTools: writeToolPattern,
     id: "todays-net-sales-total",
@@ -263,7 +266,7 @@ export const squareCases: readonly SquareCase[] = [
     id: "thanks-no-tool",
     layout: "normal",
     prompt: "Thanks!",
-    tone: "a short, warm reply with no report or restated question",
+    tone: "a short, warm acknowledgement, either a brief text reply or a positive native reaction such as a heart or thumbs-up, with no report or restated question",
   },
   {
     expectTools: [["square__ListCatalog", "square__SearchCatalogItems"]],

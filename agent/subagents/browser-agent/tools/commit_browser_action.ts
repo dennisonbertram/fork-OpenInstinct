@@ -1,3 +1,4 @@
+import { resolveBrowserActionTarget } from "../lib/browser-action-targets";
 import { defineTool } from "eve/tools";
 import { always } from "eve/tools/approval";
 import { z } from "zod";
@@ -20,6 +21,25 @@ import {
 } from "../lib/semantic-loop";
 import { markVaultFilledBrowserSession } from "../lib/vault-browser-guard";
 import { loop } from "@onkernel/browser-loop";
+
+// Project only finite control-flow metadata; successor content can contain vault values.
+const commitObservationSchema = z.object({
+  outcome: z.enum(["worked", "didnt", "unknown"]),
+  stopped_at: z.number().int().nonnegative().optional(),
+  stop_reason: z
+    .enum([
+      "action_failed",
+      "expectation_failed",
+      "navigation",
+      "stale_ref",
+      "dialog",
+      "control_flow",
+      "step_timeout",
+      "global_timeout",
+    ])
+    .optional(),
+  successor: z.object({ status: z.enum(["observed", "unavailable"]) }),
+});
 
 const termsSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -50,14 +70,31 @@ export const commitBrowserActionInputSchema = z
   .object({
     action: z.enum(["delete", "place_order", "send_message", "submit"]),
     browser_session_id: z.string().trim().min(1).max(500),
-    frame_id: z.string().trim().min(1).max(200),
+    frame_id: z
+      .string()
+      .min(1)
+      .max(200)
+      .optional()
+      .describe("Legacy exact frame; omit when using target_token."),
     origin: z
       .url()
       .refine(
         (value) => new URL(value).origin === value,
         "origin must not contain a path, query, or fragment"
       ),
-    target_label: z.string().trim().min(1).max(500),
+    target_label: z
+      .string()
+      .min(1)
+      .max(500)
+      .optional()
+      .describe("Legacy exact label; omit when using target_token."),
+    target_token: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/u)
+      .optional()
+      .describe(
+        "Copy the opaque target_token from observed action_targets. Send it with target_ref; no frame or label is needed."
+      ),
     target_ref: z.string().regex(/^e\d+$/u),
     terms: termsSchema,
     payment: z
@@ -96,7 +133,7 @@ export const commitBrowserActionApproval = always();
 export default defineTool({
   approval: commitBrowserActionApproval,
   description:
-    "Commit one reviewed browser action against an exact origin and snapshot-scoped target. This is the only worker tool for submitting, ordering, sending, or deleting; routine browser preparation remains available through semantic and computer tools.",
+    "Commit one reviewed browser action against an exact origin and snapshot-scoped target. Pass target_ref and target_token from observed action_targets; omit legacy frame_id and target_label. This is the only worker tool for submitting, ordering, sending, or deleting; routine browser preparation remains available through semantic and computer tools.",
   inputSchema: commitBrowserActionInputSchema,
   async execute(input, context) {
     const scope = await requireWorkerScope(context);
@@ -111,16 +148,7 @@ export default defineTool({
       );
     }
     const refState = browserRefStateForSession(input.browser_session_id);
-    const target = refState?.refs.find(([ref]) => ref === input.target_ref);
-    if (
-      !target ||
-      target[1].frameId !== input.frame_id ||
-      `${target[1].role}: ${target[1].name}` !== input.target_label
-    ) {
-      throw new Error(
-        "The browser target reference is stale or bound to another frame."
-      );
-    }
+    const target = resolveBrowserActionTarget(input, refState);
     if (input.terms.kind !== input.action) {
       throw new Error("The approved action and material terms do not match.");
     }
@@ -132,7 +160,7 @@ export default defineTool({
     await assertKernelFrameOrigin({
       browserSessionId: input.browser_session_id,
       expectedOrigin: input.origin,
-      frameId: input.frame_id,
+      frameId: target.frameId,
       signal: context.abortSignal,
     });
 
@@ -172,15 +200,9 @@ export default defineTool({
       const currentRefState = browserRefStateForSession(
         input.browser_session_id
       );
-      const currentTarget = currentRefState?.refs.find(
-        ([ref]) => ref === input.target_ref
-      );
-      if (
-        !currentTarget ||
-        currentTarget[1].frameId !== input.frame_id ||
-        `${currentTarget[1].role}: ${currentTarget[1].name}` !==
-          input.target_label
-      ) {
+      try {
+        resolveBrowserActionTarget(input, currentRefState);
+      } catch {
         throw new Error(
           "The order target changed while payment was being filled."
         );
@@ -188,7 +210,7 @@ export default defineTool({
       await assertKernelFrameOrigin({
         browserSessionId: input.browser_session_id,
         expectedOrigin: input.origin,
-        frameId: input.frame_id,
+        frameId: target.frameId,
         signal: context.abortSignal,
       });
     }
@@ -202,9 +224,14 @@ export default defineTool({
       },
       context.abortSignal
     );
+    const observation = commitObservationSchema.safeParse(
+      result.details.readResults?.find((read) => read.type === "browser_act")
+        ?.result
+    );
     return {
+      observation: observation.success ? observation.data : undefined,
       action: input.action,
-      frame_id: input.frame_id,
+      frame_id: target.frameId,
       origin: currentOrigin,
       status: result.details.isError ? "uncertain" : "dispatched",
     } as const;

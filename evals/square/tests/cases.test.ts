@@ -68,6 +68,16 @@ describe("squareCases", () => {
     ]);
   });
 
+  it("accepts either documented sales query for net sales but still requires refunds", () => {
+    const salesCase = squareCases.find(
+      (c) => c.id === "todays-net-sales-total"
+    );
+    expect(salesCase?.expectTools).toEqual([
+      ["square__SearchOrders", "square__ListPayments"],
+      ["square__ListPaymentRefunds"],
+    ]);
+  });
+
   it("states independent measure, period, location, and exclusions for each sales case", () => {
     const salesCases = squareCases.filter((squareCase) => squareCase.sales);
     expect(salesCases.map((squareCase) => squareCase.id)).toEqual([

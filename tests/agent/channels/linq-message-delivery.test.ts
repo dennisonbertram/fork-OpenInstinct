@@ -13,6 +13,27 @@ import type {
   releaseScheduledReport,
 } from "@/db/services/scheduled-agent-jobs";
 import { defineMessagingProviderContract } from "./provider-contract";
+import messaging from "@/agent/tools/messaging";
+import { toolContextFor } from "@/tests/helpers/tool-context";
+
+const deliveryStateFixture = vi.hoisted(() => {
+  const resets: (() => void)[] = [];
+  return { resets };
+});
+vi.mock("eve/context", () => ({
+  defineState: <T>(_name: string, initial: () => T) => {
+    let value = initial();
+    deliveryStateFixture.resets.push(() => {
+      value = initial();
+    });
+    return {
+      get: () => value,
+      update: (update: (current: T) => T) => {
+        value = update(value);
+      },
+    };
+  },
+}));
 
 interface BrowserImage {
   bytes: Uint8Array;
@@ -202,6 +223,7 @@ interface LinqTestMessage {
 describe("Linq message delivery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    for (const reset of deliveryStateFixture.resets) reset();
     linqChannelCapture.connectState.mockResolvedValue(undefined);
     linqChannelCapture.deleteState.mockResolvedValue(undefined);
     linqChannelCapture.getState.mockResolvedValue(null);
@@ -210,6 +232,87 @@ describe("Linq message delivery", () => {
     scheduleDeliveryCapture.finalize.mockResolvedValue(true);
     scheduleDeliveryCapture.release.mockResolvedValue(true);
   });
+
+  it.each([false, true])(
+    "closes final delivery only after Linq accepts it (failure=%s)",
+    async (failed) => {
+      const resolverContext = {
+        channel: { kind: "channel:linq" },
+        session: { id: "root", auth: { current: null, initiator: null } },
+        messages: [],
+      };
+      const event = { data: { turnId: "turn-1" } };
+      const tools = await messaging.events["step.started"]?.(
+        event,
+        resolverContext
+      );
+      if (!tools) throw new Error("Missing messaging tools");
+      const base = toolContextFor({
+        sessionId: "root",
+        callId: "call-send-message",
+      });
+      const output = sendMessageOutputSchema.parse(
+        await tools.send_message.execute(
+          { kind: "message", text: "Result", final: true },
+          {
+            ...base,
+            session: { ...base.session, turn: { id: "turn-1", sequence: 0 } },
+          }
+        )
+      );
+      await expect(
+        Promise.resolve().then(() =>
+          tools.send_message.execute(
+            { kind: "message", text: "Duplicate" },
+            {
+              ...base,
+              session: { ...base.session, turn: { id: "turn-1", sequence: 0 } },
+            }
+          )
+        )
+      ).rejects.toThrow(/awaiting channel confirmation/iu);
+      const { context, post } = handlerContext();
+      if (failed)
+        post.mockRejectedValueOnce(new Error("Provider rejected the request"));
+      const delivery = handleActionResult(
+        sendMessageResult(output),
+        context,
+        sessionContext()
+      );
+      const rejected = await delivery.then(
+        () => false,
+        () => true
+      );
+      expect(rejected).toBe(failed);
+      const nextTools = await messaging.events["step.started"]?.(
+        event,
+        resolverContext
+      );
+      expect(nextTools === null).toBe(!failed);
+      const retryAllowed = await Promise.resolve()
+        .then(() =>
+          tools.send_message.execute(
+            {
+              kind: "message",
+              text: "Explicitly requested retry",
+              final: true,
+            },
+            {
+              ...base,
+              callId: "retry-call",
+              session: { ...base.session, turn: { id: "turn-1", sequence: 0 } },
+            }
+          )
+        )
+        .then(
+          () => true,
+          () => false
+        );
+      expect(retryAllowed).toBe(failed);
+      expect(post).toHaveBeenCalledTimes(1);
+      expect(output).not.toHaveProperty("final");
+    }
+  );
 
   defineMessagingProviderContract("Linq", () => ({
     async addReaction() {

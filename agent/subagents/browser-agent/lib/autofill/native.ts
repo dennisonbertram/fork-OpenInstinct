@@ -3,13 +3,14 @@ import { z } from "zod";
 import { env } from "@/env";
 import type { AutofillClaim } from "./protocol";
 import {
-  classifyNativeLoginControl,
+  classifyNativeLoginControls,
   frameOriginExpression,
   nativeLoginAutofillTokens,
   nativeLoginControlInspectionExpression,
   nativeLoginFillFunctionDeclaration,
   selectNativeLoginFills,
   type ClassifiedNativeLoginControl,
+  type NativeLoginPurpose,
 } from "./login";
 
 const targetListSchema = z.object({
@@ -76,6 +77,8 @@ const loginControlDescriptorsSchema = z.array(
     autocomplete: z.string(),
     focused: z.boolean(),
     formIndex: z.number().int().nonnegative().nullable(),
+    submitLabels: z.array(z.string()).optional(),
+    formLabel: z.string().optional(),
     index: z.number().int().nonnegative(),
     label: z.string(),
     name: z.string(),
@@ -180,6 +183,8 @@ export async function fillWithKernelNativeAutofill({
   claims,
   expectedOrigin,
   kind,
+  loginPurpose = "login",
+  allowNewPasswordField = false,
   authorizedFrameId,
   authorizedFrameOrigin,
   signal,
@@ -188,6 +193,8 @@ export async function fillWithKernelNativeAutofill({
   readonly claims: readonly AutofillClaim[];
   readonly expectedOrigin: string;
   readonly kind: NativeAutofillKind;
+  readonly loginPurpose?: NativeLoginPurpose;
+  readonly allowNewPasswordField?: boolean;
   readonly authorizedFrameId?: string;
   readonly authorizedFrameOrigin?: string;
   readonly signal?: AbortSignal;
@@ -210,7 +217,9 @@ export async function fillWithKernelNativeAutofill({
           connection,
           sessionId,
           claims,
-          expectedOrigin
+          expectedOrigin,
+          loginPurpose,
+          allowNewPasswordField
         );
         return { filledClaims, origin };
       }
@@ -271,17 +280,21 @@ async function fillNativeLoginControls(
   connection: CdpConnection,
   sessionIds: readonly string[],
   claims: readonly AutofillClaim[],
-  expectedOrigin: string
+  expectedOrigin: string,
+  purpose: NativeLoginPurpose,
+  allowNewPasswordField: boolean
 ) {
   const controls = await inspectNativeLoginControls(
     connection,
     sessionIds,
-    expectedOrigin
+    expectedOrigin,
+    purpose,
+    allowNewPasswordField
   );
   const focused = controls.find((control) => control.focused);
   if (!focused) {
     throw new Error(
-      "Focus a visible username, email, phone, or current-password field and retry."
+      "Focus a visible username, email, phone, or password field in the intended form and retry."
     );
   }
   const sameFrame = controls.filter(
@@ -289,7 +302,7 @@ async function fillNativeLoginControls(
       control.frameId === focused.frameId &&
       control.sessionId === focused.sessionId
   );
-  const fills = selectNativeLoginFills(sameFrame, claims);
+  const fills = selectNativeLoginFills(sameFrame, claims, purpose);
   if (fills.length === 0) {
     throw new Error(
       "The focused login form does not accept a field available in this saved login."
@@ -323,7 +336,9 @@ async function fillNativeLoginControls(
 async function inspectNativeLoginControls(
   connection: CdpConnection,
   sessionIds: readonly string[],
-  expectedOrigin: string
+  expectedOrigin: string,
+  purpose: NativeLoginPurpose,
+  allowNewPasswordField: boolean
 ) {
   return (
     await Promise.all(
@@ -343,7 +358,9 @@ async function inspectNativeLoginControls(
                         connection,
                         sessionId,
                         frameId,
-                        origin
+                        origin,
+                        purpose,
+                        allowNewPasswordField
                       ).catch(() => []),
                     ]
                   : [];
@@ -362,7 +379,9 @@ async function inspectNativeLoginFrame(
   connection: CdpConnection,
   sessionId: string,
   frameId: string,
-  origin: string | undefined
+  origin: string | undefined,
+  purpose: NativeLoginPurpose,
+  allowNewPasswordField: boolean
 ) {
   const { executionContextId } = isolatedWorldSchema.parse(
     await connection.send(
@@ -385,12 +404,18 @@ async function inspectNativeLoginFrame(
   const descriptors = loginControlDescriptorsSchema.parse(
     response.result.value
   );
-  return descriptors.flatMap((descriptor) => {
-    const classified = classifyNativeLoginControl(descriptor);
-    return classified
-      ? [{ ...classified, executionContextId, frameId, origin, sessionId }]
-      : [];
-  });
+  return classifyNativeLoginControls(
+    descriptors,
+    purpose,
+    allowNewPasswordField
+  ).map((classified) =>
+    Object.assign(classified, {
+      executionContextId,
+      frameId,
+      origin,
+      sessionId,
+    })
+  );
 }
 
 async function fillNativeLoginControl(
