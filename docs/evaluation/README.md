@@ -1,7 +1,8 @@
 # Jory conversation evaluation specification
 
-**Status: Harness implemented; behavioral baseline results and human calibration
-remain unverified until a completed run is inspected.** Authored 2026-09-05.
+**Status: Harness implemented and first behavioral baseline inspected; human
+calibration remains pending.** See [2026-09-05 results](results/2026-09-05-baseline.md)
+for observed failures, fixture limitations, and verification. Authored 2026-09-05.
 The first edition contains 20 conversations: 12 core cases and 8 Square POS
 cases. The implementation schedules 63 trials across 21 execution variants.
 Quality thresholds, visible-response latency targets, and human/judge agreement
@@ -95,7 +96,7 @@ do not retry until green or select only the best result. The initial authorized 
 the cumulative authorization to $20. The runner supports either explicitly
 authorized total, including inference, judging, and the Square regression gate.
 The budget proxy checks live pricing and reserves before each request; total
-measured cost remains unknown until execution.
+measured cost and reconciliation are recorded in each run report.
 
 ## Run the isolated behavioral baseline
 
