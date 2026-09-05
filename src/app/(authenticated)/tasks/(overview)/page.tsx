@@ -13,16 +13,16 @@ export default async function TasksPage() {
     initialPage = await listBrowserTraces(scope);
   } catch (error) {
     console.error("Unable to read browser traces", error);
-    initialError = "Unable to read the browser trace history.";
+    initialError = "Unable to read the browser task history.";
   }
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:p-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="max-w-2xl">
-          <h1 className="type-page-title">Browser traces</h1>
+          <h1 className="type-page-title">Tasks</h1>
           <p className="type-supporting-body mt-2 text-muted-foreground">
-            Every browser assignment the agent has run: the task, its verified
-            outcome, how long it took, and the domains it touched.
+            Browser tasks are the history of work Jory has run: each task&apos;s
+            status, duration, and domains touched.
           </p>
         </div>
         <Button

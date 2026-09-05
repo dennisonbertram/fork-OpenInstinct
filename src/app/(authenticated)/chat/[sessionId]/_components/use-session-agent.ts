@@ -75,10 +75,14 @@ export function useSessionAgent(sessionId: string): ChatAgent {
       historyRef.current = latest;
       setHistory(latest);
       const tail = latest.events.at(-1);
-      if (
-        tail?.type === "session.completed" ||
-        tail?.type === "session.failed"
-      ) {
+      if (tail?.type === "session.failed") {
+        setError(
+          new Error("This conversation could not continue. Start a new chat.")
+        );
+        setStatus("error");
+        return;
+      }
+      if (tail?.type === "session.completed") {
         setStatus("ready");
         return;
       }
@@ -91,6 +95,7 @@ export function useSessionAgent(sessionId: string): ChatAgent {
       let nextIndex = latest.endIndex;
       const observedIds = new Set(latest.events.map((event) => event.meta.id));
       const pendingAuthorizations = new Set<string>();
+      let reachedSessionTerminal = false;
       for (const event of latest.events) {
         if (
           event.type === "authorization.required" &&
@@ -124,6 +129,16 @@ export function useSessionAgent(sessionId: string): ChatAgent {
           pendingAuthorizations.add(event.data.name);
         if (event.type === "authorization.completed")
           pendingAuthorizations.delete(event.data.name);
+        if (event.type === "session.failed") {
+          const failure = new Error(
+            "This conversation could not continue. Start a new chat."
+          );
+          reachedSessionTerminal = true;
+          operationCompletion.current?.reject(failure);
+          setError(failure);
+          setStatus("error");
+          break;
+        }
         if (isCurrentTurnBoundaryEvent(event)) {
           setStatus("ready");
           if (
@@ -131,12 +146,24 @@ export function useSessionAgent(sessionId: string): ChatAgent {
             pendingAuthorizations.size === 0
           )
             operationCompletion.current?.resolve(undefined);
-          if (event.type !== "session.waiting") break;
+          if (event.type === "session.completed") {
+            reachedSessionTerminal = true;
+            break;
+          }
         } else {
           setStatus("streaming");
         }
       }
       observerRunning.current = false;
+      controller.signal.throwIfAborted();
+      if (!reachedSessionTerminal) {
+        const failure = new Error(
+          "The session stream ended before the request reached a ready state."
+        );
+        operationCompletion.current?.reject(failure);
+        setError(failure);
+        setStatus("error");
+      }
     })().catch((cause: unknown) => {
       if (controller.signal.aborted) return;
       observerRunning.current = false;
@@ -167,6 +194,11 @@ export function useSessionAgent(sessionId: string): ChatAgent {
     ) => {
       const activeOperation = operationRef.current;
       if (activeOperation) {
+        if (options?.turnPolicy !== "steer") {
+          throw new Error(
+            "The previous request is still finishing. Try again when it is ready."
+          );
+        }
         const current = historyRef.current;
         if (!current) throw new Error("The conversation is still loading.");
         if (!observerRunning.current)
@@ -176,7 +208,7 @@ export function useSessionAgent(sessionId: string): ChatAgent {
         });
         await session.send(message, {
           ...options,
-          turnPolicy: options?.turnPolicy ?? "steer",
+          turnPolicy: "steer",
         });
         await activeOperation;
         return;
@@ -226,6 +258,11 @@ export function useSessionAgent(sessionId: string): ChatAgent {
       inputResponses: readonly InputResponse[],
       options?: RespondTurnOptions<TOutput>
     ) => {
+      if (operationRef.current) {
+        throw new Error(
+          "The session is still processing another request. Try again when it is ready."
+        );
+      }
       await runOperation(async () => {
         const current = historyRef.current;
         if (!current) throw new Error("The conversation is still loading.");
@@ -301,7 +338,10 @@ export function useSessionAgent(sessionId: string): ChatAgent {
   );
 
   return {
-    cancel: async () => await client.sessions.attach(sessionId).cancel(),
+    cancel: async (turnId) =>
+      await client.sessions
+        .attach(sessionId)
+        .cancel(turnId === undefined ? undefined : { turnId }),
     data,
     error,
     events,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contractFixtureResponse } from "./fixture-model";
+import { contractFixtureModel, contractFixtureResponse } from "./fixture-model";
 
 describe("contract fixture model", () => {
   it("turns one or two say clauses into exact delivery calls", () => {
@@ -140,6 +140,35 @@ describe("contract fixture model", () => {
         ])
       )
     ).toEqual({ text: "DELIVERY_COMPLETE" });
+  });
+
+  it("completes without a delivery for the guarded silent fixture command", () => {
+    expect(contractFixtureResponse(request("silent"))).toEqual({
+      text: "DELIVERY_COMPLETE",
+    });
+  });
+
+  it("keeps the guarded wait command pending until its stream is cancelled", async () => {
+    const result = await contractFixtureModel.doStream({
+      prompt: [
+        {
+          content: [{ text: "wait", type: "text" }],
+          role: "user",
+        },
+      ],
+    });
+    const reader = result.stream.getReader();
+    let settled = false;
+    const first = reader.read().then(() => {
+      settled = true;
+      return undefined;
+    });
+
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    await reader.cancel();
+    await first;
+    expect(await reader.read()).toEqual({ done: true, value: undefined });
   });
 });
 

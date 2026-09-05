@@ -344,6 +344,13 @@ or foundation styles are installed.
   insufficient-credit failure shows a fixed billing remedy without the provider
   body. Production keeps the generic message; detailed runtime errors remain in
   the developer trace.
+- **Empty completion and recovery:** a completed turn with no delivered reply
+  shows actionable feedback, including after reload. Pending work, questions,
+  and approvals keep their existing progress states. Stop has separate pending,
+  confirmed, and unconfirmed feedback; confirmation waits for the durable session
+  boundary. Rejected submissions retain the composer's text and attachments.
+  When completion is uncertain, the user is asked to check the conversation
+  before retrying. Deliberate messages during streaming retain steering behavior.
 
 Pencil section **09 Jory · Beautiful chat flow** illustrates start, work,
 question and result states. The question/result examples express the intended
@@ -363,6 +370,10 @@ Source: `src/app/(authenticated)/layout.tsx` and `_components`.
   content is the navigation. The footer is the account control.
 - Below `md`, a 48px header with a `SidebarTrigger` and a `type-label` page
   name replaces the sidebar.
+- Selecting a primary or admin navigation destination closes the mobile sheet,
+  including selection of the current route. Desktop navigation stays visible.
+- Missing and denied pages use the app's semantic foreground/background tokens
+  and a return link, so browser dark preference does not change their contrast.
 - The root layout loads the two fonts and applies no theme class.
   `TooltipProvider` and the query provider wrap the app.
 
@@ -374,6 +385,19 @@ wraps on a second row. At wider sizes the card remains a horizontal row.
 Browser trace history keeps its populated table at least 60rem wide inside the
 Table primitive's horizontal scroll container. Empty/loading guidance is a
 separate wrapping paragraph rather than a cell in the wide table.
+
+### 6.2 Workspace setup and profile guidance
+
+Workspace keeps channels and connection status first. Native `details`/`summary`
+discloses operator setup and infrastructure information, with a visible marker
+and keyboard focus. Model selection remains available outside the disclosure.
+The task history uses Tasks in navigation and the page heading; trace terminology
+is reserved for diagnostics and internal contracts.
+
+Personal info and Vault link to each other and explain the existing distinction:
+Personal info is model-readable reusable profile data; Vault stores encrypted
+values that browser tools can fill without returning the saved values to Jory.
+This guidance does not merge or synchronize their storage.
 
 ## 7. Theme
 

@@ -70,28 +70,47 @@ export default async function Page({ searchParams }: PageProps<"/">) {
       />
       <ConnectionsSection google={googleWorkspace} square={squareConnection} />
 
-      <WorkspaceSection headingId="connectors-heading" title="Infrastructure">
-        <div className="divide-y divide-border/50 border-y border-border/50">
-          <ConnectorRow
-            action={<Badge variant="success">Connected</Badge>}
-            description="Run isolated browsers in your Kernel account."
-            icon={<CloudIcon />}
-            label="Kernel browser"
-          />
-          <ConnectorRow
-            action={
-              <Badge variant={imageStorageReady ? "success" : "secondary"}>
-                {imageStorageReady ? "Connected" : "Setup required"}
-              </Badge>
-            }
-            description={
-              imageStorageReady
-                ? "Store browser images in a private Vercel Blob store."
-                : "Connect a private Vercel Blob store to share browser images."
-            }
-            icon={<ImageIcon />}
-            label="Vercel Blob"
-          />
+      <details className="space-y-3">
+        <summary className="type-section-title cursor-pointer underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
+          Setup details
+        </summary>
+        <div className="space-y-6 rounded-xl border border-border/50 p-4 sm:p-5">
+          <p className="type-caption text-muted-foreground">
+            Deployment admins can attach the Google and Square OAuth connectors
+            in Vercel Connect. Then connect your account here.
+          </p>
+          <WorkspaceSection
+            headingId="connectors-heading"
+            title="Infrastructure"
+          >
+            <div className="divide-y divide-border/50 border-y border-border/50">
+              <ConnectorRow
+                action={<Badge variant="success">Connected</Badge>}
+                description="Run isolated browsers in your Kernel account."
+                icon={<CloudIcon />}
+                label="Kernel browser"
+              />
+              <ConnectorRow
+                action={
+                  <Badge variant={imageStorageReady ? "success" : "secondary"}>
+                    {imageStorageReady ? "Connected" : "Setup required"}
+                  </Badge>
+                }
+                description={
+                  imageStorageReady
+                    ? "Store browser images in a private Vercel Blob store."
+                    : "Connect a private Vercel Blob store to share browser images."
+                }
+                icon={<ImageIcon />}
+                label="Vercel Blob"
+              />
+            </div>
+          </WorkspaceSection>
+        </div>
+      </details>
+
+      <WorkspaceSection headingId="model-heading" title="Model">
+        <div className="border-y border-border/50">
           <ConnectorRow
             action={<ModelSelector modelId={gatewayModel} />}
             description={gatewayModel}
@@ -116,7 +135,7 @@ function ConnectionsSection({
     googleState === "connected"
       ? (google?.accountLabel ?? "Gmail, Calendar, and Contacts connected.")
       : googleState === "unavailable"
-        ? "A deployment admin must attach the Google OAuth connector in Vercel Connect; then you can connect your account here."
+        ? "Gmail, Calendar, and Contacts."
         : "Gmail, Calendar, and Contacts through your Google account.";
 
   const squareState = square?.state;
@@ -124,7 +143,7 @@ function ConnectionsSection({
     squareState === "connected"
       ? "Square account connected."
       : squareState === "unavailable"
-        ? "A deployment admin must attach the Square OAuth connector in Vercel Connect; then you can connect your account here."
+        ? "Locations, items, customers, and orders."
         : "Locations, items, customers, and orders from your Square account.";
 
   return (

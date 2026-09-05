@@ -1,4 +1,4 @@
-import type { MessageStreamEvent } from "eve/client";
+import { ClientError, type MessageStreamEvent } from "eve/client";
 import type { EveMessage } from "eve/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -129,6 +129,175 @@ describe("chat conversation", () => {
     expect(markup).toContain("Keep this visible");
     expect(markup).not.toContain("Thinking");
     expect(markup).not.toContain("is cancelled");
+  });
+
+  it("explains a settled turn that did not produce a visible reply", () => {
+    const agent = {
+      data: { messages: [message("turn-1:user", "Did that work?")] },
+      error: undefined,
+      events: [completedTurn("turn-1")],
+      respond: async () => undefined,
+      status: "ready",
+    } satisfies Pick<
+      ChatAgent,
+      "data" | "error" | "events" | "respond" | "status"
+    >;
+
+    const markup = renderToStaticMarkup(
+      <ChatConversation agent={agent} traceView="imessage" />
+    );
+
+    expect(markup).toContain("Jory couldn’t finish this request");
+    expect(markup).toContain("Please try sending your message again.");
+  });
+
+  it("directs a terminal session failure to a new chat without provider details", () => {
+    const agent = {
+      data: { messages: [message("turn-1:user", "Did that work?")] },
+      error: undefined,
+      events: [sessionFailed()],
+      respond: async () => undefined,
+      status: "ready",
+    } satisfies Pick<
+      ChatAgent,
+      "data" | "error" | "events" | "respond" | "status"
+    >;
+
+    const markup = renderToStaticMarkup(
+      <ChatConversation agent={agent} traceView="imessage" />
+    );
+
+    expect(markup).toContain("Jory couldn’t finish this request");
+    expect(markup).toContain(
+      "This conversation could not continue. Start a new chat."
+    );
+    expect(markup).not.toContain("Provider details must not reach the chat");
+  });
+
+  it("confirms a cancellation only after the durable cancellation boundary", () => {
+    const agent = {
+      data: { messages: [message("turn-1:user", "Stop this request")] },
+      error: undefined,
+      events: [cancelledTurn("turn-1"), waiting()],
+      respond: async () => undefined,
+      status: "ready",
+    } satisfies Pick<
+      ChatAgent,
+      "data" | "error" | "events" | "respond" | "status"
+    >;
+
+    const markup = renderToStaticMarkup(
+      <ChatConversation agent={agent} traceView="imessage" />
+    );
+
+    expect(markup).toContain("Jory stopped this request");
+    expect(markup).toContain("You can send another message.");
+    expect(markup).not.toContain("Jory couldn’t finish this request");
+  });
+
+  it("does not carry a cancellation notice into a newer active turn", () => {
+    const agent = {
+      data: { messages: [message("turn-2:user", "Try again")] },
+      error: undefined,
+      events: [cancelledTurn("turn-1"), waiting(), startedTurn("turn-2")],
+      respond: async () => undefined,
+      status: "ready",
+    } satisfies Pick<
+      ChatAgent,
+      "data" | "error" | "events" | "respond" | "status"
+    >;
+
+    const markup = renderToStaticMarkup(
+      <ChatConversation agent={agent} traceView="imessage" />
+    );
+
+    expect(markup).not.toContain("Jory stopped this request");
+    expect(markup).not.toContain("Jory couldn’t finish this request");
+  });
+
+  it("does not carry a cancellation notice into a question or approval", () => {
+    const agent = {
+      data: { messages: [message("turn-2:user", "Continue")] },
+      error: undefined,
+      events: [cancelledTurn("turn-1"), waiting(), inputRequested("turn-2")],
+      respond: async () => undefined,
+      status: "ready",
+    } satisfies Pick<
+      ChatAgent,
+      "data" | "error" | "events" | "respond" | "status"
+    >;
+
+    const markup = renderToStaticMarkup(
+      <ChatConversation agent={agent} traceView="imessage" />
+    );
+
+    expect(markup).not.toContain("Jory stopped this request");
+    expect(markup).not.toContain("Jory couldn’t finish this request");
+  });
+
+  it("shows a newer client submission error instead of an older cancellation", () => {
+    const agent = {
+      data: { messages: [message("turn-1:user", "Try again")] },
+      error: new Error("HTTP 409 conflict"),
+      events: [cancelledTurn("turn-1"), waiting()],
+      respond: async () => undefined,
+      status: "error",
+    } satisfies Pick<
+      ChatAgent,
+      "data" | "error" | "events" | "respond" | "status"
+    >;
+
+    const markup = renderToStaticMarkup(
+      <ChatConversation agent={agent} traceView="imessage" />
+    );
+
+    expect(markup).toContain("Jory couldn’t finish this request");
+    expect(markup).not.toContain("Jory stopped this request");
+    expect(markup).not.toContain("HTTP 409 conflict");
+  });
+
+  it("leaves a rejected 409 submission to the composer instead of failing a prior delivered turn", () => {
+    const agent = {
+      data: {
+        messages: [
+          message("turn-1:user", "The earlier request"),
+          message("turn-1:assistant", "The earlier delivered reply"),
+        ],
+      },
+      error: new ClientError(409, "session_not_active"),
+      events: [delivery("turn-1", "The earlier delivered reply")],
+      respond: async () => undefined,
+      status: "error",
+    } satisfies Pick<
+      ChatAgent,
+      "data" | "error" | "events" | "respond" | "status"
+    >;
+
+    const markup = renderToStaticMarkup(
+      <ChatConversation agent={agent} traceView="imessage" />
+    );
+
+    expect(markup).not.toContain("Jory couldn’t finish this request");
+    expect(markup).toContain("The earlier delivered reply");
+  });
+
+  it("does not treat in-progress tool work as a missing response", () => {
+    const agent = {
+      data: { messages: [message("turn-1:user", "Find an option")] },
+      error: undefined,
+      events: [workerReceipt("task_worker")],
+      respond: async () => undefined,
+      status: "ready",
+    } satisfies Pick<
+      ChatAgent,
+      "data" | "error" | "events" | "respond" | "status"
+    >;
+
+    const markup = renderToStaticMarkup(
+      <ChatConversation agent={agent} traceView="imessage" />
+    );
+
+    expect(markup).not.toContain("Jory couldn’t finish this request");
   });
 
   it.each([
@@ -283,5 +452,57 @@ function sendMessageResult(text: string): MessageStreamEvent {
     },
     meta: { at: "2026-09-01T20:00:00.000Z", id: "send-result" },
     type: "action.result",
+  };
+}
+
+function completedTurn(turnId: string): MessageStreamEvent {
+  return {
+    data: { sequence: 1, turnId },
+    meta: { at: "2026-09-05T12:00:01.000Z", id: "completed" },
+    type: "turn.completed",
+  };
+}
+
+function cancelledTurn(turnId: string): MessageStreamEvent {
+  return {
+    data: { sequence: 1, turnId },
+    meta: { at: "2026-09-05T12:00:01.000Z", id: "cancelled" },
+    type: "turn.cancelled",
+  };
+}
+
+function startedTurn(turnId: string): MessageStreamEvent {
+  return {
+    data: { sequence: 1, turnId },
+    meta: { at: "2026-09-05T12:00:03.000Z", id: "started" },
+    type: "turn.started",
+  };
+}
+
+function inputRequested(turnId: string): MessageStreamEvent {
+  return {
+    data: { requests: [], sequence: 1, stepIndex: 1, turnId },
+    meta: { at: "2026-09-05T12:00:04.000Z", id: "input-requested" },
+    type: "input.requested",
+  };
+}
+
+function waiting(): MessageStreamEvent {
+  return {
+    data: { continuationToken: "", wait: "next-user-message" },
+    meta: { at: "2026-09-05T12:00:02.000Z", id: "waiting" },
+    type: "session.waiting",
+  };
+}
+
+function sessionFailed(): MessageStreamEvent {
+  return {
+    data: {
+      code: "SESSION_FAILED",
+      message: "Provider details must not reach the chat",
+      sessionId: "session-1",
+    },
+    meta: { at: "2026-09-05T12:00:03.000Z", id: "session-failed" },
+    type: "session.failed",
   };
 }

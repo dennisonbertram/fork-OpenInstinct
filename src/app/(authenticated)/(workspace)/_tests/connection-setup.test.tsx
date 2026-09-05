@@ -51,7 +51,7 @@ describe("workspace connection setup", () => {
     vi.resetModules();
   });
 
-  it("tells users who must configure unavailable connectors and what happens next", async () => {
+  it("keeps operator setup details collapsed and model selection available", async () => {
     const { default: WorkspacePage } = await import("../page");
     const page = await WorkspacePage({
       params: Promise.resolve({}),
@@ -59,13 +59,25 @@ describe("workspace connection setup", () => {
     });
     const html = renderToStaticMarkup(createElement(() => page));
 
+    expect(html).toContain("<details");
+    expect(html).toContain("<summary");
+    expect(html).toContain("Setup details");
+    expect(html).not.toMatch(/<details[^>]*open/);
     expect(html).toContain(
-      "A deployment admin must attach the Google OAuth connector in Vercel Connect; then you can connect your account here."
-    );
-    expect(html).toContain(
-      "A deployment admin must attach the Square OAuth connector in Vercel Connect; then you can connect your account here."
+      "Deployment admins can attach the Google and Square OAuth connectors in Vercel Connect. Then connect your account here."
     );
     expect(html).toContain("Admin setup needed");
+    expect(html).toContain("Gmail, Calendar, and Contacts.");
+    expect(html).toContain("Locations, items, customers, and orders.");
     expect(html).not.toContain("Setup required");
+
+    const detailsStart = html.indexOf("<details");
+    const detailsEnd = html.indexOf("</details>");
+    expect(detailsStart).toBeGreaterThanOrEqual(0);
+    expect(detailsEnd).toBeGreaterThan(detailsStart);
+    expect(html.slice(detailsStart, detailsEnd)).not.toContain(
+      "openai/gpt-5.6-sol-fast"
+    );
+    expect(html).toContain("openai/gpt-5.6-sol-fast");
   });
 });
