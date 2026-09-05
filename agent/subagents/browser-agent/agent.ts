@@ -14,6 +14,10 @@ export default defineDynamic({
         // Browser evidence requires native image input as well as tool calls.
         model: "openai/gpt-5.6-sol-fast",
         reasoning: "low",
+        // Each result refreshes refs; queued calls can otherwise outlive their refs.
+        modelOptions: {
+          providerOptions: { openai: { parallelToolCalls: false } },
+        },
         outputSchema: taskCompletionSchema,
         compaction: {
           thresholdPercent: 0.7,

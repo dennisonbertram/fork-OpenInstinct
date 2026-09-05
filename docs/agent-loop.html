@@ -885,8 +885,17 @@
           delegated with a Task line and an output schema; the browser-agent's
           16 tool modules live under its own directory and are invisible to the
           root. The worker uses an image-capable model to inspect screenshots.
-          Snapshots and element searches provide opaque target tokens bound to
-          the exact observed frame and label for guarded actions. The worker is
+          Snapshots and element searches provide opaque target tokens for
+          actionable controls, bound to the exact observed frame and label.
+          Dropdown options do not crowd form controls out of the bounded list.
+          The browser worker disables parallel model tool calls so each result
+          can refresh its next targets. Non-secret fields may use one existing
+          browser_act batch of up to eight fills, with a single successor before
+          the next batch; clicks and keys still require approval. The worker is
+          instructed to complete non-secret fields before vault injection and
+          observe the final submit control before filling secrets. Uncertain
+          field preparation must be resolved before vault injection or
+          submission; otherwise the worker reports the incomplete field. It is
           instructed to start login assignments with a profile writer and verify
           a specific postcondition after committing. Vault-filled pages expose
           only safe text verification status, while masked image capture remains

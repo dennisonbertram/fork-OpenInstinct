@@ -1,6 +1,28 @@
 import { createHash } from "node:crypto";
 import type { BrowserRefState } from "@onkernel/browser-loop";
 
+// Reversible form controls plus controls dispatched through approved commits.
+// Individual select options are represented by their owning combobox/listbox.
+const actionableRoles = new Set([
+  "textbox",
+  "searchbox",
+  "combobox",
+  "spinbutton",
+  "listbox",
+  "tab",
+  "dialog",
+  "button",
+  "link",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "checkbox",
+  "radio",
+  "switch",
+  "slider",
+  "treeitem",
+]);
+
 export function browserActionTargets(
   sessionId: string,
   text: string,
@@ -15,6 +37,7 @@ export function browserActionTargets(
   return (state?.refs ?? [])
     .filter(
       ([ref, target]) =>
+        actionableRoles.has(target.role) &&
         (observedRefs.has(ref) ||
           (unchanged && target.targetId === state?.activeTargetId)) &&
         redactBrowserValues(`${target.role}: ${target.name}`) ===
