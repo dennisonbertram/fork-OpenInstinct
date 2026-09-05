@@ -1,0 +1,16 @@
+[
+  {
+    "id": "F-002-001",
+    "story_id": "STORY-002",
+    "severity": "low",
+    "category": "error-handling",
+    "criterion": "Recovery instruction matches available action",
+    "score": "warn",
+    "description": "Rejected-code text asks for a new code but the only reset action says Use a different number.",
+    "expected": "Offer a clearly named request/resend action or explain how to correct the existing code.",
+    "actual": "111111 returned 400; error advised requesting a new code. Entering 000000 directly afterward succeeded with 200.",
+    "screenshot": "screenshots/02-rejected.png",
+    "suggested_fix": "Align recovery text with code correction and provide an explicit resend action where supported.",
+    "files_likely_involved": []
+  }
+]

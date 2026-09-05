@@ -1,0 +1,34 @@
+[
+  {
+    "id": "F-018-001",
+    "story_id": "STORY-018",
+    "severity": "medium",
+    "category": "layout",
+    "criterion": "Mobile browser trace headers overlap and empty guidance clips.",
+    "score": "fail",
+    "description": "Mobile browser trace headers overlap and empty guidance clips.",
+    "expected": "Headers and empty-state next-step guidance should remain legible within the viewport.",
+    "actual": "At 390px viewport the baseline measured 56px table spill; Status/Duration/Domain headings visibly collide and guidance clips.",
+    "screenshot": "screenshots/mobile-empty.png",
+    "suggested_fix": "Give narrow tables adequate overflow treatment or a suitable mobile layout; render empty guidance so it wraps.",
+    "files_likely_involved": [],
+    "evidence_status": "observed",
+    "resolution": "Verified fixed for empty state on3018; Refresh200 and Open chat exercised, mobile guidance wraps. Populated-table proof is separate.",
+    "verification_evidence": "../../fixes/screenshots/tasks-mobile-after.png"
+  },
+  {
+    "id": "F-018-002",
+    "story_id": "STORY-018",
+    "severity": "low",
+    "category": "consistency",
+    "criterion": "Tasks navigation opens a page named Browser traces.",
+    "score": "fail",
+    "description": "Tasks navigation opens a page named Browser traces.",
+    "expected": "Navigation and page headings should make their shared scope clear.",
+    "actual": "Tasks and Browser traces appear simultaneously on the mobile screen.",
+    "screenshot": "screenshots/mobile-empty.png",
+    "suggested_fix": "Align the customer-facing term or make browser-history scope explicit.",
+    "files_likely_involved": [],
+    "evidence_status": "observed"
+  }
+]

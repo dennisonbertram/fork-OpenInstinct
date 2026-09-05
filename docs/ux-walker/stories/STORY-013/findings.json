@@ -1,0 +1,17 @@
+[
+  {
+    "id": "F-013-001",
+    "story_id": "STORY-013",
+    "severity": "high",
+    "category": "happy-path",
+    "criterion": "First chat submission settles with no assistant response or visible error.",
+    "score": "fail",
+    "description": "First chat submission settles with no assistant response or visible error.",
+    "expected": "A submitted text-only prompt should lead to an assistant response or an actionable visible failure state.",
+    "actual": "The first user message remained alone after settling and reload; a later follow-up produced Hi! in the same session. Cause unknown.",
+    "screenshot": "screenshots/first-send-reloaded.png",
+    "suggested_fix": "Investigate the missing first-turn result and ensure terminal failures or missing output are visibly represented; verify send, reload and follow-up without guessing provider cause.",
+    "files_likely_involved": [],
+    "evidence_status": "observed"
+  }
+]

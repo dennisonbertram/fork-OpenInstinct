@@ -1,0 +1,36 @@
+- generic
+  - button "Open Next.js Dev Tools" [expanded=false, ref=e3]
+    - image
+  - dialog "Sidebar"
+    - generic
+      - heading "Sidebar" [level=2, ref=e1]
+      - paragraph
+        - StaticText "Displays the mobile sidebar."
+    - list
+      - listitem [level=1]
+        - link "Jory" [ref=e4]
+    - navigation "Primary" [ref=e2]
+      - list
+        - listitem [level=1]
+          - link "Workspace" [ref=e7]
+            - StaticText "Workspace"
+        - listitem [level=1]
+          - link "Vault" [ref=e8]
+            - StaticText "Vault"
+        - listitem [level=1]
+          - link "Personal info" [ref=e9]
+            - StaticText "Personal info"
+        - listitem [level=1]
+          - link "Chat" [ref=e10]
+            - StaticText "Chat"
+        - listitem [level=1]
+          - link "All chats" [ref=e11]
+            - StaticText "All chats"
+        - listitem [level=1]
+          - link "Tasks" [ref=e12]
+            - StaticText "Tasks"
+    - list
+      - listitem [level=1]
+        - generic [ref=e5] clickable [onclick]
+          - StaticText "+12025550123"
+        - button "Sign out" [ref=e6]

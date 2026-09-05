@@ -1,0 +1,134 @@
+- generic
+  - list
+    - listitem [level=1]
+      - link "Jory" [ref=e8]
+  - navigation "Primary" [ref=e3]
+    - list
+      - listitem [level=1]
+        - link "Workspace" [ref=e31]
+          - StaticText "Workspace"
+      - listitem [level=1]
+        - link "Vault" [ref=e32]
+          - StaticText "Vault"
+      - listitem [level=1]
+        - link "Personal info" [ref=e33]
+          - StaticText "Personal info"
+      - listitem [level=1]
+        - link "Chat" [ref=e34]
+          - StaticText "Chat"
+      - listitem [level=1]
+        - link "All chats" [ref=e35]
+          - StaticText "All chats"
+      - listitem [level=1]
+        - link "Tasks" [ref=e36]
+          - StaticText "Tasks"
+  - list
+    - listitem [level=1]
+      - generic [ref=e9] clickable [onclick]
+        - StaticText "+12025550123"
+      - button "Sign out" [ref=e10]
+  - main
+    - sectionheader
+      - heading "All chats" [level=1, ref=e4]
+      - paragraph
+        - StaticText "Every conversation in this workspace · Usage 25.9K tokens"
+      - button "New chat" [ref=e5]
+    - region "Chat history" [ref=e1]
+      - button "unsupported-e2e-fixture-command 0 tokens Sep 5, 2026" [ref=e6]
+        - StaticText "unsupported-e2e-fixture-command"
+        - StaticText "0 tokens"
+        - time
+          - StaticText "Sep 5, 2026"
+      - button "say The first synthetic business reply arrived. 25.9K tokens Sep 5, 2026" [ref=e7]
+        - StaticText "say The first synthetic business reply arrived."
+        - StaticText "25.9K tokens"
+        - time
+          - StaticText "Sep 5, 2026"
+  - button "Open Next.js Dev Tools" [ref=e19]
+    - generic
+      - StaticText "Compiling"
+      - StaticText "."
+      - StaticText "."
+      - StaticText "."
+  - alert
+    - StaticText "All chats"
+  - button "v3.0.2 Switch to light mode Output Detail Standard React Components Hide Until Restart Marker Color Indigo Blue Cyan Green Yellow Orange Red Clear on copy/send Block page interactions" [ref=e2]
+    - image
+    - generic
+      - button [ref=e11]
+        - image
+    - generic
+      - button [ref=e12]
+        - image
+    - generic
+      - button [disabled, ref=e13]
+        - image
+    - generic
+      - button [disabled, ref=e14]
+        - image
+    - generic
+      - button [disabled, ref=e15]
+        - image
+    - generic
+      - button [disabled, ref=e16]
+        - image
+    - generic
+      - button [ref=e17]
+        - image
+    - generic
+      - button [ref=e18]
+        - image
+    - generic
+      - link [ref=e20]
+        - image
+      - paragraph
+        - StaticText "v3.0.2"
+      - button "Switch to light mode" [ref=e21]
+        - image
+      - StaticText "Output Detail"
+      - image
+      - button "Standard" [ref=e22]
+        - StaticText "Standard"
+      - StaticText "React Components"
+      - image
+      - generic
+        - checkbox [checked=true, ref=e37]
+      - StaticText "Hide Until Restart"
+      - image
+      - generic
+        - checkbox [checked=false, ref=e38]
+      - StaticText "Marker Color"
+      - button "Indigo" [ref=e23]
+      - button "Blue" [ref=e24]
+      - button "Cyan" [ref=e25]
+      - button "Green" [ref=e26]
+      - button "Yellow" [ref=e27]
+      - button "Orange" [ref=e28]
+      - button "Red" [ref=e29]
+      - generic
+        - checkbox "Clear on copy/send" [checked=false, ref=e39]
+        - image
+      - image
+      - generic
+        - checkbox "Block page interactions" [checked=true, ref=e40]
+        - image
+      - button "Manage MCP & Webhooks" [ref=e30]
+        - StaticText "Manage MCP & Webhooks"
+        - image
+      - generic
+        - button "Manage MCP & Webhooks" [ref=e41]
+          - image
+          - StaticText "Manage MCP & Webhooks"
+        - StaticText "MCP Connection"
+        - image
+        - paragraph
+          - StaticText "MCP connection allows agents to receive and act on annotations. "
+          - link "Learn more" [ref=e43]
+        - StaticText "Webhooks"
+        - image
+        - generic
+          - checkbox "Auto-Send" [checked=true, disabled, ref=e44]
+        - paragraph
+          - StaticText "The webhook URL will receive live annotation changes and annotation data."
+        - textbox "Webhook URL" [ref=e42]
+  - Canvas

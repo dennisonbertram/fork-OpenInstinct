@@ -1,0 +1,153 @@
+- generic
+  - list
+    - listitem [level=1]
+      - link "Jory" [ref=e13]
+  - navigation "Primary" [ref=e6]
+    - list
+      - listitem [level=1]
+        - link "Workspace" [ref=e36]
+          - StaticText "Workspace"
+      - listitem [level=1]
+        - link "Vault" [ref=e37]
+          - StaticText "Vault"
+      - listitem [level=1]
+        - link "Personal info" [ref=e38]
+          - StaticText "Personal info"
+      - listitem [level=1]
+        - link "Chat" [ref=e39]
+          - StaticText "Chat"
+      - listitem [level=1]
+        - link "All chats" [ref=e40]
+          - StaticText "All chats"
+      - listitem [level=1]
+        - link "Tasks" [ref=e41]
+          - StaticText "Tasks"
+  - list
+    - listitem [level=1]
+      - generic [ref=e14] clickable [onclick]
+        - StaticText "+12025550123"
+      - button "Sign out" [ref=e15]
+  - main
+    - heading "Workspace" [level=1, ref=e1]
+    - alert
+      - StaticText "Square unavailable"
+      - StaticText "This deployment does not have a working Square OAuth connector yet."
+    - region "Channels" [ref=e2]
+      - heading "Channels" [level=2, ref=e7]
+      - button "WebChat" [ref=e8]
+      - button "iMessage" [disabled, ref=e9]
+      - paragraph
+        - StaticText "WebChat is ready. Set up Linq to enable iMessage."
+    - region "Connections" [ref=e3]
+      - heading "Connections" [level=2, ref=e10]
+      - paragraph
+        - StaticText "Google Workspace"
+      - paragraph
+        - StaticText "A deployment admin must attach the Google OAuth connector in Vercel Connect; then you can connect your account here."
+      - StaticText "Admin setup needed"
+      - paragraph
+        - StaticText "Square"
+      - paragraph
+        - StaticText "A deployment admin must attach the Square OAuth connector in Vercel Connect; then you can connect your account here."
+      - StaticText "Admin setup needed"
+    - region "Infrastructure" [ref=e4]
+      - heading "Infrastructure" [level=2, ref=e11]
+      - paragraph
+        - StaticText "Kernel browser"
+      - paragraph
+        - StaticText "Run isolated browsers in your Kernel account."
+      - StaticText "Connected"
+      - paragraph
+        - StaticText "Vercel Blob"
+      - paragraph
+        - StaticText "Store browser images in a private Vercel Blob store."
+      - StaticText "Connected"
+      - paragraph
+        - StaticText "AI Gateway model"
+      - paragraph
+        - StaticText "openai/gpt-5.6-sol-fast"
+      - button "Choose" [expanded=false, ref=e12]
+        - StaticText "Choose"
+  - button "Open Next.js Dev Tools" [expanded=false, ref=e24]
+    - image
+  - alert
+  - button "v3.0.2 Switch to light mode Output Detail Standard React Components Hide Until Restart Marker Color Indigo Blue Cyan Green Yellow Orange Red Clear on copy/send Block page interactions" [ref=e5]
+    - image
+    - generic
+      - button [ref=e16]
+        - image
+    - generic
+      - button [ref=e17]
+        - image
+    - generic
+      - button [disabled, ref=e18]
+        - image
+    - generic
+      - button [disabled, ref=e19]
+        - image
+    - generic
+      - button [disabled, ref=e20]
+        - image
+    - generic
+      - button [disabled, ref=e21]
+        - image
+    - generic
+      - button [ref=e22]
+        - image
+    - generic
+      - button [ref=e23]
+        - image
+    - generic
+      - link [ref=e25]
+        - image
+      - paragraph
+        - StaticText "v3.0.2"
+      - button "Switch to light mode" [ref=e26]
+        - image
+      - StaticText "Output Detail"
+      - image
+      - button "Standard" [ref=e27]
+        - StaticText "Standard"
+      - StaticText "React Components"
+      - image
+      - generic
+        - checkbox [checked=true, ref=e42]
+      - StaticText "Hide Until Restart"
+      - image
+      - generic
+        - checkbox [checked=false, ref=e43]
+      - StaticText "Marker Color"
+      - button "Indigo" [ref=e28]
+      - button "Blue" [ref=e29]
+      - button "Cyan" [ref=e30]
+      - button "Green" [ref=e31]
+      - button "Yellow" [ref=e32]
+      - button "Orange" [ref=e33]
+      - button "Red" [ref=e34]
+      - generic
+        - checkbox "Clear on copy/send" [checked=false, ref=e44]
+        - image
+      - image
+      - generic
+        - checkbox "Block page interactions" [checked=true, ref=e45]
+        - image
+      - button "Manage MCP & Webhooks" [ref=e35]
+        - StaticText "Manage MCP & Webhooks"
+        - image
+      - generic
+        - button "Manage MCP & Webhooks" [ref=e46]
+          - image
+          - StaticText "Manage MCP & Webhooks"
+        - StaticText "MCP Connection"
+        - image
+        - paragraph
+          - StaticText "MCP connection allows agents to receive and act on annotations. "
+          - link "Learn more" [ref=e48]
+        - StaticText "Webhooks"
+        - image
+        - generic
+          - checkbox "Auto-Send" [checked=true, disabled, ref=e49]
+        - paragraph
+          - StaticText "The webhook URL will receive live annotation changes and annotation data."
+        - textbox "Webhook URL" [ref=e47]
+  - Canvas

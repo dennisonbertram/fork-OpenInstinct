@@ -1,0 +1,16 @@
+[
+  {
+    "id": "F-001-001",
+    "story_id": "STORY-001",
+    "severity": "medium",
+    "category": "layout",
+    "criterion": "Mobile history content containment",
+    "score": "fail",
+    "description": "At 390px width, All chats rows extend beyond the right edge, clipping titles and hiding usage/date information.",
+    "expected": "Rows fit the viewport and preserve readable title and metadata through wrapping or stacking.",
+    "actual": "List spill measured 369px; outer content spill 353px, with pageOverflowX 0. Screenshot confirms right-edge clipping.",
+    "screenshot": "screenshots/mobile-check.png",
+    "suggested_fix": "Allow rows to shrink and stack secondary metadata on narrow screens.",
+    "files_likely_involved": []
+  }
+]

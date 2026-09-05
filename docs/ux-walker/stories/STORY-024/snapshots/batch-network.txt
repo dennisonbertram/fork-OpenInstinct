@@ -1,0 +1,11 @@
+[62105.223] GET http://localhost:3000/api/trpc/traces.list?batch=1&input=%7B%220%22%3A%7B%22direction%22%3A%22forward%22%7D%7D (Fetch) 200
+[78574.229] GET http://localhost:3000/api/trpc/models.list?batch=1&input=%7B%7D (Fetch) 200
+[78574.591] POST http://localhost:3000/api/trpc/chats.save?batch=1 (Fetch) 200
+[78574.647] POST http://localhost:3000/api/trpc/chats.save?batch=1 (Fetch) 200
+[78574.789] POST http://localhost:3000/api/trpc/chats.save?batch=1 (Fetch) 200
+[78574.791] POST http://localhost:3000/api/trpc/chats.save?batch=1 (Fetch) 200
+[78574.793] POST http://localhost:3000/api/trpc/chats.save?batch=1 (Fetch) 200
+[78574.935] POST http://localhost:3000/api/trpc/chats.save?batch=1 (Fetch) 200
+[78574.1312] POST http://localhost:3000/api/trpc/userProfile.update?batch=1 (Fetch) 200
+[78574.1495] POST http://localhost:3000/api/trpc/vault.create?batch=1 (Fetch) 200
+[78574.1636] GET http://localhost:3000/api/trpc/models.list?batch=1&input=%7B%7D (Fetch) 200
