@@ -1,0 +1,418 @@
+{
+  "runs": [
+    {
+      "timestamp": "2026-09-05T13:01:20.979446+00:00",
+      "date": "2026-09-05",
+      "url": "http://localhost:3000",
+      "post_fix_url": "http://localhost:3018",
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "patch": "Two local layout fixes documented in fixes/mobile-lists.md; not a deployment.",
+      "catalog_stories": 30,
+      "reports": 30,
+      "stories_with_browser_evidence": 22,
+      "stories_skipped": 0,
+      "status_counts": {
+        "pass": 15,
+        "fail": 5,
+        "partial": 2,
+        "blocked": 8
+      },
+      "findings_total": 8,
+      "findings_by_severity": {
+        "medium": 3,
+        "low": 2,
+        "high": 3
+      },
+      "findings_by_category": {
+        "layout": 2,
+        "error-handling": 2,
+        "flow": 1,
+        "consistency": 1,
+        "a11y": 1,
+        "happy-path": 1
+      },
+      "quick_fixes_applied": 2,
+      "resolved_finding_ids": ["F-001-001", "F-018-001"],
+      "duration_seconds": null,
+      "coverage_note": "Pass means completed stated primary sequence, not exhaustive variants. Partial/blocked are explicit and not skipped or passed.",
+      "verification": {
+        "check": "All check gates passed, including1070 tests, before final visible-region selector correction; finalE2E passed after correction.",
+        "build": "Passed with synthetic CI configuration.",
+        "e2e": "6 passed (32.6s); earlier six-test attempt5pass/1strict-locator failure on hidden duplicate guidance, corrected test scope only; clean teardown.",
+        "populated_tasks": "Standalone Playwright passed with mocked traces.list only; no worker execution.",
+        "review": "Independent source/test review found no blockers; author self-review also performed."
+      },
+      "issues_filed": 7,
+      "observed_failure_issues": 4,
+      "design_proposal_issues": 3
+    }
+  ],
+  "stories": {
+    "STORY-001": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "fail (mobile destination layout)",
+      "scope": "Auth/callback passed originally; original mobile list failure resolved by separate post-fix history walk (016).",
+      "report": "stories/STORY-001/walk-report.md",
+      "finding_ids": ["F-001-001"],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false,
+      "before_after": {
+        "before": "History mobile overflow (001/016) or Tasks mobile overlap with incomplete primary sequence (018), recorded against base.",
+        "after": "History list and owned reload verified (016); Tasks empty Refresh/Open chat verified (018), base plus two documented uncommitted layout patches.",
+        "evidence": [
+          "stories/STORY-016/walk-report.md",
+          "stories/STORY-018/walk-report.md",
+          "fixes/mobile-lists.md"
+        ]
+      }
+    },
+    "STORY-002": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "pass with a copy warning",
+      "scope": "Wrong code rejected; corrected code succeeds; low recovery-copy warning.",
+      "report": "stories/STORY-002/walk-report.md",
+      "finding_ids": ["F-002-001"],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-003": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "pass",
+      "scope": "WebChat/Jory and sidebar alternative observed.",
+      "report": "stories/STORY-003/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-004": {
+      "last_walked": "2026-09-05",
+      "status": "fail",
+      "reported_status": "fail",
+      "scope": "Destination changes but sheet remains; extra dismissal.",
+      "report": "stories/STORY-004/walk-report.md",
+      "finding_ids": ["F-004-001"],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-005": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "pass",
+      "scope": "Sign-out and fresh protected request passed.",
+      "report": "stories/STORY-005/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-006": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "pass for unavailable-state primary path",
+      "scope": "Unavailable setup-state primary path only; badges do not prove service health.",
+      "report": "stories/STORY-006/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-007": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "pass",
+      "scope": "Workspace opens composer without connector setup.",
+      "report": "stories/STORY-007/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-008": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "pass",
+      "scope": "Populated model search, no-results, matching query and Escape; no setting change.",
+      "report": "stories/STORY-008/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-009": {
+      "last_walked": "2026-09-05",
+      "status": "partial",
+      "reported_status": "pass for callback-banner presentation; live OAuth branches blocked",
+      "scope": "Direct callback-banner presentation only; real OAuth/grants/disconnect blocked.",
+      "report": "stories/STORY-009/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-010": {
+      "last_walked": null,
+      "status": "blocked",
+      "reported_status": "blocked for enabled handoff; disabled state observed",
+      "scope": "Disabled iMessage visible; no configured test-line handoff.",
+      "report": "stories/STORY-010/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-011": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "partial",
+      "scope": "Initially partial; final draft-only walkthrough verified focused starter, actual multiline edit, and unsent /chat endpoint at both viewport sizes.",
+      "report": "stories/STORY-011/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false,
+      "before_after": {
+        "before": "Partial: starter focus/fill observed; multiline edited-unsent endpoint unverified.",
+        "after": "Pass: final draft-only completion and multiline screenshots establish two real text lines, unchanged /chat URL, no submission.",
+        "evidence": [
+          "stories/STORY-011/walk-report.md",
+          "stories/STORY-011/screenshots/multiline-mobile.png",
+          "stories/STORY-011/screenshots/multiline-desktop.png"
+        ]
+      }
+    },
+    "STORY-012": {
+      "last_walked": "2026-09-05",
+      "status": "partial",
+      "reported_status": "pass (file-input path; native picker untested)",
+      "scope": "File input/remove observed; native picker primary interaction unverified.",
+      "report": "stories/STORY-012/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-013": {
+      "last_walked": "2026-09-05",
+      "status": "fail",
+      "reported_status": "fail",
+      "scope": "First turn has no answer/error; follow-up replies; original failure unresolved.",
+      "report": "stories/STORY-013/walk-report.md",
+      "finding_ids": ["F-013-001"],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-014": {
+      "last_walked": "2026-09-05",
+      "status": "fail",
+      "reported_status": "fail for observed recovery; cancellation acceptance uncertain",
+      "scope": "Stop attempted; subsequent short follow-up clears without delivery; POST409 observed; cancellation acceptance unknown.",
+      "report": "stories/STORY-014/walk-report.md",
+      "finding_ids": ["F-014-001"],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-015": {
+      "last_walked": null,
+      "status": "blocked",
+      "reported_status": "blocked",
+      "scope": "No existing pending structured question/approval fixture.",
+      "report": "stories/STORY-015/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-016": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "pass for owned synthetic history and reload",
+      "scope": "Owned synthetic history reopened and reloaded; fixed mobile list inspected.",
+      "report": "stories/STORY-016/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false,
+      "before_after": {
+        "before": "History mobile overflow (001/016) or Tasks mobile overlap with incomplete primary sequence (018), recorded against base.",
+        "after": "History list and owned reload verified (016); Tasks empty Refresh/Open chat verified (018), base plus two documented uncommitted layout patches.",
+        "evidence": [
+          "stories/STORY-016/walk-report.md",
+          "stories/STORY-018/walk-report.md",
+          "fixes/mobile-lists.md"
+        ]
+      }
+    },
+    "STORY-017": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "pass for populated-history primary path",
+      "scope": "New chat opens blank composer and adds no history row without send.",
+      "report": "stories/STORY-017/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-018": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "pass for post-fix empty/Refresh/Open chat primary path; naming warning remains",
+      "scope": "Original partial/failed mobile layout; final Refresh200, readable empty state and Open chat verified; naming warning remains.",
+      "report": "stories/STORY-018/walk-report.md",
+      "finding_ids": ["F-018-001", "F-018-002"],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false,
+      "before_after": {
+        "before": "History mobile overflow (001/016) or Tasks mobile overlap with incomplete primary sequence (018), recorded against base.",
+        "after": "History list and owned reload verified (016); Tasks empty Refresh/Open chat verified (018), base plus two documented uncommitted layout patches.",
+        "evidence": [
+          "stories/STORY-016/walk-report.md",
+          "stories/STORY-018/walk-report.md",
+          "fixes/mobile-lists.md"
+        ]
+      }
+    },
+    "STORY-019": {
+      "last_walked": "2026-09-05",
+      "status": "fail",
+      "reported_status": "fail on shared 404 readability; correct exclusion observed",
+      "scope": "Missing trace excluded; shared404 white-on-cream readability failure.",
+      "report": "stories/STORY-019/walk-report.md",
+      "finding_ids": ["F-019-001"],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-020": {
+      "last_walked": null,
+      "status": "blocked",
+      "reported_status": "blocked",
+      "scope": "No owned populated real browser-trace/context fixture; mocked list is not runtime proof.",
+      "report": "stories/STORY-020/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-021": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "pass",
+      "scope": "Invalid country rejected; synthetic values saved and retained after reload.",
+      "report": "stories/STORY-021/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-022": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "pass (primary create/search; reopening variation untested)",
+      "scope": "Passwordless synthetic login created; matching/nonmatching search; reopening variant untested.",
+      "report": "stories/STORY-022/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-023": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "pass for exercised empty-form paths and card mobile reachability",
+      "scope": "Empty category validation/cancel and lower card mobile Save reachability; address/contact lower mobile variants untested.",
+      "report": "stories/STORY-023/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-024": {
+      "last_walked": "2026-09-05",
+      "status": "pass",
+      "reported_status": "pass for invalid-file guard and mobile footer reachability",
+      "scope": "Header-only invalid CSV rejected; mobile footer reachable; successful import/native picker untested.",
+      "report": "stories/STORY-024/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-025": {
+      "last_walked": null,
+      "status": "blocked",
+      "reported_status": "blocked",
+      "scope": "No exact disposable Contact info deletion fixture.",
+      "report": "stories/STORY-025/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-026": {
+      "last_walked": "2026-09-05",
+      "status": "fail",
+      "reported_status": "fail on shared 404 readability; correct exclusion observed",
+      "scope": "Non-admin route excluded; shared404 readability failure.",
+      "report": "stories/STORY-026/walk-report.md",
+      "finding_ids": ["F-019-001"],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-027": {
+      "last_walked": null,
+      "status": "blocked",
+      "reported_status": "blocked",
+      "scope": "No isolated designated admin overview fixture.",
+      "report": "stories/STORY-027/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-028": {
+      "last_walked": null,
+      "status": "blocked",
+      "reported_status": "blocked",
+      "scope": "No isolated admin lifecycle fixture; no mutation.",
+      "report": "stories/STORY-028/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-029": {
+      "last_walked": null,
+      "status": "blocked",
+      "reported_status": "blocked",
+      "scope": "No isolated admin audit fixture.",
+      "report": "stories/STORY-029/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    },
+    "STORY-030": {
+      "last_walked": null,
+      "status": "blocked",
+      "reported_status": "blocked",
+      "scope": "No isolated admin webhook records; no outbound drain.",
+      "report": "stories/STORY-030/walk-report.md",
+      "finding_ids": [],
+      "source_revision": "f11a3a1d7b93fad16f2c61a4ae7751b5a1672675",
+      "source_files_hash": null,
+      "fixes_merged_since": false
+    }
+  }
+}

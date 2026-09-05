@@ -1,0 +1,18 @@
+[
+  {
+    "id": "F-019-001",
+    "story_id": "STORY-019",
+    "severity": "high",
+    "category": "a11y",
+    "criterion": "Not-found text renders white over the light authenticated shell under dark system preference.",
+    "score": "fail",
+    "description": "Systemic not-found contrast defect affects missing traces and non-admin denied routes.",
+    "expected": "Not-found feedback and retained navigation should be readable.",
+    "actual": "Coordinator measured dark prefers-color-scheme true, H1/H2 computed rgb(255,255,255), and ancestor MAIN background lab(97.3777 0.138849 3.82259); BODY was black with inherited white text. Both original missing/denied captures and a separate 3018 measurement capture show white text on the cream shell.",
+    "screenshot": "screenshots/404-measured.png",
+    "suggested_fix": "Investigate and correct not-found theme integration while preserving 404/access behavior; verify light and dark system preferences.",
+    "files_likely_involved": [],
+    "evidence_status": "observed-and-computed-colors",
+    "related_stories": ["STORY-019", "STORY-026"]
+  }
+]

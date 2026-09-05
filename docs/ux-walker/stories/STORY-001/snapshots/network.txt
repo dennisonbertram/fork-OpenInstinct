@@ -1,0 +1,9 @@
+[E648CE10296B5CBA621A07EFFDDA35BC] GET http://localhost:3000/chat/history (Document)
+[E648CE10296B5CBA621A07EFFDDA35BC] GET http://localhost:3000/sign-in?callbackUrl=%2Fchat%2Fhistory (Document) 200
+[82249.119] POST http://localhost:3000/api/auth/phone-number/send-otp (Fetch) 200
+[82249.120] POST http://localhost:3000/api/auth/phone-number/verify (Fetch) 200
+[82249.121] GET http://localhost:3000/chat/history?_rsc=JEZBb6GPY8DEnh8p (Fetch) 200
+[82249.129] GET http://localhost:3000/chat/history?_rsc=UYzDYAB4zU2_raY0 (Fetch) 200
+[82249.132] GET http://localhost:3000/api/auth/get-session (Fetch) 200
+[2664A3ACA50CFDC6B1C608E5E5165518] GET http://localhost:3000/chat/history (Document) 200
+[82249.262] GET http://localhost:3000/api/auth/get-session (Fetch) 200

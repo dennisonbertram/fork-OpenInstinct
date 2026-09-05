@@ -1,0 +1,11 @@
+[82249.119] POST http://localhost:3000/api/auth/phone-number/send-otp (Fetch) 200
+[82249.120] POST http://localhost:3000/api/auth/phone-number/verify (Fetch) 200
+[82249.132] GET http://localhost:3000/api/auth/get-session (Fetch) 200
+[82249.262] GET http://localhost:3000/api/auth/get-session (Fetch) 200
+[82249.270] GET http://localhost:3000/api/auth/get-session (Fetch) 200
+[82249.271] POST http://localhost:3000/api/auth/sign-out (Fetch) 200
+[82249.272] GET http://localhost:3000/api/auth/get-session (Fetch)
+[82249.387] POST http://localhost:3000/api/auth/phone-number/send-otp (Fetch) 200
+[82249.388] POST http://localhost:3000/api/auth/phone-number/verify (Fetch) 400
+[82249.389] POST http://localhost:3000/api/auth/phone-number/verify (Fetch) 200
+[82249.403] GET http://localhost:3000/api/auth/get-session (Fetch) 200

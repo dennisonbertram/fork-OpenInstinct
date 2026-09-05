@@ -366,6 +366,15 @@ Source: `src/app/(authenticated)/layout.tsx` and `_components`.
 - The root layout loads the two fonts and applies no theme class.
   `TooltipProvider` and the query provider wrap the app.
 
+### 6.1 Responsive history lists
+
+All chats uses the existing surface button as a navigable card. Below `sm`,
+the conversation title gets its own row beside the icon and usage/date metadata
+wraps on a second row. At wider sizes the card remains a horizontal row.
+Browser trace history keeps its populated table at least 60rem wide inside the
+Table primitive's horizontal scroll container. Empty/loading guidance is a
+separate wrapping paragraph rather than a cell in the wide table.
+
 ## 7. Theme
 
 The dark token set in `foundation.css` under `.dark` is the pre-restyle

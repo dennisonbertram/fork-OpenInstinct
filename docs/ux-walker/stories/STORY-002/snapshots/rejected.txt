@@ -1,0 +1,101 @@
+- generic
+  - main
+    - heading "Hey, Jory" [level=1, ref=e1]
+    - paragraph
+      - StaticText "Enter your phone number to request a sign-in code."
+    - paragraph
+      - StaticText "Local development does not send a text. Use code000000 on the next step."
+    - form
+      - group
+        - LabelText
+          - StaticText "Verification Code"
+        - textbox "Verification Code" [required, ref=e5]: 111111
+          - StaticText "111111"
+      - alert
+        - StaticText "That code could not be verified. Request a new code and try again."
+      - button "Verify code" [ref=e3]
+      - button "Use a different number" [ref=e4]
+    - image "Jory, the OpenInstinct assistant, at a desk"
+  - button "Open Next.js Dev Tools" [expanded=false, ref=e14]
+    - image
+  - alert
+  - button "v3.0.2 Switch to light mode Output Detail Standard React Components Hide Until Restart Marker Color Indigo Blue Cyan Green Yellow Orange Red Clear on copy/send Block page interactions" [ref=e2]
+    - image
+    - generic
+      - button [ref=e6]
+        - image
+    - generic
+      - button [ref=e7]
+        - image
+    - generic
+      - button [disabled, ref=e8]
+        - image
+    - generic
+      - button [disabled, ref=e9]
+        - image
+    - generic
+      - button [disabled, ref=e10]
+        - image
+    - generic
+      - button [disabled, ref=e11]
+        - image
+    - generic
+      - button [ref=e12]
+        - image
+    - generic
+      - button [ref=e13]
+        - image
+    - generic
+      - link [ref=e15]
+        - image
+      - paragraph
+        - StaticText "v3.0.2"
+      - button "Switch to light mode" [ref=e16]
+        - image
+      - StaticText "Output Detail"
+      - image
+      - button "Standard" [ref=e17]
+        - StaticText "Standard"
+      - StaticText "React Components"
+      - image
+      - generic
+        - checkbox [checked=true, ref=e26]
+      - StaticText "Hide Until Restart"
+      - image
+      - generic
+        - checkbox [checked=false, ref=e27]
+      - StaticText "Marker Color"
+      - button "Indigo" [ref=e18]
+      - button "Blue" [ref=e19]
+      - button "Cyan" [ref=e20]
+      - button "Green" [ref=e21]
+      - button "Yellow" [ref=e22]
+      - button "Orange" [ref=e23]
+      - button "Red" [ref=e24]
+      - generic
+        - checkbox "Clear on copy/send" [checked=false, ref=e28]
+        - image
+      - image
+      - generic
+        - checkbox "Block page interactions" [checked=true, ref=e29]
+        - image
+      - button "Manage MCP & Webhooks" [ref=e25]
+        - StaticText "Manage MCP & Webhooks"
+        - image
+      - generic
+        - button "Manage MCP & Webhooks" [ref=e30]
+          - image
+          - StaticText "Manage MCP & Webhooks"
+        - StaticText "MCP Connection"
+        - image
+        - paragraph
+          - StaticText "MCP connection allows agents to receive and act on annotations. "
+          - link "Learn more" [ref=e32]
+        - StaticText "Webhooks"
+        - image
+        - generic
+          - checkbox "Auto-Send" [checked=true, disabled, ref=e33]
+        - paragraph
+          - StaticText "The webhook URL will receive live annotation changes and annotation data."
+        - textbox "Webhook URL" [ref=e31]
+  - Canvas

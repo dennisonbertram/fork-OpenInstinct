@@ -1,0 +1,15 @@
+[97303.1706] GET http://localhost:3018/_next/static/chunks/18jf_motion-dom_dist_es_11cgttd._.js (Script) 200
+[97303.1707] GET http://localhost:3018/_next/static/chunks/node_modules__pnpm_0-gyjxx._.js (Script) 200
+[97303.1708] GET http://localhost:3018/_next/static/chunks/src_0ck2bvk._.js (Script) 304
+[97303.1709] GET http://localhost:3018/_next/static/chunks/0uq0_eve_dist_src_client_04r40vy._.js (Script) 304
+[97303.1710] GET http://localhost:3018/_next/static/chunks/0uq0_eve_dist_src_0d-zgm5._.js (Script) 304
+[97303.1711] GET http://localhost:3018/_next/static/chunks/0tll_%40base-ui_react_1i2dbng._.js (Script) 304
+[97303.1712] GET http://localhost:3018/_next/static/chunks/17mk_framer-motion_dist_es_1i6--6f._.js (Script) 304
+[97303.1713] GET http://localhost:3018/_next/static/chunks/18jf_motion-dom_dist_es_11cgttd._.js (Script) 304
+[97303.1714] GET http://localhost:3018/_next/static/chunks/node_modules__pnpm_0-gyjxx._.js (Script) 304
+[97303.1720] GET http://localhost:3018/api/auth/get-session (Fetch) 200
+[97303.1721] GET http://localhost:3018/chat/history?_rsc=CevgKghggXq50dFe (Fetch) 200
+[97303.1722] GET http://localhost:3018/tasks?_rsc=qarolJz0MOIjaLF2 (Fetch) 200
+[97303.1723] GET http://localhost:3018/_next/static/chunks/_1mt17gg._.js (Script) 200
+[97303.1724] GET http://localhost:3018/_next/static/chunks/_1mt17gg._.js (Script) 304
+[97303.1725] GET http://localhost:3018/api/trpc/traces.list?batch=1&input=%7B%220%22%3A%7B%22direction%22%3A%22forward%22%7D%7D (Fetch) 200

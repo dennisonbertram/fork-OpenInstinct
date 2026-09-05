@@ -1,0 +1,17 @@
+[
+  {
+    "id": "F-004-001",
+    "story_id": "STORY-004",
+    "severity": "medium",
+    "category": "flow",
+    "criterion": "Mobile navigation leaves the sheet open after choosing a destination.",
+    "score": "fail",
+    "description": "Mobile navigation leaves the sheet open after choosing a destination.",
+    "expected": "Selecting a destination should reveal its page.",
+    "actual": "Two observed route changes updated the active item and URL but required Escape to reveal the content.",
+    "screenshot": "screenshots/tasks-overlay.png",
+    "suggested_fix": "Close the mobile sidebar on primary destination selection and regression-test route transitions.",
+    "files_likely_involved": [],
+    "evidence_status": "observed"
+  }
+]
