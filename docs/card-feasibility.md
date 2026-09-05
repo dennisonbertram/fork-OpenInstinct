@@ -29,8 +29,9 @@ with an optional route to a business-card provider they already know through
 their POS. Square has the closest overlap with this repository. A bank
 connection is not inherently needed for bringing a card, while a new credit
 application can require business verification, financial review and repayment
-access. Ramp offers a real partner application path but excludes some small
-businesses; Stripe issuing would give us materially more responsibility.
+access. Ramp offers a real partner application path but excludes sole
+proprietors and requires at least $25,000 in linked US business cash;
+Stripe issuing would give us materially more responsibility.
 These are feasibility judgments based on the evidence below. Provider access
 and real checkout compatibility remain open, so no implementation should start
 from this document alone.
@@ -410,12 +411,13 @@ Source inspection at the baseline above establishes only:
   connector cannot be treated as permission to open banking accounts, apply
   for credit, move proceeds or authorize card spend. See [Square](SQUARE.md).
 
-There is a specific existing-card launch question: PCI SSC says verification
-codes cannot be retained after authorization for future card-on-file use.
-The current reusable payload includes that code. Encryption alone should
-not be treated as resolving that requirement. Provider handling and our exact
-role must be reviewed before enabling this workflow for real customer cards;
-this research does not change or migrate stored data.
+There is a specific existing-card launch question: for merchant/service-provider
+card-on-file use, PCI SSC prohibits retaining verification codes after
+authorization. The current reusable payload includes that code. Encryption
+alone should not be treated as resolving that requirement. The FAQ identifies
+an issuer/supporting-issuer exception for legitimate issuing needs; our exact
+role and any applicable exception require provider/qualified-assessor review
+before real customer use. This research does not change or migrate stored data.
 [PCI SSC FAQ 1280](https://www.pcisecuritystandards.org/faqs/1280/)
 
 Proposal: preserve opaque payment handles and current purchase approval;
