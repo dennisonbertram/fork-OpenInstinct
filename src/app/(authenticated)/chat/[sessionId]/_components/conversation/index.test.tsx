@@ -131,6 +131,56 @@ describe("chat conversation", () => {
     expect(markup).not.toContain("is cancelled");
   });
 
+  it.each([
+    {
+      developerActivityEnabled: true,
+      included:
+        "AI Gateway has insufficient credits. Add credits in Vercel, then send your message again.",
+      excluded: "Please try sending your message again.",
+    },
+    {
+      developerActivityEnabled: false,
+      included: "Please try sending your message again.",
+      excluded: "Add credits",
+    },
+  ])(
+    "shows a safe billing remedy only with developer activity $developerActivityEnabled",
+    ({ developerActivityEnabled, included, excluded }) => {
+      const agent = {
+        data: { messages: [message("turn-1:user", "Try this")] },
+        error: undefined,
+        events: [
+          {
+            type: "turn.failed",
+            meta: { at: "2026-09-05T12:00:00.000Z", id: "failure" },
+            data: {
+              code: "MODEL_CALL_FAILED",
+              message: "Provider body SECRET_SENTINEL",
+              details: { upstreamType: "insufficient_funds", statusCode: 402 },
+              sequence: 1,
+              turnId: "turn-1",
+            },
+          },
+        ],
+        respond: async () => undefined,
+        status: "ready",
+      } satisfies Pick<
+        ChatAgent,
+        "data" | "error" | "events" | "respond" | "status"
+      >;
+      const markup = renderToStaticMarkup(
+        <ChatConversation
+          agent={agent}
+          developerActivityEnabled={developerActivityEnabled}
+          traceView="imessage"
+        />
+      );
+      expect(markup).not.toContain("SECRET_SENTINEL");
+      expect(markup).toContain(included);
+      expect(markup).not.toContain(excluded);
+    }
+  );
+
   it("hides runtime errors from the iMessage transcript", () => {
     const agent = {
       data: { messages: [message("turn-1:user", "Try this")] },
