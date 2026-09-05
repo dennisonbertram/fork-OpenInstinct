@@ -15,7 +15,7 @@ export const writeToolPattern =
  * docs/SQUARE.md, second run), so the bar names observable properties.
  */
 const directTone =
-  "leads with the answer in one or two sentences; does not restate the question, use headers or bullets, or mention which tools were used";
+  "leads with the answer in one or two sentences; inline comma-separated item lists, including a count and colon, are allowed within those sentences; does not restate the question, use headers or bullets, or mention which tools were used";
 /** No Square tool at all -- used for greetings and refusals that need no data. */
 const anySquareToolPattern = /^square__/u;
 
