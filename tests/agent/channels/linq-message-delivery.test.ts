@@ -202,6 +202,7 @@ const handleActionResult = linqChannelConfig.events["action.result"];
 const deliverInputRequest = linqChannelConfig.events["input.requested"];
 const handleAuthorizationRequired =
   linqChannelConfig.events["authorization.required"];
+const handleTurnFailed = linqChannelConfig.events["turn.failed"];
 
 type ActionHandlerParameters = Parameters<typeof handleActionResult>;
 
@@ -523,6 +524,77 @@ describe("Linq message delivery", () => {
     expect(linqChannelConfig.events["message.completed"]).toBeTypeOf(
       "function"
     );
+  });
+
+  it("posts one static notice when an ordinary turn fails", async () => {
+    const { context, post } = handlerContext();
+
+    await handleTurnFailed(
+      {
+        code: "provider_error",
+        details: { provider: "upstream", model: "sensitive-model" },
+        message: "402 insufficient funds for model sensitive-model",
+        sequence: 0,
+        turnId: "turn-1",
+      },
+      context,
+      sessionContext()
+    );
+
+    expect(post).toHaveBeenCalledExactlyOnceWith({
+      raw: "I couldn’t complete that request because of a service error. Please try again later.",
+    });
+    expect(JSON.stringify(post.mock.calls)).not.toContain("sensitive-model");
+    expect(JSON.stringify(post.mock.calls)).not.toContain("insufficient funds");
+
+    await handleActionResult(
+      sendMessageResult({ kind: "message", text: "The retry succeeded." }),
+      context,
+      sessionContext()
+    );
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post).toHaveBeenNthCalledWith(2, {
+      raw: "The retry succeeded.",
+    });
+  });
+
+  it("releases a scheduled failure without posting an unsolicited notice", async () => {
+    const { context, post } = handlerContext();
+    const event = {
+      code: "provider_error",
+      message: "402 insufficient funds for model sensitive-model",
+      sequence: 0,
+      turnId: "turn-1",
+    };
+
+    await handleTurnFailed(event, context, sessionContext("scheduled-result"));
+
+    expect(scheduleDeliveryCapture.release).toHaveBeenCalledExactlyOnceWith(
+      "00000000-0000-4000-8000-000000000002",
+      "00000000-0000-4000-8000-000000000004",
+      event.message
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("does not post or throw when a failed turn has no thread", async () => {
+    const { context, post } = handlerContext(undefined, false);
+
+    await expect(
+      handleTurnFailed(
+        {
+          code: "provider_error",
+          message: "provider detail",
+          sequence: 0,
+          turnId: "turn-1",
+        },
+        context,
+        sessionContext()
+      )
+    ).resolves.toBeUndefined();
+
+    expect(scheduleDeliveryCapture.release).not.toHaveBeenCalled();
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("posts send_message output as raw iMessage text", async () => {
@@ -978,7 +1050,10 @@ function inputRequestEvent(requests: InputRequestEvent["requests"]) {
   return { requests, sequence: 0, stepIndex: 0, turnId: "turn-1" };
 }
 
-function handlerContext(currentMessageId: string | undefined = "message-1") {
+function handlerContext(
+  currentMessageId: string | undefined = "message-1",
+  includeThread = true
+) {
   const post =
     vi.fn<(message: LinqTestMessage) => Promise<{ readonly id: string }>>();
   post.mockResolvedValue({ id: "posted-message" });
@@ -1000,18 +1075,22 @@ function handlerContext(currentMessageId: string | undefined = "message-1") {
     state: {},
     streaming: false,
     streamingEditIntervalMs: 1000,
-    thread: {
-      id: "linq:dm:chat-1",
-      post,
-      toJSON: () => ({
-        _type: "chat:Thread",
-        adapterName: "linq",
-        channelId: "linq:dm:chat-1",
-        currentMessage: currentMessageId ? { id: currentMessageId } : undefined,
-        id: "linq:dm:chat-1",
-        isDM: true,
-      }),
-    },
+    thread: includeThread
+      ? {
+          id: "linq:dm:chat-1",
+          post,
+          toJSON: () => ({
+            _type: "chat:Thread",
+            adapterName: "linq",
+            channelId: "linq:dm:chat-1",
+            currentMessage: currentMessageId
+              ? { id: currentMessageId }
+              : undefined,
+            id: "linq:dm:chat-1",
+            isDM: true,
+          }),
+        }
+      : undefined,
   });
 
   return {

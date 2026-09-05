@@ -19,7 +19,7 @@ describe("authored mode capability matrix", () => {
       if (!resolve) throw new Error("Browser agent resolver unavailable");
       const worker = await resolve({}, dynamicContext(authenticator));
       expect(worker).toMatchObject({
-        model: "openai/gpt-5.6-sol-fast",
+        model: "openai/gpt-5.6-luna-fast",
         modelOptions: {
           providerOptions: { openai: { parallelToolCalls: false } },
         },

@@ -12,7 +12,7 @@ export default defineDynamic({
         description:
           "Execute one bounded browser assignment for the root coordinator, including secure vault autofill, transaction preparation, optional durable browser images, human-takeover handoff, cleanup, and a concise verified result. Every initial and resumed call must include the task-completion outputSchema required by the root instructions.",
         // Browser evidence requires native image input as well as tool calls.
-        model: "openai/gpt-5.6-sol-fast",
+        model: "openai/gpt-5.6-luna-fast",
         reasoning: "low",
         // Each result refreshes refs; queued calls can otherwise outlive their refs.
         modelOptions: {

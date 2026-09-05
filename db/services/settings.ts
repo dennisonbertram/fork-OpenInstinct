@@ -3,7 +3,7 @@ import type { AccessScope } from "@/lib/access-scope";
 import { db, settings } from "@/db";
 
 const gatewayModelKey = "gateway_model";
-const defaultGatewayModel = "openai/gpt-5.6-sol-fast";
+const defaultGatewayModel = "openai/gpt-5.6-luna-fast";
 
 async function readGatewayModel(scope: AccessScope) {
   const rows = await db

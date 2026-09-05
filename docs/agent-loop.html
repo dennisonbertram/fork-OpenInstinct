@@ -855,6 +855,14 @@
             </td>
           </tr>
           <tr>
+            <td>turn.failed</td>
+            <td>
+              Linq posts a generic failure notice for ordinary turns; scheduled
+              runs release the report lease without posting a notice.
+              <code>agent/channels/linq.ts</code>
+            </td>
+          </tr>
+          <tr>
             <td>turn.started / input.requested / failed / cancelled</td>
             <td>
               scheduled runs only: lease and report lifecycle.
