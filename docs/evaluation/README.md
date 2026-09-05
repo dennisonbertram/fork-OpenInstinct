@@ -1,10 +1,13 @@
 # Jory conversation evaluation specification
 
-**Status: Proposed.** Authored 2026-09-05. This is a scenario set and grading
-specification, not an implemented harness, runtime instruction change, or test
-result. The first edition contains 20 conversations: 12 core cases and 8 Square
-POS cases. No new cases have been executed or human-calibrated. Baseline scores,
-latency targets, judge agreement, and run cost are **TBD**.
+**Status: Harness implemented and first behavioral baseline inspected; human
+calibration remains pending.** See [2026-09-05 results](results/2026-09-05-baseline.md)
+for observed failures, fixture limitations, and verification. Authored 2026-09-05.
+The first edition contains 20 conversations: 12 core cases and 8 Square POS
+cases. The implementation schedules 63 trials across 21 execution variants.
+Quality thresholds, visible-response latency targets, and human/judge agreement
+remain **TBD**. The scenario and rubric documents describe expectations, not
+proof that Jory meets them.
 
 ## Objective and review materials
 
@@ -59,7 +62,7 @@ isolation, authentication, or existing approval enforcement.
 
 Keep core cases with the existing agent conversation family and Square cases
 with the existing Square eval owner when implemented. Use the runner's existing
-grouping/filtering mechanisms; this specification introduces no new CLI command.
+grouping/filtering mechanisms; the implemented baseline uses an option on the existing `eval:agent` runner.
 Capability-specific questions should exercise discovery and skill loading as the
 product does, rather than secretly injecting instructions into the tested agent.
 
@@ -89,8 +92,239 @@ The proposed initial baseline is three independent trials per execution variant:
 63 trials across 20 scenario IDs (21 variants because SQ-07 covers both never-
 connected and revoked access). These are not 63 independent scenarios. This is an
 exploratory sample, not proof of a population success rate. Record every attempt, including failures;
-do not retry until green or select only the best result. Set an explicit paid-run
-budget and estimate inference plus judging costs before execution; both are TBD.
+do not retry until green or select only the best result. The initial authorized paid-run budget was $10; the user subsequently increased
+the cumulative authorization to $20. The runner supports either explicitly
+authorized total, including inference, judging, and the Square regression gate.
+The budget proxy checks live pricing and reserves before each request; total
+measured cost and reconciliation are recorded in each run report.
+
+## Run the isolated behavioral baseline
+
+Run from a linked worktree with dependencies installed and Docker available.
+Keep the agent instructions and configured model source unchanged. Do not copy
+`.env`, `.env.local`, `.env.development`, or `.env.development.local` into the
+worktree: the supervisor rejects these files to prevent local application
+configuration from overriding the isolated evaluation environment.
+
+The existing runner accepts this complete-suite invocation:
+
+```sh
+pnpm eval:agent --conversation-baseline --budget-usd 10
+```
+
+The runner requires an authenticated Vercel CLI session for the **fork's team**
+and `CONVERSATION_GATEWAY_KEY_FILE`, pointing to a private JSON credential file
+with `apiKey`, `keyId`, and `teamId` fields. Use a dedicated Gateway key with an
+active **non-refreshing quota equal to the authorized total minus $2**, BYOK
+usage included, and a seven-day expiry. That is $8 for a $10 total, or $18 for a
+$20 total. The creation example below uses the supported $10 configuration.
+The key is retained only by the parent budget proxy; evaluated workers receive
+placeholder credentials. No main-checkout dotenv file, OIDC refresh setup, or
+real Square account is needed. The isolated database is removed at teardown.
+This is an eval path, not an alternative app startup; use `./init.sh` for the
+complete local application.
+
+These commands match the installed Vercel CLI. Set the team placeholder to the
+fork's actual team ID before running them. Creating another key does not renew
+the user's cumulative authorization. Never print the credential file or enable shell
+tracing. The create command writes the secret only to a mode-0600 temporary file;
+its ordinary status output does not contain the secret.
+
+```sh
+umask 077
+export CONVERSATION_GATEWAY_TEAM_ID="team_REPLACE_WITH_FORK_TEAM"
+export CONVERSATION_GATEWAY_KEY_NAME="jory-conversation-$(date +%s)"
+export CONVERSATION_GATEWAY_KEY_DIR="$(mktemp -d)"
+export CONVERSATION_GATEWAY_KEY_FILE="$CONVERSATION_GATEWAY_KEY_DIR/credential.json"
+pnpm exec vercel ai-gateway api-keys create \
+  --scope "$CONVERSATION_GATEWAY_TEAM_ID" \
+  --name "$CONVERSATION_GATEWAY_KEY_NAME" \
+  --budget 8 --refresh-period none --include-byok --expiration 7d \
+  > "$CONVERSATION_GATEWAY_KEY_DIR/api-key.txt"
+node --input-type=module -e '
+  import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
+  import { spawnSync } from "node:child_process";
+  const teamId = process.env.CONVERSATION_GATEWAY_TEAM_ID;
+  const listed = spawnSync("pnpm", ["exec", "vercel", "ai-gateway", "api-keys", "list", "--scope", teamId, "--format", "json"], { encoding: "utf8" });
+  if (listed.status !== 0) throw new Error("Unable to list Gateway keys");
+  const matches = JSON.parse(listed.stdout).apiKeys.filter(key => key.name === process.env.CONVERSATION_GATEWAY_KEY_NAME && key.teamId === teamId);
+  if (matches.length !== 1) throw new Error("Expected one dedicated key");
+  const raw = process.env.CONVERSATION_GATEWAY_KEY_DIR + "/api-key.txt";
+  const apiKey = readFileSync(raw, "utf8").trim();
+  if (!apiKey.startsWith("vck_")) throw new Error("Unexpected key output");
+  writeFileSync(process.env.CONVERSATION_GATEWAY_KEY_FILE, JSON.stringify({ apiKey, keyId: matches[0].id, teamId }), { mode: 0o600, flag: "wx" });
+  unlinkSync(raw);
+'
+```
+
+Wait at least two minutes after creating the key or updating its quota. The
+supervisor lists the current keys through the CLI and verifies that this exact
+key belongs to the selected team, is active and unexpired, and has an active,
+nonarchived quota matching the selected total minus $2, with
+`refreshPeriod: none` and BYOK included. It also checks
+that the key/quota timestamps are at least two minutes old before inference.
+Run the baseline from the linked worktree with the exported credential-file
+variable still set:
+
+```sh
+pnpm eval:agent --conversation-baseline --budget-usd 10
+```
+
+### Increase the authorized total and resume an interrupted run
+
+Increasing the limit requires explicit user authorization. To raise an existing
+$10 run to **$20 total**, update the same key's quota to $18; do not create a
+replacement key or reset spending. Obtain its nonsecret ID from the credential
+file, then use the installed CLI's budget command:
+
+```sh
+export CONVERSATION_GATEWAY_KEY_ID="$(node -p 'JSON.parse(require("node:fs").readFileSync(process.env.CONVERSATION_GATEWAY_KEY_FILE, "utf8")).keyId')"
+pnpm exec vercel ai-gateway budgets set api-key "$CONVERSATION_GATEWAY_KEY_ID" \
+  --scope "$CONVERSATION_GATEWAY_TEAM_ID" \
+  --limit 18 --refresh-period none --format json
+pnpm exec vercel ai-gateway api-keys list \
+  --scope "$CONVERSATION_GATEWAY_TEAM_ID" --format json
+```
+
+Verify that the same key remains active, its quota is $18 and non-refreshing,
+BYOK remains included, and accumulated spending was retained. Wait at least two
+minutes after the quota update. Then resume with the **original timestamp run
+ID**, not a new directory or a checkpoint timestamp:
+
+```sh
+pnpm eval:agent --conversation-baseline --budget-usd 20 --resume ORIGINAL_TIMESTAMP_RUN_ID
+```
+
+Resume preserves completed trial records, their judgments, and the cumulative
+ledger. It only starts previously blocked trials with no captured turns and no
+paid requests. It refuses attempted partial trials rather than replacing them
+with a cleaner result. The prior run must be marked `interrupted` with cleanup
+`completed`, all prior costs reconciled, and the same manifest, agent, scenarios,
+rubric, agent model, and judge model. New runs also record a separate content
+hash for the executor, conversation fixtures, preload, setup, clarification
+schema, Square fake implementation/data, and Square grading helpers; resume
+compares that hash even when changes have been committed. Legacy runs lacking this evidence
+are refused as unverifiable. Do not backfill the hash from newer source to force
+a legacy resume. Authorized supervisor, budget, and report changes are excluded
+from this stable measurement hash. Before continuing, it archives the previous
+summary, report, budget, and provenance under `checkpoints/<timestamp>/`.
+A fresh run may also use `--budget-usd 20` when authorized; `--budget-usd 10`
+remains supported with the matching $8 native quota.
+
+When the authorized evaluation work is finished, revoke the dedicated key and
+remove its local credential file. Keep the evidence and cumulative budget ledger.
+This command reads only the key ID/team for revocation and does not print the key:
+
+```sh
+node --input-type=module -e '
+  import { readFileSync, unlinkSync } from "node:fs";
+  import { spawnSync } from "node:child_process";
+  const path = process.env.CONVERSATION_GATEWAY_KEY_FILE;
+  const { keyId, teamId } = JSON.parse(readFileSync(path, "utf8"));
+  const result = spawnSync("pnpm", ["exec", "vercel", "ai-gateway", "api-keys", "rm", keyId, "--scope", teamId, "--yes"], { stdio: "inherit" });
+  if (result.status !== 0) throw new Error("Key revocation failed; preserve the credential file for cleanup");
+  unlinkSync(path);
+'
+```
+
+The supervisor schedules three trials for each variant: 36 core trials and
+27 Square trials. SQ-07 has separate never-connected and revoked variants.
+Every trial starts a fresh Eve worker with fresh workspace/session state and follows its exact
+scripted user turns. This requires 63 local worker starts so in-memory state cannot leak between trials.
+No best-of retries replace failed conversations. The
+controlled delay, failure/recovery, ambiguous-customer, and auth fixtures use
+synthetic data; they do not contact a seller account or send customer messages.
+Failure scenarios report a chosen evaluation threshold of at most three failed
+Square HTTP reads per turn (an initial attempt plus two retries). This is a
+measurement threshold, not a change to Jory's retry policy. Recovery requires
+an order read on the scripted recovery turn; successful location discovery
+alone does not count as a successful lookup.
+
+To run only the existing Square regression gate after integration, reuse the
+same credential file and cumulative budget ledger through the existing supervisor:
+
+```sh
+pnpm eval:agent --conversation-baseline --budget-usd 20 --square-regression-only
+```
+
+This creates a separate timestamped run with an empty conversation manifest and
+`runKind: square-regression-only` in provenance. It performs the same isolated
+database setup, current model lookup, native-quota verification, local spending
+checks, and teardown, then invokes the existing Square gate. It does not rerun
+the 63 conversation trials or replenish the authorized spending. The option
+cannot be combined with `--resume`; use the authorized total of 10 or 20 and its
+matching quota. Read `square-regression.log` and the gate's provenance result;
+zero conversation trials in this mode is not a behavioral baseline result.
+
+After the 63 baseline trials, the supervisor runs the repository's existing
+Square regression gate, separately from the baseline results. Its output is in
+`square-regression.log` and its exit status is recorded in provenance. It uses
+the same isolated database and spending ledger; failures remain failures.
+
+The **selected cumulative authorization ($10 or $20) covers agent inference,
+automated judging, and the Square regression gate together**. The local proxy reserves token costs before
+dispatch, using fetched model pricing and bounded input/output estimates. Agent
+requests are capped at 4,096 output tokens; judge requests at 2,048. These are
+recorded evaluation execution limits, not changes to Jory's authored instructions
+or selected model. The judge currently uses `openai/gpt-5.4-mini`; its ratings
+are uncalibrated and advisory.
+
+Jory's actual default Exa `web_search` tool remains unchanged: ten results with
+highlights of at most 1,000 characters. There is no substituted OpenAI search
+tool or imposed hosted-call count. Requests exposing this exact native tool
+require the verified dedicated key and add **$2 of operational search headroom**
+to the token reservation. That $2 is not a documented maximum charge for the
+provider's internal search work. Other hosted tools and multimodal input remain
+rejected. Text token reservations use serialized UTF-8 bytes plus 8,192 tokens
+for framing, priced at the highest returned tier.
+
+The proxy stops paid dispatch when cumulative charged/reserved spending is
+already at least the selected total minus $2 ($8 or $18), or when adding the
+next reservation would exceed the selected $10 or $20 total. The dedicated key
+supplies the corresponding $8 or $18 native Gateway quota. Native quota
+checks occur before requests, but usage accounting and enforcement can lag;
+these controls and the headroom are **not an absolute billing guarantee**.
+The recorded limits do not promise that all 63 trials will fit.
+
+A reservation is not a measured charge. Returned provider cost reconciles it;
+unknown cost retains the reservation and poisons the accounting state, stopping
+further paid work. If spending or accounting prevents completion, remaining
+trials stay blocked in the report. Inspect native-budget verification, the
+ledger, and failure statuses before deciding whether another run is appropriate.
+A new invocation creates a new run directory but retains cumulative goal
+spending in the shared ledger; it does not replenish the authorization. Reports
+separate earlier-run spending from the current run. Do not delete the ledger or
+its lock to bypass accounting.
+
+The runner prints its directory under `.eve/conversation-baseline/<run-id>/`:
+
+| Artifact                          | What it records                                                                                |
+| --------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `manifest.json`                   | All 63 initially scheduled trial records and stable keys                                       |
+| `checkpoints/<timestamp>/`        | Previous report/provenance/budget checkpoint retained before a resume                          |
+| `provenance.json`                 | Commit, model/settings, scenario/rubric hashes, pricing source, limits, and cleanup status     |
+| `native-budget-verification.json` | Nonsecret key/quota metadata checked before inference                                          |
+| `budget.json`                     | Request-level reservations and reported costs, attributed to trial and agent/judge stage       |
+| `trials/<key>.json`               | Complete captured turns, message requests, reactions, tool evidence, checks, and judge results |
+| `trials/<key>.requests.json`      | Local fixture HTTP outcomes and runner-observed request timing                                 |
+| `summary.json`                    | All final records, budget, provenance, and explicit delivery-evidence limits                   |
+| `report.md`                       | Full conversations and separate core/Square execution, check, cost, and quality summaries      |
+| `review-sample.md`                | Deterministic human-review sample including both packs and observed failures/blocked trials    |
+
+Reports distinguish completed `send_message` requests from channel acceptance,
+visible web rendering, and recipient receipt. This harness observes the local
+Eve HTTP/SSE conversation and synthetic tool boundaries; it does **not** prove
+actual Linq delivery, rendered message grouping, or visible-message pacing.
+Reported elapsed times are runner measurements, not recipient latency. Coordinate
+those acceptance checks with the separate browser/channel work.
+
+Inspect every failed or blocked trial, judge errors, missing ratings, request
+costs, and cleanup status. Execution completion is separate from correctness;
+a friendly but wrong answer must remain a failure. Human-review examples are
+single baseline conversations, not baseline/candidate comparisons, and do not
+establish judge calibration. The requested baseline is complete only after all
+63 trial outcomes and their evidence have been inspected; unavailable work must
+remain identified rather than being counted as a pass.
 
 ## Evidence and reporting
 
@@ -156,3 +390,5 @@ The rubric and scenario choices are a Jory-specific proposal informed by:
   verbosity, and self-preference biases when calibrating automated judgments.
 
 These sources motivate the design; none establishes Jory's current quality.
+
+For an explicitly authorized fixture repair, select an authored case and variant, for example `pnpm eval:agent --conversation-baseline --budget-usd 20 --case-id SQ-07 --variant never-connected`. This creates a new run with only those three trials, `runKind: conversation-subset`, and the selection in provenance. It preserves the original evidence and uses the same cumulative ledger and temporary key. The selector validates against the authored manifest, cannot combine with resume or gate-only mode, and skips the legacy Square gate; run that gate separately after integration. A partial repair run is not a replacement for the full baseline or authorization to retry genuine behavior failures.
