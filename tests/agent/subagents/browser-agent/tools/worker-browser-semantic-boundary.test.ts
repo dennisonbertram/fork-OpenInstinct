@@ -69,7 +69,52 @@ import {
   markVaultFilledBrowserSession,
 } from "@/agent/subagents/browser-agent/lib/vault-browser-guard";
 
+import { browserActionTargets } from "@/agent/subagents/browser-agent/lib/browser-action-targets";
+
 describe("worker semantic browser boundary", () => {
+  it("keeps lower signup fields and submit actionable after more than 100 date options", () => {
+    const roles = [
+      ...Array.from({ length: 150 }, () => "option"),
+      "textbox",
+      "combobox",
+      "button",
+      "checkbox",
+      "radio",
+      "link",
+      "menuitem",
+      "tab",
+      "dialog",
+      "listbox",
+      "searchbox",
+      "spinbutton",
+    ];
+    const state = {
+      refCounter: roles.length,
+      generations: [],
+      activeTargetId: "page-1",
+      refs: roles.map((role, index) => [
+        `e${String(index + 1)}`,
+        {
+          targetId: "page-1",
+          frameId: "frame-1",
+          role,
+          name: `Control ${String(index)}`,
+        },
+      ]),
+    } as unknown as browserLoop.BrowserRefState;
+    const targets = browserActionTargets(
+      "browser-1",
+      roles.map((_, index) => `[e${String(index + 1)}]`).join("\n"),
+      state
+    );
+    expect(targets.map((target) => target.target_ref)).toEqual(
+      roles.slice(150).map((_, index) => `e${String(151 + index)}`)
+    );
+    expect(
+      targets.every((target) => /^[a-f0-9]{64}$/u.test(target.target_token))
+    ).toBe(true);
+  });
+
   it("keeps URL and title wait leaves atomic while preserving deliberate all conditions", () => {
     const dynamic = semanticBrowser as unknown as {
       events: {
