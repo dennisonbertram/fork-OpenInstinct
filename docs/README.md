@@ -32,6 +32,12 @@ being considered. Documents use three labels deliberately:
 
 ## Current truth
 
+Proposed evaluation work: [Jory conversation evaluation specification](evaluation/README.md)
+defines a shared quality rubric, twelve core conversations, and an eight-case
+Square POS skill pack. These are authored scenarios, not runnable coverage or
+measured behavior; they extend the existing eval direction without changing
+runtime instructions.
+
 - The application is a single Next.js 16 application with an Eve 0.49 agent.
 - Vercel is the supported deployment target. Neon, Kernel, private Vercel Blob,
   Vercel Workflow/AI Gateway, and Vercel Connect are part of the current path.
