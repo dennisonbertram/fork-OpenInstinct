@@ -165,7 +165,7 @@ describe("root and worker capability boundaries", () => {
       "Arbitrary Playwright/JavaScript evaluation is not available"
     );
     expect(workerInstructions).toContain(
-      "`browser_act` is an internal execution primitive and rejects click/key steps"
+      "`browser_act` supports bounded non-secret preparation batches and rejects click/key steps"
     );
     expect(existsSync(`${workerRoot}/lib/browser-contract.ts`)).toBe(false);
     expect(existsSync(`${workerRoot}/lib/browser-runtime.ts`)).toBe(false);
