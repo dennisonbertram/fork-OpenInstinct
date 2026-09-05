@@ -3,9 +3,24 @@ import { describe, expect, it } from "vitest";
 import {
   getLatestTurnFailure,
   getLatestTurnFailureDiagnostic,
+  getLatestTurnOutcome,
 } from "./turn-failure";
 
 describe("turn failures", () => {
+  it("keeps a terminal session failure visible after reload", () => {
+    const failure = {
+      data: {
+        code: "SESSION_FAILED",
+        message: "not visible",
+        sessionId: "session-1",
+      },
+      meta: { at: "2026-09-05T12:00:00.000Z", id: "session-failed" },
+      type: "session.failed",
+    } satisfies MessageStreamEvent;
+
+    expect(getLatestTurnOutcome([failure])).toBe("session-failed");
+  });
+
   it("keeps a parked failed child visibly failed", () => {
     const events = [
       {

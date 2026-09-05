@@ -9,7 +9,7 @@ import type { EveMessageData, UseEveAgentStatus } from "eve/react";
 import type { UserContent } from "ai";
 
 export interface ChatAgent {
-  readonly cancel: () => Promise<CancelSessionResult>;
+  readonly cancel: (turnId?: string) => Promise<CancelSessionResult>;
   readonly data: EveMessageData;
   readonly error?: Error;
   readonly events: readonly MessageStreamEvent[];

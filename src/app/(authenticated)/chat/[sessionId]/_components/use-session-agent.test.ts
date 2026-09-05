@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   stream: vi.fn(),
   send: vi.fn(),
   respond: vi.fn(),
+  cancel: vi.fn(),
 }));
 vi.mock("react", () => ({
   useState: (initial: unknown) => {
@@ -131,6 +132,7 @@ describe("mounted session observer", () => {
       stream: mocks.stream,
       send: mocks.send,
       respond: mocks.respond,
+      cancel: mocks.cancel,
     });
     mocks.send.mockResolvedValue({});
     mocks.respond.mockResolvedValue({});
@@ -197,6 +199,22 @@ describe("mounted session observer", () => {
     await Promise.all([first, steer]);
     unmount();
   });
+  it("rejects a non-steer send while another operation is pending", async () => {
+    const stream = controlledStream();
+    mocks.stream.mockImplementation(stream.iterate);
+    const { agent, unmount } = mount();
+    await flush();
+
+    const first = agent.send("Original task");
+    await flush();
+    await expect(agent.send("Unapproved follow-up")).rejects.toThrow(
+      "The previous request is still finishing"
+    );
+    expect(mocks.send).toHaveBeenCalledTimes(1);
+    stream.push(event("session.waiting", "first-done"));
+    await first;
+    unmount();
+  });
   it("releases a failed approval request for a retry", async () => {
     const stream = controlledStream();
     mocks.stream.mockImplementation(stream.iterate);
@@ -231,6 +249,71 @@ describe("mounted session observer", () => {
       | { signal: AbortSignal }
       | undefined;
     expect(streamOptions?.signal.aborted).toBe(false);
+    unmount();
+  });
+  it("passes the active turn ID when cancelling", async () => {
+    const stream = controlledStream();
+    mocks.stream.mockImplementation(stream.iterate);
+    mocks.cancel.mockResolvedValue({ sessionId: "root", status: "accepted" });
+    const { agent, unmount } = mount();
+    await flush();
+
+    await agent.cancel("turn-current");
+
+    expect(mocks.cancel).toHaveBeenCalledWith({ turnId: "turn-current" });
+    unmount();
+  });
+  it("rejects a send after terminal session failure instead of marking it ready", async () => {
+    const stream = controlledStream();
+    mocks.stream.mockImplementation(stream.iterate);
+    const { agent, unmount } = mount();
+    await flush();
+
+    const send = agent.send("Task");
+    await flush();
+    stream.push({
+      ...event("session.failed", "session-failed"),
+      data: {
+        code: "SESSION_FAILED",
+        message: "provider detail",
+        sessionId: "root",
+      },
+    } as MessageStreamEvent);
+    await expect(send).rejects.toThrow(
+      "This conversation could not continue. Start a new chat."
+    );
+    unmount();
+  });
+  it("rejects a send when the observer ends before a terminal boundary", async () => {
+    const stream = controlledStream();
+    mocks.stream.mockImplementation(stream.iterate);
+    const { agent, unmount } = mount();
+    await flush();
+
+    stream.push(event("session.waiting", "earlier-waiting"));
+    await flush();
+    const send = agent.send("Task");
+    await flush();
+    stream.close();
+    await expect(send).rejects.toThrow(
+      "The session stream ended before the request reached a ready state."
+    );
+    unmount();
+  });
+  it("rejects an approval while another operation is still pending", async () => {
+    const stream = controlledStream();
+    mocks.stream.mockImplementation(stream.iterate);
+    const { agent, unmount } = mount();
+    await flush();
+
+    const send = agent.send("Task");
+    await flush();
+    await expect(
+      agent.respond([{ requestId: "approval", optionId: "approve" }])
+    ).rejects.toThrow("still processing another request");
+    expect(mocks.respond).not.toHaveBeenCalled();
+    stream.push(event("session.waiting", "done"));
+    await send;
     unmount();
   });
   it("keeps an OAuth operation pending across its interim waiting boundary", async () => {
@@ -315,7 +398,9 @@ describe("mounted session observer", () => {
     } as MessageStreamEvent);
     stream.push(event("session.waiting", "park-wait"));
     await flush();
-    const next = agent.send("Cancel that and use another service");
+    const next = agent.send("Cancel that and use another service", {
+      turnPolicy: "steer",
+    });
     void next.catch(() => undefined);
     await flush();
     expect(mocks.send).toHaveBeenCalledWith(
