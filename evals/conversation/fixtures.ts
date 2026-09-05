@@ -40,6 +40,20 @@ async function body(req: IncomingMessage) {
   return Buffer.concat(parts);
 }
 
+/** Noncredential JWT shape required by the installed OIDC accessor. */
+export function syntheticConversationOidcToken() {
+  const header = Buffer.from(
+    JSON.stringify({ alg: "none", typ: "JWT" })
+  ).toString("base64url");
+  const payload = Buffer.from(
+    JSON.stringify({
+      sub: "synthetic-conversation-evaluation",
+      exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
+    })
+  ).toString("base64url");
+  return `${header}.${payload}.synthetic-not-a-signature`;
+}
+
 /** Synthetic HTTP boundaries only: the agent retains its normal Square/auth code. */
 export async function startConversationFixtures() {
   const ambiguous = loadFixture();

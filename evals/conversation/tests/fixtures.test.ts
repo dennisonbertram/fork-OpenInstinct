@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { test } from "vitest";
-import { startConversationFixtures } from "../fixtures";
+import {
+  startConversationFixtures,
+  syntheticConversationOidcToken,
+} from "../fixtures";
 const squareHeaders = {
   Authorization: "Bearer synthetic",
   "Square-Version": "2025-04-16",
@@ -146,6 +151,66 @@ test("control endpoints require the opaque token and SQ08 only recovers on turn 
     });
     assert.equal(requests.status, 200);
     assert.doesNotMatch(await requests.text(), /Bearer|synthetic-verifier/);
+  } finally {
+    await f.close();
+  }
+});
+
+test("actual Connect SDK reaches local missing-grant and authorization fixtures through the guarded preload", async () => {
+  const f = await startConversationFixtures();
+  try {
+    f.configure({ mode: "disconnected", caseId: "SQ-07", turn: 1 });
+    // Fresh child, no inherited credentials, no model calls. Do not pass vercelToken:
+    // the SDK must exercise the installed OIDC environment accessor itself.
+    await promisify(execFile)(
+      process.execPath,
+      [
+        "--import",
+        "./evals/conversation/preload.mjs",
+        "--input-type=module",
+        "--eval",
+        `
+        import assert from "node:assert/strict";
+        import { getToken, startAuthorization, UserAuthorizationRequiredError } from "@vercel/connect";
+        const params = { subject: { type: "user", id: "synthetic-evaluation-user" } };
+        await assert.rejects(getToken("synthetic-square", params, { forceRefresh: true }),
+          error => error instanceof UserAuthorizationRequiredError && error.code === "user_authorization_required");
+        const authorization = await startAuthorization("synthetic-square", params);
+        assert.equal(authorization.url, "https://example.invalid/square/authorize");
+        assert.equal(authorization.request, "synthetic-authorization-request");
+        assert.equal(authorization.verifier, "synthetic-verifier");
+        await assert.rejects(fetch("https://example.invalid/blocked"), /Evaluation blocked external request/);
+      `,
+      ],
+      {
+        timeout: 10_000,
+        env: {
+          NODE_ENV: "test",
+          VERCEL_OIDC_TOKEN: syntheticConversationOidcToken(),
+          CONVERSATION_FIXTURE_URL: f.url,
+          CONVERSATION_BUDGET_URL: f.url,
+          CONVERSATION_BUDGET_TOKEN: "synthetic-no-paid-service",
+          CONVERSATION_ALLOWED_READ_URLS: "[]",
+        },
+      }
+    );
+    assert.deepEqual(
+      f
+        .snapshotRequests()
+        .map(({ method, path, status }) => ({ method, path, status })),
+      [
+        {
+          method: "POST",
+          path: "/v1/connect/token/synthetic-square",
+          status: 403,
+        },
+        {
+          method: "POST",
+          path: "/v1/connect/authorize/synthetic-square",
+          status: 200,
+        },
+      ]
+    );
   } finally {
     await f.close();
   }

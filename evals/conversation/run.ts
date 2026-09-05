@@ -6,10 +6,14 @@ import { createHash, randomBytes } from "node:crypto";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import { createGateway } from "ai";
 import { z } from "zod";
 import { startBudgetGateway } from "./budget";
-import { startConversationFixtures } from "./fixtures";
+import {
+  startConversationFixtures,
+  syntheticConversationOidcToken,
+} from "./fixtures";
 import {
   makeTrialManifest,
   writeReport,
@@ -20,23 +24,48 @@ import {
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const inherited = { ...process.env };
-const args = process.argv.slice(2);
-const budgetUsd = Number(args[1]);
-const resumeId = args[2] === "--resume" ? args[3] : undefined;
+const { values } = parseArgs({
+  options: {
+    "budget-usd": { type: "string" },
+    resume: { type: "string" },
+    "square-regression-only": { type: "boolean" },
+    "case-id": { type: "string" },
+    variant: { type: "string" },
+  },
+  strict: true,
+  allowPositionals: false,
+});
+const squareRegressionOnly = values["square-regression-only"] === true;
+const caseId = values["case-id"];
+const variant = values.variant;
+const budgetUsd = Number(values["budget-usd"]);
+const resumeId = values.resume;
+const authoredManifest = makeTrialManifest();
+const selectedRecords = authoredManifest.filter(
+  (record) =>
+    (!caseId || record.caseId === caseId) &&
+    (!variant || record.variant === variant)
+);
 if (
-  args[0] !== "--budget-usd" ||
   ![10, 20].includes(budgetUsd) ||
-  !(args.length === 2 || (args.length === 4 && resumeId)) ||
-  (resumeId && !/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/u.test(resumeId))
+  (squareRegressionOnly &&
+    (resumeId !== undefined ||
+      caseId !== undefined ||
+      variant !== undefined)) ||
+  (caseId !== undefined &&
+    (resumeId !== undefined || !caseId || selectedRecords.length === 0)) ||
+  (variant !== undefined && (!caseId || !variant)) ||
+  (resumeId !== undefined &&
+    !/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/u.test(resumeId))
 ) {
   throw new Error(
-    "Use --conversation-baseline --budget-usd 10|20 [--resume run-id]; use only the explicitly authorized cumulative budget."
+    "Use --conversation-baseline --budget-usd 10|20 [--resume run-id | --square-regression-only | --case-id known-id [--variant known-variant]]; use only the explicitly authorized cumulative budget."
   );
 }
 const checkpointId = new Date().toISOString().replaceAll(/[:.]/gu, "-");
 const runId = resumeId ?? checkpointId;
 const outputDir = join(root, ".eve/conversation-baseline", runId);
-const records = makeTrialManifest();
+const records: TrialRecord[] = squareRegressionOnly ? [] : selectedRecords;
 const resumedProvenance = resumeId
   ? z
       .object({
@@ -183,6 +212,11 @@ let databaseAttempted = false;
 let fixtures: Awaited<ReturnType<typeof startConversationFixtures>> | undefined;
 let budget: Awaited<ReturnType<typeof startBudgetGateway>> | undefined;
 interface BaselineProvenance {
+  runKind:
+    | "conversation-baseline"
+    | "square-regression-only"
+    | "conversation-subset";
+  selection?: { caseId: string; variant?: string };
   status: string;
   budgetUsd: number;
   scenarioCount: number;
@@ -225,11 +259,18 @@ interface BaselineProvenance {
   retainedCompletedTrials?: number;
 }
 const provenance: BaselineProvenance = {
+  runKind: squareRegressionOnly
+    ? "square-regression-only"
+    : caseId
+      ? "conversation-subset"
+      : "conversation-baseline",
   status: "initializing",
   budgetUsd,
-  scenarioCount: 20,
-  variantCount: 21,
-  plannedTrials: 63,
+  scenarioCount: new Set(records.map((record) => record.caseId)).size,
+  variantCount: new Set(
+    records.map((record) => `${record.caseId}-${record.variant}`)
+  ).size,
+  plannedTrials: records.length,
   judgmentCalibration: "uncalibrated",
   channel: "local Eve HTTP/SSE",
   visibleRendering: "unobserved",
@@ -238,6 +279,10 @@ const provenance: BaselineProvenance = {
   judgeOutputTokenCap: 2048,
   searchReservationHeadroomUsd: 2,
 };
+if (caseId) {
+  provenance.selection = { caseId };
+  if (variant) provenance.selection.variant = variant;
+}
 if (resumeId) {
   provenance.resumedFromCheckpoint = checkpointId;
   provenance.retainedCompletedTrials = records.filter(
@@ -590,7 +635,7 @@ try {
   fixtures = await startConversationFixtures();
   Object.assign(cleanEnvironment, {
     AI_GATEWAY_API_KEY: "evaluation-proxy-placeholder",
-    VERCEL_OIDC_TOKEN: "synthetic-connect-evaluation-token",
+    VERCEL_OIDC_TOKEN: syntheticConversationOidcToken(),
     SQUARE_BASE_URL: fixtures.url,
     SQUARE_ENVIRONMENT: "sandbox",
     CONVERSATION_FIXTURE_URL: fixtures.url,
@@ -658,7 +703,7 @@ try {
       throw new Error(outcome.reason ?? "Trial setup failed before inference");
     }
   }
-  if (!lifecycle.interrupted && !budget.snapshot().poisoned) {
+  if (!caseId && !lifecycle.interrupted && !budget.snapshot().poisoned) {
     console.log(
       "Running the existing Square regression gate under the same budget"
     );

@@ -233,6 +233,22 @@ measurement threshold, not a change to Jory's retry policy. Recovery requires
 an order read on the scripted recovery turn; successful location discovery
 alone does not count as a successful lookup.
 
+To run only the existing Square regression gate after integration, reuse the
+same credential file and cumulative budget ledger through the existing supervisor:
+
+```sh
+pnpm eval:agent --conversation-baseline --budget-usd 20 --square-regression-only
+```
+
+This creates a separate timestamped run with an empty conversation manifest and
+`runKind: square-regression-only` in provenance. It performs the same isolated
+database setup, current model lookup, native-quota verification, local spending
+checks, and teardown, then invokes the existing Square gate. It does not rerun
+the 63 conversation trials or replenish the authorized spending. The option
+cannot be combined with `--resume`; use the authorized total of 10 or 20 and its
+matching quota. Read `square-regression.log` and the gate's provenance result;
+zero conversation trials in this mode is not a behavioral baseline result.
+
 After the 63 baseline trials, the supervisor runs the repository's existing
 Square regression gate, separately from the baseline results. Its output is in
 `square-regression.log` and its exit status is recorded in provenance. It uses
@@ -367,3 +383,5 @@ The rubric and scenario choices are a Jory-specific proposal informed by:
   verbosity, and self-preference biases when calibrating automated judgments.
 
 These sources motivate the design; none establishes Jory's current quality.
+
+For an explicitly authorized fixture repair, select an authored case and variant, for example `pnpm eval:agent --conversation-baseline --budget-usd 20 --case-id SQ-07 --variant never-connected`. This creates a new run with only those three trials, `runKind: conversation-subset`, and the selection in provenance. It preserves the original evidence and uses the same cumulative ledger and temporary key. The selector validates against the authored manifest, cannot combine with resume or gate-only mode, and skips the legacy Square gate; run that gate separately after integration. A partial repair run is not a replacement for the full baseline or authorization to retry genuine behavior failures.
