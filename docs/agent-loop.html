@@ -890,11 +890,13 @@
           Dropdown options do not crowd form controls out of the bounded list.
           The worker is instructed to complete non-secret fields before vault
           injection and observe the final submit control before filling secrets.
-          It is instructed to start login assignments with a profile writer and
-          verify a specific postcondition after committing. Vault-filled pages
-          expose only safe text verification status, while masked image capture
-          remains available in the same browser. Explicit signup autofill fills
-          the saved password and confirmation in the focused registration form;
+          Uncertain field preparation must be resolved before vault injection or
+          submission; otherwise the worker reports the incomplete field. It is
+          instructed to start login assignments with a profile writer and verify
+          a specific postcondition after committing. Vault-filled pages expose
+          only safe text verification status, while masked image capture remains
+          available in the same browser. Explicit signup autofill fills the
+          saved password and confirmation in the focused registration form;
           ordinary login autofill still excludes new-password fields. An
           explicit compatibility flag accepts a mislabeled sole password only in
           a focused sign-in form with an unambiguous Login/Sign in control;
