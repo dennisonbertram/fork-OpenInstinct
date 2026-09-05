@@ -339,8 +339,11 @@ or foundation styles are installed.
   developer Activity flag and shows no raw tool data or internal narration.
   The locally scoped 1.4s dot animation uses 160ms staggering; reduced motion
   leaves three static dots. Completion, cancellation and errors remove it.
-- **Failure:** the normal conversation shows a generic retry message; detailed
-  runtime errors remain in the developer trace.
+- **Failure:** the normal conversation shows a generic retry message. When the
+  server-controlled developer Activity feature is enabled, a structured AI Gateway
+  insufficient-credit failure shows a fixed billing remedy without the provider
+  body. Production keeps the generic message; detailed runtime errors remain in
+  the developer trace.
 
 Pencil section **09 Jory · Beautiful chat flow** illustrates start, work,
 question and result states. The question/result examples express the intended

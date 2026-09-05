@@ -10,7 +10,10 @@ import {
   messagesForTraceView,
   type TraceView,
 } from "../../_lib/trace-view";
-import { getLatestTurnFailure } from "../../_lib/turn-failure";
+import {
+  getLatestTurnFailure,
+  getLatestTurnFailureDiagnostic,
+} from "../../_lib/turn-failure";
 import {
   Conversation,
   ConversationContent,
@@ -26,6 +29,7 @@ import styles from "./typing-indicator.module.css";
 
 export function ChatConversation({
   agent,
+  developerActivityEnabled = false,
   history,
   initial,
   sessionId,
@@ -35,6 +39,7 @@ export function ChatConversation({
     ChatAgent,
     "data" | "error" | "events" | "respond" | "status"
   >;
+  readonly developerActivityEnabled?: boolean;
   readonly history?: {
     readonly hasOlder: boolean;
     readonly isLoadingOlder: boolean;
@@ -61,6 +66,9 @@ export function ChatConversation({
       pendingAssistantMessageId !== undefined);
   const turnFailure =
     isBusy || isRestoring ? undefined : getLatestTurnFailure(agent.events);
+  const developerDiagnostic = developerActivityEnabled
+    ? getLatestTurnFailureDiagnostic(agent.events)
+    : undefined;
   const errorMessage =
     (agent.error ? toErrorMessage(agent.error) : undefined) ?? turnFailure;
   const messages = useMemo(
@@ -185,7 +193,7 @@ export function ChatConversation({
             <AlertCircleIcon aria-hidden="true" />
             <AlertTitle>Jory couldn’t finish this request</AlertTitle>
             <AlertDescription>
-              Please try sending your message again.
+              {developerDiagnostic ?? "Please try sending your message again."}
             </AlertDescription>
           </Alert>
         ) : null}

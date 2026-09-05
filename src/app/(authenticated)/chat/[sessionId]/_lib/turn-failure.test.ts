@@ -1,6 +1,9 @@
 import type { MessageStreamEvent } from "eve/client";
 import { describe, expect, it } from "vitest";
-import { getLatestTurnFailure } from "./turn-failure";
+import {
+  getLatestTurnFailure,
+  getLatestTurnFailureDiagnostic,
+} from "./turn-failure";
 
 describe("turn failures", () => {
   it("keeps a parked failed child visibly failed", () => {
@@ -23,5 +26,41 @@ describe("turn failures", () => {
     ] satisfies MessageStreamEvent[];
 
     expect(getLatestTurnFailure(events)).toBe("Child failed.");
+  });
+});
+
+describe("developer failure diagnostic", () => {
+  const failure = {
+    type: "turn.failed",
+    meta: { at: "2026-09-05T12:00:00.000Z", id: "failure" },
+    data: {
+      code: "MODEL_CALL_FAILED",
+      message: "insufficient_funds SECRET_SENTINEL",
+      details: { statusCode: 402 },
+      sequence: 1,
+      turnId: "turn-1",
+    },
+  } satisfies MessageStreamEvent;
+
+  it("does not infer billing from status or unstructured provider text", () => {
+    expect(getLatestTurnFailureDiagnostic([failure])).toBeUndefined();
+  });
+
+  it("clears a recognized billing diagnostic when a new request arrives", () => {
+    const events = [
+      {
+        ...failure,
+        data: {
+          ...failure.data,
+          details: { upstreamType: "insufficient_funds" },
+        },
+      },
+      {
+        type: "message.received",
+        meta: { at: "2026-09-05T12:01:00.000Z", id: "next" },
+        data: { turnId: "turn-2", sequence: 0, message: "Try again" },
+      },
+    ] satisfies MessageStreamEvent[];
+    expect(getLatestTurnFailureDiagnostic(events)).toBeUndefined();
   });
 });

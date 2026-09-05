@@ -25,6 +25,7 @@ export function ChatSession({
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <ChatConversation
           agent={agent}
+          developerActivityEnabled={developerActivityEnabled}
           initial={false}
           history={{
             hasOlder: agent.hasOlder,
