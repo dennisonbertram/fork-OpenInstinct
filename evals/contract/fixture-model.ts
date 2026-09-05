@@ -4,8 +4,18 @@ import {
   type MockModelResponse,
   type MockModelToolCall,
 } from "eve/evals";
+import type { LanguageModel } from "ai";
+import { z } from "zod";
+
+type LanguageModelV3 = Extract<
+  LanguageModel,
+  { readonly specificationVersion: "v3" }
+>;
 
 const deliveryTools = new Set(["react_to_message", "send_message"]);
+const languageModelV3Schema = z.object({
+  specificationVersion: z.literal("v3"),
+});
 const reactionTypes = new Set([
   "exclamation",
   "heart",
@@ -15,7 +25,7 @@ const reactionTypes = new Set([
   "thumbs_up",
 ]);
 
-export const contractFixtureModel = mockModel({
+const fixtureModel = mockModel({
   modelId: "contract-fixture",
   provider: "openinstinct-contract-fixtures",
   respond(request) {
@@ -39,11 +49,29 @@ export const contractFixtureModel = mockModel({
   },
 });
 
+if (!isLanguageModelV3(fixtureModel)) {
+  throw new Error("The contract fixture requires the AI SDK V3 stream model.");
+}
+
+export const contractFixtureModel = fixtureModel;
+
+const fixtureDoStream =
+  contractFixtureModel.doStream.bind(contractFixtureModel);
+contractFixtureModel.doStream = async (options) => {
+  const result = await fixtureDoStream(options);
+  return lastUserPrompt(options) === "wait"
+    ? { ...result, stream: delayFixtureStream(result.stream, 5_000) }
+    : result;
+};
+
 export function contractFixtureResponse(
   request: MockModelRequest
 ): MockModelResponse {
   const command = request.lastUserMessage?.trim();
   if (!command) throw new Error("Contract fixture requires a command.");
+
+  if (command === "silent") return { text: "DELIVERY_COMPLETE" };
+  if (command === "wait") return { text: "WAIT_COMPLETE" };
 
   if (request.toolResults.some((result) => deliveryTools.has(result.name))) {
     return { text: "DELIVERY_COMPLETE" };
@@ -177,4 +205,60 @@ function parseCall(command: string): MockModelToolCall | undefined {
   return call?.[1] && call[2]
     ? { input: JSON.parse(call[2]), name: call[1] }
     : undefined;
+}
+
+function lastUserPrompt(
+  options: Parameters<typeof fixtureDoStream>[0]
+): string | undefined {
+  const message = options.prompt.findLast((entry) => entry.role === "user");
+  if (!message || !Array.isArray(message.content)) return undefined;
+  return message.content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("")
+    .trim();
+}
+
+function delayFixtureStream<T>(stream: ReadableStream<T>, timeoutMs: number) {
+  let cancelDelay: (() => void) | undefined;
+  let reader: ReadableStreamDefaultReader<T> | undefined;
+  let cancelled = false;
+
+  return new ReadableStream<T>({
+    async start(controller) {
+      reader = stream.getReader();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await new Promise<void>((resolve) => {
+          cancelDelay = () => {
+            if (timer !== undefined) clearTimeout(timer);
+            resolve();
+          };
+          timer = setTimeout(resolve, timeoutMs);
+        });
+        if (cancelled) return;
+
+        for (;;) {
+          // oxlint-disable-next-line eslint/no-await-in-loop -- A ReadableStream must be consumed in its ordered pull sequence.
+          const next = await reader.read();
+          if (next.done) break;
+          controller.enqueue(next.value);
+        }
+        controller.close();
+      } catch (cause) {
+        if (!cancelled) controller.error(cause);
+      } finally {
+        reader.releaseLock();
+      }
+    },
+    async cancel(reason) {
+      cancelled = true;
+      cancelDelay?.();
+      await reader?.cancel(reason);
+    },
+  });
+}
+
+function isLanguageModelV3(model: LanguageModel): model is LanguageModelV3 {
+  return languageModelV3Schema.safeParse(model).success;
 }

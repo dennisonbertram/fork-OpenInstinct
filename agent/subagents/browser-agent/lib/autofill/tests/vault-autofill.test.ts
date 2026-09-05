@@ -11,6 +11,7 @@ import {
 } from "@/lib/vault";
 import {
   classifyNativeLoginControl,
+  classifyNativeLoginControls,
   frameOriginExpression,
   nativeLoginFillFunctionDeclaration,
   selectNativeLoginFills,
@@ -600,6 +601,170 @@ describe("vault browser autofill", () => {
         loginControl({ autocomplete: "new-password", type: "password" })
       )
     ).toBeNull();
+  });
+
+  it("fills the observed signup password and confirmation only in the focused form", () => {
+    const descriptors = [
+      loginControl({
+        name: "username",
+        label: "Username",
+        autocomplete: "off",
+        focused: true,
+        index: 0,
+      }),
+      loginControl({
+        name: "password",
+        label: "Password",
+        autocomplete: "new-password",
+        type: "password",
+        index: 1,
+      }),
+      loginControl({
+        name: "confirmPassword",
+        label: "Confirm Password",
+        autocomplete: "new-password",
+        type: "password",
+        index: 2,
+      }),
+      loginControl({
+        autocomplete: "new-password",
+        type: "password",
+        index: 3,
+        formIndex: 1,
+      }),
+      loginControl({
+        autocomplete: "current-password",
+        type: "password",
+        index: 4,
+      }),
+      loginControl({ autocomplete: "one-time-code", name: "otp", index: 5 }),
+    ];
+    const controls = descriptors.flatMap((d) => {
+      const c = classifyNativeLoginControl(d, "signup");
+      return c ? [c] : [];
+    });
+    const fills = selectNativeLoginFills(
+      controls,
+      [
+        claim("username", "synthetic-user"),
+        claim("current-password", "synthetic-signup-value"),
+      ],
+      "signup"
+    );
+    expect(fills.map((f) => f.control.index)).toEqual([0, 1, 2]);
+    expect(fills.slice(1).map((f) => f.value)).toEqual([
+      "synthetic-signup-value",
+      "synthetic-signup-value",
+    ]);
+    expect(
+      descriptors.slice(1, 3).map((d) => classifyNativeLoginControl(d))
+    ).toEqual([null, null]);
+  });
+
+  it("accepts the observed mislabeled sign-in password only with explicit compatibility mode", () => {
+    const descriptors = [
+      loginControl({
+        name: "username",
+        label: "Username",
+        autocomplete: "off",
+        focused: true,
+        index: 0,
+        submitLabels: ["Login"],
+        formLabel: "login",
+      }),
+      loginControl({
+        name: "password",
+        label: "Password",
+        autocomplete: "new-password",
+        type: "password",
+        index: 1,
+        submitLabels: ["Login"],
+        formLabel: "login",
+      }),
+    ];
+    const controls = classifyNativeLoginControls(descriptors, "login", true);
+    expect(
+      selectNativeLoginFills(controls, [
+        claim("username", "synthetic-user"),
+        claim("current-password", "synthetic-secret"),
+      ]).map((f) => f.control.index)
+    ).toEqual([0, 1]);
+    expect(
+      classifyNativeLoginControls(descriptors).map((c) => c.index)
+    ).toEqual([0]);
+  });
+  it.each([
+    "multiple passwords",
+    "register",
+    "reset",
+    "change",
+    "cross form",
+    "otp",
+    "signup purpose",
+    "ambiguous submit",
+    "no focus",
+  ])("rejects new-password login compatibility on %s", (scenario) => {
+    const descriptors = [
+      loginControl({
+        name: "username",
+        label: "Username",
+        autocomplete: "off",
+        focused: true,
+        index: 0,
+        submitLabels: ["Login"],
+        formLabel: "login",
+      }),
+      loginControl({
+        name: "password",
+        label: "Password",
+        autocomplete: "new-password",
+        type: "password",
+        index: 1,
+        submitLabels: ["Login"],
+        formLabel: "login",
+      }),
+    ];
+    if (scenario === "no focus") {
+      descriptors.splice(
+        0,
+        descriptors.length,
+        ...descriptors.map((descriptor) => ({ ...descriptor, focused: false }))
+      );
+    }
+    const passwordDescriptor = descriptors[1];
+    if (!passwordDescriptor) throw new Error("Missing fixture password");
+    if (scenario === "multiple passwords")
+      descriptors.push(
+        loginControl({
+          type: "password",
+          autocomplete: "current-password",
+          index: 2,
+        })
+      );
+    if (scenario === "register")
+      descriptors[1] = { ...passwordDescriptor, submitLabels: ["Register"] };
+    if (scenario === "reset")
+      descriptors[1] = { ...passwordDescriptor, formLabel: "Reset password" };
+    if (scenario === "change")
+      descriptors[1] = { ...passwordDescriptor, formLabel: "Change password" };
+    if (scenario === "cross form")
+      descriptors[1] = { ...passwordDescriptor, formIndex: 1 };
+    if (scenario === "otp")
+      descriptors.push(
+        loginControl({ autocomplete: "one-time-code", index: 2 })
+      );
+    if (scenario === "ambiguous submit")
+      descriptors[1] = {
+        ...passwordDescriptor,
+        submitLabels: ["Login", "Register"],
+      };
+    expect(() =>
+      classifyNativeLoginControls(
+        descriptors,
+        scenario === "signup purpose" ? "signup" : "login",
+        true
+      )
+    ).toThrow(/sign-in|compatibility/iu);
   });
 
   it("selects one identifier and current password from the focused login form", () => {

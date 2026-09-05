@@ -41,6 +41,20 @@ export const sendMessageOutputSchema = z.discriminatedUnion("kind", [
   linkOutputSchema,
 ]);
 
+// Completion controls the tool loop and is omitted from channel-visible output.
+const finalDeliveryField = {
+  final: z
+    .boolean()
+    .optional()
+    .describe(
+      "Set true on the last user-visible message for this turn. Leave false for progress or a message followed by more work or another message."
+    ),
+};
+export const sendMessageInputSchema = z.discriminatedUnion("kind", [
+  messageOutputSchema.safeExtend(finalDeliveryField),
+  linkOutputSchema.extend(finalDeliveryField),
+]);
+
 export const sendMessageToolResultSchema = z.object({
   kind: z.literal("tool-result"),
   output: sendMessageOutputSchema,

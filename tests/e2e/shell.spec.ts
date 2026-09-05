@@ -59,9 +59,9 @@ test("keeps empty browser task guidance readable on mobile", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/tasks");
   const guidance = page
-    .getByRole("region", { name: "Browser trace history" })
+    .getByRole("region", { name: "Browser task history" })
     .getByText(
-      "No browser traces yet. Give the agent a browser task from the chat.",
+      "No browser tasks yet. Give the agent a browser task from the chat.",
       { exact: true }
     );
   await expect(guidance).toBeVisible();

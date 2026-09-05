@@ -1,3 +1,4 @@
+import { settleFinalDelivery } from "@/agent/lib/message-delivery";
 import { connectLinqCredentials } from "@vercel/connect/eve";
 import { createPostgresState } from "@chat-adapter/state-pg";
 import { createLinqAdapter } from "@linqapp/chat-sdk-adapter";
@@ -245,124 +246,135 @@ export const linqChannelConfig = {
 
       const message = sendMessageToolResultSchema.safeParse(event.result);
       if (event.status === "completed" && message.success) {
-        const { thread } = context;
-        if (!thread) {
-          throw new Error(
-            "send_message requires an active Linq conversation thread."
-          );
-        }
-        const report = scheduledReportFromSession(session);
-        const idempotencyKey = report
-          ? `scheduled-report:${report.runId}:${String(report.sequence)}`
-          : undefined;
-        // Both branches discard the posted message so `postLinqReply` never
-        // hands an adapter-shaped value back to its caller.
-        const post = idempotencyKey
-          ? async (content: AdapterPostableMessage) => {
-              await context.bot
-                .getAdapter("linq")
-                .postMessage(thread.id, content, { idempotencyKey });
-            }
-          : async (content: AdapterPostableMessage) => {
-              await thread.post(content);
-            };
-
-        if (message.data.output.kind === "link") {
-          const adapter = context.bot.getAdapter("linq");
-          const { chatId, pendingHandle } = adapter.decodeThreadId(thread.id);
-          if (pendingHandle || !chatId) {
+        let accepted = false;
+        try {
+          const { thread } = context;
+          if (!thread) {
             throw new Error(
-              "A native link preview requires an existing Linq conversation."
+              "send_message requires an active Linq conversation thread."
             );
           }
-          const apiKey = await credentials.apiKey();
-          const client = new LinqAPIV3({ apiKey });
-          await client.chats.messages.send(
-            chatId,
-            {
-              message: {
-                parts: [{ type: "link", value: message.data.output.url }],
+          const report = scheduledReportFromSession(session);
+          const idempotencyKey = report
+            ? `scheduled-report:${report.runId}:${String(report.sequence)}`
+            : undefined;
+          // Both branches discard the posted message so `postLinqReply` never
+          // hands an adapter-shaped value back to its caller.
+          const post = idempotencyKey
+            ? async (content: AdapterPostableMessage) => {
+                await context.bot
+                  .getAdapter("linq")
+                  .postMessage(thread.id, content, { idempotencyKey });
+                accepted = true;
+              }
+            : async (content: AdapterPostableMessage) => {
+                await thread.post(content);
+                accepted = true;
+              };
+
+          if (message.data.output.kind === "link") {
+            const adapter = context.bot.getAdapter("linq");
+            const { chatId, pendingHandle } = adapter.decodeThreadId(thread.id);
+            if (pendingHandle || !chatId) {
+              throw new Error(
+                "A native link preview requires an existing Linq conversation."
+              );
+            }
+            const apiKey = await credentials.apiKey();
+            const client = new LinqAPIV3({ apiKey });
+            await client.chats.messages.send(
+              chatId,
+              {
+                message: {
+                  parts: [{ type: "link", value: message.data.output.url }],
+                },
               },
-            },
-            idempotencyKey ? { idempotencyKey } : undefined
-          );
-          await finalizeScheduledReportDelivery(session);
-          return;
-        }
-
-        const attachments = message.data.output.attachments?.map(
-          ({ kind, ...attachment }) => ({ ...attachment, type: kind })
-        );
-        const { text: requestedText } = message.data.output;
-        if (!requestedText) {
-          if (attachments?.length) {
-            await post({ attachments, raw: "" });
+              idempotencyKey ? { idempotencyKey } : undefined
+            );
+            accepted = true;
+            await finalizeScheduledReportDelivery(session);
+            return;
           }
-          await finalizeScheduledReportDelivery(session);
-          return;
-        }
 
-        const caller =
-          session.session.auth.current ?? session.session.auth.initiator;
-        if (!caller) {
-          const references =
-            extractImageArtifactMarkdownReferences(requestedText);
-          const text =
-            references.length === 0
-              ? requestedText
-              : [
-                  stripImageArtifactMarkdownReferences(requestedText),
-                  "I couldn't attach the image.",
-                ]
-                  .filter(Boolean)
-                  .join("\n\n");
+          const attachments = message.data.output.attachments?.map(
+            ({ kind, ...attachment }) => ({ ...attachment, type: kind })
+          );
+          const { text: requestedText } = message.data.output;
+          if (!requestedText) {
+            if (attachments?.length) {
+              await post({ attachments, raw: "" });
+            }
+            await finalizeScheduledReportDelivery(session);
+            return;
+          }
+
+          const caller =
+            session.session.auth.current ?? session.session.auth.initiator;
+          if (!caller) {
+            const references =
+              extractImageArtifactMarkdownReferences(requestedText);
+            const text =
+              references.length === 0
+                ? requestedText
+                : [
+                    stripImageArtifactMarkdownReferences(requestedText),
+                    "I couldn't attach the image.",
+                  ]
+                    .filter(Boolean)
+                    .join("\n\n");
+            const outgoing: Extract<
+              Parameters<typeof thread.post>[0],
+              { raw: string }
+            > = { raw: text };
+            if (attachments?.length) outgoing.attachments = attachments;
+            // Provider-auth-only replies lack a workspace: not budgeted or ledgered.
+            await postLinqReply(post, outgoing);
+            await finalizeScheduledReportDelivery(session);
+            return;
+          }
+
+          const delivery = await prepareLinqImageArtifactDelivery(
+            requestedText,
+            {
+              rootSessionId: report?.workerSessionId ?? session.session.id,
+              scope: scopeFromPrincipal(caller),
+            }
+          );
+          if (delivery.failedArtifactIds.length > 0) {
+            console.warn("[linq] browser image delivery failed", {
+              artifactIds: delivery.failedArtifactIds,
+              sessionId: session.session.id,
+            });
+          }
+          const failureMessage =
+            delivery.failedArtifactIds.length === 0
+              ? ""
+              : delivery.failedArtifactIds.length === 1
+                ? "I couldn't attach one image."
+                : `I couldn't attach ${String(delivery.failedArtifactIds.length)} images.`;
+          const text = [delivery.text, failureMessage]
+            .filter(Boolean)
+            .join("\n\n");
           const outgoing: Extract<
             Parameters<typeof thread.post>[0],
             { raw: string }
           > = { raw: text };
           if (attachments?.length) outgoing.attachments = attachments;
-          // Provider-auth-only replies lack a workspace: not budgeted or ledgered.
-          await postLinqReply(post, outgoing);
+          if (delivery.files.length > 0) outgoing.files = delivery.files;
+          try {
+            await postLinqReply(post, outgoing, scopeFromPrincipal(caller));
+          } catch (error) {
+            if (
+              error instanceof BudgetExceededError ||
+              error instanceof WorkspaceNotOperableError
+            )
+              return;
+            throw error;
+          }
           await finalizeScheduledReportDelivery(session);
-          return;
+        } finally {
+          settleFinalDelivery(event.result.callId, accepted);
         }
-
-        const delivery = await prepareLinqImageArtifactDelivery(requestedText, {
-          rootSessionId: report?.workerSessionId ?? session.session.id,
-          scope: scopeFromPrincipal(caller),
-        });
-        if (delivery.failedArtifactIds.length > 0) {
-          console.warn("[linq] browser image delivery failed", {
-            artifactIds: delivery.failedArtifactIds,
-            sessionId: session.session.id,
-          });
-        }
-        const failureMessage =
-          delivery.failedArtifactIds.length === 0
-            ? ""
-            : delivery.failedArtifactIds.length === 1
-              ? "I couldn't attach one image."
-              : `I couldn't attach ${String(delivery.failedArtifactIds.length)} images.`;
-        const text = [delivery.text, failureMessage]
-          .filter(Boolean)
-          .join("\n\n");
-        const outgoing: Extract<
-          Parameters<typeof thread.post>[0],
-          { raw: string }
-        > = { raw: text };
-        if (attachments?.length) outgoing.attachments = attachments;
-        if (delivery.files.length > 0) outgoing.files = delivery.files;
-        try {
-          await postLinqReply(post, outgoing, scopeFromPrincipal(caller));
-        } catch (error) {
-          if (
-            error instanceof BudgetExceededError ||
-            error instanceof WorkspaceNotOperableError
-          )
-            return;
-          throw error;
-        }
-        await finalizeScheduledReportDelivery(session);
       }
     },
     async "message.completed"(event, _context, session) {

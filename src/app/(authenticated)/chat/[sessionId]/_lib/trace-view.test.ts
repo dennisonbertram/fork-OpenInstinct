@@ -5,9 +5,43 @@ import {
   backgroundWorkerDeliveryMessageIds,
   hasPendingBackgroundWorker,
   messagesForTraceView,
+  settledBackgroundWorkerTaskIds,
 } from "./trace-view";
 
 describe("trace view", () => {
+  it("retires only known terminal tasks, preserving input and authorization waits", () => {
+    const events = [
+      ...["completed", "failed", "cancelled", "waiting", "authorization"].map(
+        workerCompletedReceipt
+      ),
+      receivedMessage(
+        "complete",
+        "Background task completed (browser-agent) is completed.\n\nResult:\nDone"
+      ),
+      receivedMessage(
+        "failed",
+        "Background task failed (browser-agent) failed.\n\nError:\nUnavailable"
+      ),
+      workerCancellationResult("cancelled"),
+      receivedMessage(
+        "waiting",
+        "Background task waiting (browser-agent) needs input."
+      ),
+      receivedMessage(
+        "auth",
+        "Background task authorization needs authorization."
+      ),
+      receivedMessage(
+        "unrelated",
+        "Background task unknown (browser-agent) is cancelled."
+      ),
+    ];
+    expect([...settledBackgroundWorkerTaskIds(events)]).toEqual([
+      "completed",
+      "failed",
+      "cancelled",
+    ]);
+  });
   it.each([
     ["update", "update: Checking availability", false],
     ["input", "needs input.", false],

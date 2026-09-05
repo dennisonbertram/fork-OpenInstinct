@@ -1,7 +1,7 @@
 import type { EveEvalContext, EveEvalTurn } from "eve/evals";
 import { equals, satisfies } from "eve/evals/expect";
 import { z } from "zod";
-import { sendMessageOutputSchema } from "@/agent/lib/send-message";
+import { sendMessageInputSchema } from "@/agent/lib/send-message";
 
 export const agentEvalTags = ["agent", "behavior"] as const;
 
@@ -12,7 +12,7 @@ export async function requireDeliveredText(
   const delivery = turn.requireToolCall("send_message", {
     status: "completed",
   });
-  const parsed = sendMessageOutputSchema.safeParse(delivery.input);
+  const parsed = sendMessageInputSchema.safeParse(delivery.input);
   const text =
     parsed.success && parsed.data.kind === "message"
       ? parsed.data.text

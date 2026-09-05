@@ -1,3 +1,4 @@
+import { ClientError } from "eve/client";
 import { AlertCircleIcon, BrainIcon, LoaderCircleIcon } from "lucide-react";
 import { Fragment, useMemo } from "react";
 import {
@@ -13,6 +14,7 @@ import {
 import {
   getLatestTurnFailure,
   getLatestTurnFailureDiagnostic,
+  getLatestTurnOutcome,
 } from "../../_lib/turn-failure";
 import {
   Conversation,
@@ -69,8 +71,6 @@ export function ChatConversation({
   const developerDiagnostic = developerActivityEnabled
     ? getLatestTurnFailureDiagnostic(agent.events)
     : undefined;
-  const errorMessage =
-    (agent.error ? toErrorMessage(agent.error) : undefined) ?? turnFailure;
   const messages = useMemo(
     () => messagesForTraceView(agent.data.messages, agent.events, traceView),
     [agent.data.messages, agent.events, traceView]
@@ -90,6 +90,22 @@ export function ChatConversation({
     () => hasPendingBackgroundWorker(agent.events),
     [agent.events]
   );
+  const turnOutcome =
+    isBusy || isRestoring || hasPendingWorker
+      ? undefined
+      : getLatestTurnOutcome(agent.events);
+  const errorMessage =
+    turnOutcome === "session-failed"
+      ? "This conversation could not continue. Start a new chat."
+      : ((agent.error && !isSubmissionConflict(agent.error)
+          ? toErrorMessage(agent.error)
+          : undefined) ??
+        turnFailure ??
+        (turnOutcome === "missing-response"
+          ? "Please try sending your message again."
+          : undefined));
+  const wasCancelled =
+    turnOutcome === "cancelled" && errorMessage === undefined;
 
   return (
     <Conversation
@@ -193,8 +209,17 @@ export function ChatConversation({
             <AlertCircleIcon aria-hidden="true" />
             <AlertTitle>Jory couldn’t finish this request</AlertTitle>
             <AlertDescription>
-              {developerDiagnostic ?? "Please try sending your message again."}
+              {developerDiagnostic ??
+                (turnOutcome === "session-failed"
+                  ? errorMessage
+                  : "Please try sending your message again.")}
             </AlertDescription>
+          </Alert>
+        ) : null}
+        {traceView === "imessage" && wasCancelled ? (
+          <Alert>
+            <AlertTitle>Jory stopped this request</AlertTitle>
+            <AlertDescription>You can send another message.</AlertDescription>
           </Alert>
         ) : null}
         {traceView === "trace" && errorMessage ? (
@@ -212,6 +237,10 @@ function toErrorMessage(cause: unknown): string {
     return "The agent runtime is unavailable. Try again in a moment.";
   }
   return cause.message;
+}
+
+function isSubmissionConflict(cause: unknown) {
+  return cause instanceof ClientError && cause.status === 409;
 }
 
 function ErrorMessage({ message }: { readonly message: string }) {

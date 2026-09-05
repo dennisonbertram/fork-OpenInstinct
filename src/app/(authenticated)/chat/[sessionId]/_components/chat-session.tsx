@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { ChatUsage } from "@/lib/chat";
 import type { TraceView } from "../_lib/trace-view";
 import { SubagentPanel } from "./activity";
+import { PendingSubagentActions } from "./activity/pending-actions";
 import { ChatConversation } from "./conversation";
 import { ChatInput } from "./input";
 import { useSessionAgent } from "./use-session-agent";
@@ -35,6 +36,7 @@ export function ChatSession({
           sessionId={sessionId}
           traceView={traceView}
         />
+        <PendingSubagentActions events={agent.events} />
         <ChatInput agent={agent} sessionId={sessionId} />
       </div>
       {developerActivityEnabled ? (

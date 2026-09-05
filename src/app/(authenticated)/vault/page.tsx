@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { VaultAddresses } from "./_components/addresses";
 import { VaultCards } from "./_components/cards";
 import { VaultContacts } from "./_components/contacts";
@@ -18,6 +19,17 @@ export default async function Page() {
   return (
     <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
       <h1 className="type-page-title">Vault</h1>
+      <p className="type-body max-w-2xl text-muted-foreground">
+        Vault stores encrypted values for browser forms. Saved values can be
+        filled without returning them to Jory. For a reusable profile Jory can
+        read directly, use{" "}
+        <Link
+          className="text-information underline underline-offset-4"
+          href="/personal-info"
+        >
+          Personal info.
+        </Link>
+      </p>
       <VaultLogins items={itemsByKind.login ?? []} />
       <VaultCards items={itemsByKind.payment ?? []} />
       <VaultAddresses items={itemsByKind.address ?? []} />

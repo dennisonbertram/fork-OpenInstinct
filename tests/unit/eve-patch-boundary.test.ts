@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const patchUrl = new URL("../../patches/eve@0.49.0.patch", import.meta.url);
 
 describe("Eve patch boundary", () => {
-  it("contains only the registered Linq redirects and route-auth hunk", async () => {
+  it("contains only the registered Linq, route-auth, and stream cancellation hunks", async () => {
     const patch = await readFile(patchUrl, "utf8");
     const paths = [...patch.matchAll(/^diff --git a\/(\S+) b\/(\S+)$/gmu)];
 
@@ -16,6 +16,10 @@ describe("Eve patch boundary", () => {
       [
         "dist/src/compiled/@linqapp/chat-sdk-adapter/index.js",
         "dist/src/compiled/@linqapp/chat-sdk-adapter/index.js",
+      ],
+      [
+        "dist/src/compiled/_chunks/workflow/wait-until-BtySPYD0.js",
+        "dist/src/compiled/_chunks/workflow/wait-until-BtySPYD0.js",
       ],
       [
         "dist/src/compiled/chat/index.d.ts",

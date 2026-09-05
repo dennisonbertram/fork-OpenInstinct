@@ -82,14 +82,14 @@ export function TraceHistory({
   const historyError = history.error
     ? history.error instanceof Error
       ? history.error.message
-      : "Unable to load browser traces"
+      : "Unable to load browser tasks"
     : history.data
       ? undefined
       : initialError;
   const succeeded = traces.filter((trace) => trace.status === "success").length;
 
   return (
-    <section aria-label="Browser trace history" className="grid min-w-0 gap-4">
+    <section aria-label="Browser task history" className="grid min-w-0 gap-4">
       <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-2 type-label">
         {traces.length > 0 ? (
           <>
@@ -120,8 +120,8 @@ export function TraceHistory({
       {traces.length === 0 ? (
         <p className="type-supporting-body border-t px-2 py-8 text-center text-muted-foreground">
           {history.isFetching
-            ? "Loading browser traces…"
-            : "No browser traces yet. Give the agent a browser task from the chat."}
+            ? "Loading browser tasks…"
+            : "No browser tasks yet. Give the agent a browser task from the chat."}
         </p>
       ) : (
         <Table className="min-w-[60rem] table-fixed">
@@ -193,7 +193,7 @@ export function TraceHistory({
           type="button"
           variant="outline"
         >
-          {history.isFetchingNextPage ? "Loading…" : "Load older traces"}
+          {history.isFetchingNextPage ? "Loading…" : "Load older tasks"}
         </Button>
       ) : null}
     </section>

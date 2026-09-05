@@ -3,7 +3,7 @@ import { defineEval } from "eve/evals";
 import { includes, satisfies } from "eve/evals/expect";
 import type { MessageStreamEvent } from "eve/client";
 import type { EveEvalToolCall } from "eve/evals";
-import { sendMessageOutputSchema } from "@/agent/lib/send-message";
+import { sendMessageInputSchema } from "@/agent/lib/send-message";
 import { loadSquareFixture, squareCases } from "@/evals/square/cases";
 import { bubbleGate } from "@/evals/square/shape";
 
@@ -32,7 +32,7 @@ const reactionInputSchema = z.object({
 export function deliveredText(calls: readonly EveEvalToolCall[]): string {
   return calls
     .flatMap((call) => {
-      const parsed = sendMessageOutputSchema.safeParse(call.input);
+      const parsed = sendMessageInputSchema.safeParse(call.input);
       if (!parsed.success || parsed.data.kind !== "message") return [];
       return parsed.data.text ? [parsed.data.text] : [];
     })

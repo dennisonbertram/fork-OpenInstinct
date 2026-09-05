@@ -15,7 +15,7 @@ export const writeToolPattern =
  * docs/SQUARE.md, second run), so the bar names observable properties.
  */
 const directTone =
-  "leads with the answer in one or two sentences; does not restate the question, use headers or bullets, or mention which tools were used";
+  "leads with the answer in one or two sentences; inline comma-separated item lists, including a count and colon, are allowed within those sentences; does not restate the question, use headers or bullets, or mention which tools were used";
 /** No Square tool at all -- used for greetings and refusals that need no data. */
 const anySquareToolPattern = /^square__/u;
 
@@ -128,7 +128,10 @@ export const squareCases: readonly SquareCase[] = [
     tone: directTone,
   },
   {
-    expectTools: [["square__SearchOrders"], ["square__ListPaymentRefunds"]],
+    expectTools: [
+      ["square__SearchOrders", "square__ListPayments"],
+      ["square__ListPaymentRefunds"],
+    ],
     facts: () => ["$50.50"],
     forbidTools: writeToolPattern,
     id: "todays-net-sales-total",
@@ -263,7 +266,7 @@ export const squareCases: readonly SquareCase[] = [
     id: "thanks-no-tool",
     layout: "normal",
     prompt: "Thanks!",
-    tone: "a short, warm reply with no report or restated question",
+    tone: "a short, warm acknowledgement, either a brief text reply or a positive native reaction such as a heart or thumbs-up, with no report or restated question",
   },
   {
     expectTools: [["square__ListCatalog", "square__SearchCatalogItems"]],

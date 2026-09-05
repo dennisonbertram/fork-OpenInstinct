@@ -1,6 +1,6 @@
 import { defineEval } from "eve/evals";
 import { equals, satisfies } from "eve/evals/expect";
-import { sendMessageOutputSchema } from "@/agent/lib/send-message";
+import { sendMessageInputSchema } from "@/agent/lib/send-message";
 import { agentEvalTags } from "@/evals/agent/shared";
 import { accessScopeForUser } from "@/lib/access-scope";
 
@@ -95,7 +95,7 @@ export default defineEval({
       } else {
         report.calledTool("send_message", {
           input: (input) => {
-            const parsed = sendMessageOutputSchema.safeParse(input);
+            const parsed = sendMessageInputSchema.safeParse(input);
             return (
               parsed.success &&
               parsed.data.kind === "message" &&

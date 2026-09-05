@@ -18,6 +18,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
 const navigation = [
@@ -45,6 +46,10 @@ export function AuthenticatedNavigation({
   readonly isAdmin: boolean;
 }) {
   const active = activeRoute(usePathname());
+  const { isMobile, setOpenMobile } = useSidebar();
+  const closeMobileNavigation = () => {
+    if (isMobile) setOpenMobile(false);
+  };
 
   return (
     <>
@@ -58,6 +63,7 @@ export function AuthenticatedNavigation({
                   <SidebarMenuItem key={item.id}>
                     <SidebarMenuButton
                       isActive={active === item.id}
+                      onClick={closeMobileNavigation}
                       render={<Link href={item.href} />}
                     >
                       <Icon />
@@ -84,6 +90,7 @@ export function AuthenticatedNavigation({
                     <SidebarMenuItem key={item.id}>
                       <SidebarMenuButton
                         isActive={active === item.id}
+                        onClick={closeMobileNavigation}
                         render={<Link href={item.href} />}
                       >
                         <Icon />

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type SubmitEvent, useState } from "react";
 import { z } from "zod";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -54,8 +55,15 @@ export function PersonalInfoForm({
       <div className="space-y-2">
         <h1 className="type-page-title">Personal info</h1>
         <p className="type-body max-w-2xl text-muted-foreground">
-          Your agent and browser worker can use these values directly when
-          completing forms. Keep passwords and payment details in Vault.
+          Personal info is a reusable profile Jory can read when completing
+          forms. Use Vault for passwords, payment details, and contact or
+          address values that should be filled without returning them to Jory.{" "}
+          <Link
+            className="text-information underline underline-offset-4"
+            href="/vault"
+          >
+            View Vault.
+          </Link>
         </p>
       </div>
 

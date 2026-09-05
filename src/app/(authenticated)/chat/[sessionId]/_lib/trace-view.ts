@@ -117,6 +117,43 @@ export function hasPendingBackgroundWorker(
   return taskIds.size > 0;
 }
 
+export function settledBackgroundWorkerTaskIds(
+  events: readonly MessageStreamEvent[]
+) {
+  return new Set(settledBackgroundWorkerTasks(events).keys());
+}
+
+export function settledBackgroundWorkerTasks(
+  events: readonly MessageStreamEvent[]
+) {
+  const knownTasks = workerTaskIds(events);
+  const settled = new Map<string, "complete" | "cancelled" | "failed">();
+  for (const event of events) {
+    if (event.type === "action.result") {
+      const cancellation = taskCancelResultSchema.safeParse(event.data.result);
+      if (cancellation.success) {
+        for (const value of cancellation.data.output.tasks) {
+          const task = cancelledWorkerTaskSchema.safeParse(value);
+          if (task.success && knownTasks.has(task.data.taskId))
+            settled.set(task.data.taskId, "cancelled");
+        }
+      }
+    }
+    if (event.type !== "message.received") continue;
+    const taskId = deliveredTaskId(event.data.message);
+    if (!taskId || !knownTasks.has(taskId)) continue;
+    const prefix = `Background task ${taskId} (browser-agent) `;
+    const delivery = event.data.message.slice(prefix.length);
+    if (!event.data.message.startsWith(prefix)) continue;
+    if (delivery.startsWith("is completed.\n\nResult:\n"))
+      settled.set(taskId, "complete");
+    else if (delivery.startsWith("failed.\n\nError:\n"))
+      settled.set(taskId, "failed");
+    else if (delivery === "is cancelled.") settled.set(taskId, "cancelled");
+  }
+  return settled;
+}
+
 function workerTaskIds(events: readonly MessageStreamEvent[]) {
   const taskIds = new Set<string>();
 

@@ -32,6 +32,11 @@ being considered. Documents use three labels deliberately:
 
 ## Current truth
 
+Proposed research: [Cards in the vault feasibility](card-feasibility.md)
+compares existing cards, third-party business cards, bank requirements and
+POS-provider overlap from a small-business owner's perspective. It does not
+authorize implementation or establish provider access or live payment support.
+
 Proposed evaluation work: [Jory conversation evaluation specification](evaluation/README.md)
 defines a shared quality rubric, twelve core conversations, and an eight-case
 Square POS skill pack. These are authored scenarios, not runnable coverage or
