@@ -36,7 +36,7 @@ export default async function AllChatsPage() {
         </Button>
       </header>
 
-      <section aria-label="Chat history" className="grid gap-2">
+      <section aria-label="Chat history" className="grid min-w-0 gap-2">
         {chats.length === 0 ? (
           <Alert>
             <MessageSquareIcon />
@@ -45,6 +45,7 @@ export default async function AllChatsPage() {
         ) : (
           chats.map((chat) => (
             <Button
+              className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] sm:flex"
               key={chat.sessionId}
               nativeButton={false}
               render={
@@ -62,18 +63,17 @@ export default async function AllChatsPage() {
               <span className="min-w-0 flex-1 truncate">
                 {chat.sessionId === imessageSessionId ? "iMessage" : chat.title}
               </span>
-              {chat.sessionId === imessageSessionId ? (
-                <Badge variant="information">Main thread</Badge>
-              ) : null}
-              <span className="shrink-0 type-label text-muted-foreground">
-                {formatChatUsage(chat.usage)}
+              <span className="col-start-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground sm:shrink-0">
+                {chat.sessionId === imessageSessionId ? (
+                  <Badge variant="information">Main thread</Badge>
+                ) : null}
+                <span className="type-label">
+                  {formatChatUsage(chat.usage)}
+                </span>
+                <time className="type-label" dateTime={chat.updatedAt}>
+                  {formatChatDate(chat.updatedAt)}
+                </time>
               </span>
-              <time
-                className="shrink-0 type-label text-muted-foreground"
-                dateTime={chat.updatedAt}
-              >
-                {formatChatDate(chat.updatedAt)}
-              </time>
             </Button>
           ))
         )}

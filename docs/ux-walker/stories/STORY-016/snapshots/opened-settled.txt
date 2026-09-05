@@ -1,0 +1,153 @@
+- generic
+  - list
+    - listitem [level=1]
+      - link "Jory" [ref=e3]
+  - navigation "Primary" [ref=e2]
+    - list
+      - listitem [level=1]
+        - link "Workspace" [ref=e26]
+          - StaticText "Workspace"
+      - listitem [level=1]
+        - link "Vault" [ref=e27]
+          - StaticText "Vault"
+      - listitem [level=1]
+        - link "Personal info" [ref=e28]
+          - StaticText "Personal info"
+      - listitem [level=1]
+        - link "Chat" [ref=e29]
+          - StaticText "Chat"
+      - listitem [level=1]
+        - link "All chats" [ref=e30]
+          - StaticText "All chats"
+      - listitem [level=1]
+        - link "Tasks" [ref=e31]
+          - StaticText "Tasks"
+  - list
+    - listitem [level=1]
+      - generic [ref=e4] clickable [onclick]
+        - StaticText "+12025550123"
+      - button "Sign out" [ref=e5]
+  - main
+    - generic
+      - generic
+        - log
+          - paragraph
+            - StaticText "say The first synthetic business reply arrived."
+          - time
+            - StaticText "8:52 AM"
+          - StaticText "Jory"
+          - paragraph
+            - StaticText "The first synthetic business reply arrived."
+          - time
+            - StaticText "8:52 AM"
+          - paragraph
+            - StaticText "say The synthetic follow-up arrived in the same chat."
+          - time
+            - StaticText "8:52 AM"
+          - StaticText "Jory"
+          - paragraph
+            - StaticText "The synthetic follow-up arrived in the same chat."
+          - time
+            - StaticText "8:52 AM"
+        - form
+          - generic
+            - textbox "Message Jory" [ref=e32]
+            - generic [ref=e33] clickable [onclick]
+              - button "Attach files" [ref=e42]
+              - button "Submit" [ref=e43]
+      - complementary
+        - paragraph
+          - StaticText "Activity"
+        - group
+          - LabelText
+            - StaticText "Show full trace"
+          - switch "Show full trace" [checked=false, ref=e34]
+        - StaticText "Usage"
+        - StaticText "25.9K tokens"
+        - generic
+          - heading "Tasks" [level=2, ref=e35]
+          - paragraph
+            - StaticText "No tasks yet"
+  - button "Open Next.js Dev Tools" [expanded=false, ref=e14]
+    - image
+  - alert
+  - button "v3.0.2 Switch to light mode Output Detail Standard React Components Hide Until Restart Marker Color Indigo Blue Cyan Green Yellow Orange Red Clear on copy/send Block page interactions" [ref=e1]
+    - image
+    - generic
+      - button [ref=e6]
+        - image
+    - generic
+      - button [ref=e7]
+        - image
+    - generic
+      - button [disabled, ref=e8]
+        - image
+    - generic
+      - button [disabled, ref=e9]
+        - image
+    - generic
+      - button [disabled, ref=e10]
+        - image
+    - generic
+      - button [disabled, ref=e11]
+        - image
+    - generic
+      - button [ref=e12]
+        - image
+    - generic
+      - button [ref=e13]
+        - image
+    - generic
+      - link [ref=e15]
+        - image
+      - paragraph
+        - StaticText "v3.0.2"
+      - button "Switch to light mode" [ref=e16]
+        - image
+      - StaticText "Output Detail"
+      - image
+      - button "Standard" [ref=e17]
+        - StaticText "Standard"
+      - StaticText "React Components"
+      - image
+      - generic
+        - checkbox [checked=true, ref=e36]
+      - StaticText "Hide Until Restart"
+      - image
+      - generic
+        - checkbox [checked=false, ref=e37]
+      - StaticText "Marker Color"
+      - button "Indigo" [ref=e18]
+      - button "Blue" [ref=e19]
+      - button "Cyan" [ref=e20]
+      - button "Green" [ref=e21]
+      - button "Yellow" [ref=e22]
+      - button "Orange" [ref=e23]
+      - button "Red" [ref=e24]
+      - generic
+        - checkbox "Clear on copy/send" [checked=false, ref=e38]
+        - image
+      - image
+      - generic
+        - checkbox "Block page interactions" [checked=true, ref=e39]
+        - image
+      - button "Manage MCP & Webhooks" [ref=e25]
+        - StaticText "Manage MCP & Webhooks"
+        - image
+      - generic
+        - button "Manage MCP & Webhooks" [ref=e40]
+          - image
+          - StaticText "Manage MCP & Webhooks"
+        - StaticText "MCP Connection"
+        - image
+        - paragraph
+          - StaticText "MCP connection allows agents to receive and act on annotations. "
+          - link "Learn more" [ref=e44]
+        - StaticText "Webhooks"
+        - image
+        - generic
+          - checkbox "Auto-Send" [checked=true, disabled, ref=e45]
+        - paragraph
+          - StaticText "The webhook URL will receive live annotation changes and annotation data."
+        - textbox "Webhook URL" [ref=e41]
+  - Canvas

@@ -1,0 +1,129 @@
+- generic
+  - button "Open Next.js Dev Tools" [expanded=false, ref=e19]
+    - image
+  - alert
+  - button "v3.0.2 Switch to light mode Output Detail Standard React Components Hide Until Restart Marker Color Indigo Blue Cyan Green Yellow Orange Red Clear on copy/send Block page interactions" [ref=e1]
+    - image
+    - generic
+      - button [ref=e8]
+        - image
+    - generic
+      - button [ref=e9]
+        - image
+    - generic
+      - button [disabled, ref=e10]
+        - image
+    - generic
+      - button [disabled, ref=e11]
+        - image
+    - generic
+      - button [disabled, ref=e12]
+        - image
+    - generic
+      - button [disabled, ref=e13]
+        - image
+    - generic
+      - button [ref=e14]
+        - image
+    - generic
+      - button [ref=e15]
+        - image
+    - generic
+      - link [ref=e20]
+        - image
+      - paragraph
+        - StaticText "v3.0.2"
+      - button "Switch to light mode" [ref=e21]
+        - image
+      - StaticText "Output Detail"
+      - image
+      - button "Standard" [ref=e22]
+        - StaticText "Standard"
+      - StaticText "React Components"
+      - image
+      - generic
+        - checkbox [checked=true, ref=e31]
+      - StaticText "Hide Until Restart"
+      - image
+      - generic
+        - checkbox [checked=false, ref=e32]
+      - StaticText "Marker Color"
+      - button "Indigo" [ref=e23]
+      - button "Blue" [ref=e24]
+      - button "Cyan" [ref=e25]
+      - button "Green" [ref=e26]
+      - button "Yellow" [ref=e27]
+      - button "Orange" [ref=e28]
+      - button "Red" [ref=e29]
+      - generic
+        - checkbox "Clear on copy/send" [checked=false, ref=e33]
+        - image
+      - image
+      - generic
+        - checkbox "Block page interactions" [checked=true, ref=e34]
+        - image
+      - button "Manage MCP & Webhooks" [ref=e30]
+        - StaticText "Manage MCP & Webhooks"
+        - image
+      - generic
+        - button "Manage MCP & Webhooks" [ref=e35]
+          - image
+          - StaticText "Manage MCP & Webhooks"
+        - StaticText "MCP Connection"
+        - image
+        - paragraph
+          - StaticText "MCP connection allows agents to receive and act on annotations. "
+          - link "Learn more" [ref=e43]
+        - StaticText "Webhooks"
+        - image
+        - generic
+          - checkbox "Auto-Send" [checked=true, disabled, ref=e44]
+        - paragraph
+          - StaticText "The webhook URL will receive live annotation changes and annotation data."
+        - textbox "Webhook URL" [ref=e36]
+  - Canvas
+  - list
+    - listitem [level=1]
+      - link "Jory" [ref=e16]
+  - navigation "Primary" [ref=e3]
+    - list
+      - listitem [level=1]
+        - link "Workspace" [ref=e37]
+          - StaticText "Workspace"
+      - listitem [level=1]
+        - link "Vault" [ref=e38]
+          - StaticText "Vault"
+      - listitem [level=1]
+        - link "Personal info" [ref=e39]
+          - StaticText "Personal info"
+      - listitem [level=1]
+        - link "Chat" [ref=e40]
+          - StaticText "Chat"
+      - listitem [level=1]
+        - link "All chats" [ref=e41]
+          - StaticText "All chats"
+      - listitem [level=1]
+        - link "Tasks" [ref=e42]
+          - StaticText "Tasks"
+  - list
+    - listitem [level=1]
+      - generic [ref=e17] clickable [onclick]
+        - StaticText "+12025550123"
+      - button "Sign out" [ref=e18]
+  - main
+    - sectionheader
+      - heading "All chats" [level=1, ref=e4]
+      - paragraph
+        - StaticText "Every conversation in this workspace · Usage 42.6K tokens · $0.02"
+      - button "New chat" [ref=e5]
+    - region "Chat history" [ref=e2]
+      - button "This is a synthetic dashboard UX check. Reply with exactly: Ready for review. Do not use tools. 14.2K tokens · $0.006 Sep 5, 2026" [ref=e6]
+        - StaticText "This is a synthetic dashboard UX check. Reply with exactly: Ready for review. Do not use tools."
+        - StaticText "14.2K tokens · $0.006"
+        - time
+          - StaticText "Sep 5, 2026"
+      - button "Reply with exactly: Ready for design. 28.4K tokens · $0.01 Sep 4, 2026" [ref=e7]
+        - StaticText "Reply with exactly: Ready for design."
+        - StaticText "28.4K tokens · $0.01"
+        - time
+          - StaticText "Sep 4, 2026"

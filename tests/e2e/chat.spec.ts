@@ -40,6 +40,22 @@ test("delivers, reloads, and continues a real authenticated conversation", async
   await page.reload();
   await expect(firstBubble).toHaveCount(1);
   await expect(followUpBubble).toHaveCount(1);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/chat/history");
+  const chatCard = page.locator(
+    `a[href="${new URL(conversationUrl).pathname}"]`
+  );
+  await expect(chatCard).toBeVisible();
+  const history = page.getByRole("region", { name: "Chat history" });
+  const historyBox = await history.boundingBox();
+  const cardBox = await chatCard.boundingBox();
+  if (!historyBox || !cardBox) {
+    throw new Error("Chat history and its card must have visible bounds");
+  }
+  expect(cardBox.x + cardBox.width).toBeLessThanOrEqual(
+    historyBox.x + historyBox.width + 1
+  );
 });
 
 test("settles a failed real turn and shows actionable recovery", async ({

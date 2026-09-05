@@ -1,0 +1,25 @@
+[97303.1559] GET http://localhost:3018/_next/static/chunks/082q_parse5_dist_1rgckzr._.js (Script) 200
+[97303.1560] GET http://localhost:3018/_next/static/chunks/1g_1_micromark-core-commonmark_dev_lib_1iz2svp._.js (Script) 200
+[97303.1561] GET http://localhost:3018/_next/static/chunks/0y3c_micromark_dev_lib_0t8c4nq._.js (Script) 200
+[97303.1562] GET http://localhost:3018/_next/static/chunks/1izn_streamdown_dist_0ovju-v._.js (Script) 200
+[97303.1563] GET http://localhost:3018/_next/static/chunks/node_modules__pnpm_12rrl5l._.js (Script) 200
+[97303.1618] GET http://localhost:3018/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fjory-avatar_clay.3yzm2rqo-y98-.webp&w=48&q=75 (Image) 200
+[97303.1620] GET http://localhost:3018/_next/static/media/jory-wordmark-color.05k4k6z0trg79.svg (Image) 304
+[97303.1670] GET http://localhost:3018/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_1mojsay._.js (Script) 200
+[97303.1676] GET http://localhost:3018/__nextjs_font/geist-latin.woff2 (Font) 200
+[97303.1678] GET http://localhost:3018/api/auth/get-session (Fetch) 200
+[97303.1679] GET http://localhost:3018/_next/static/chunks/1myt_agentation_dist_index_mjs_1w0v7mb._.js (Script) 200
+[97303.1680] GET http://localhost:3018/_next/static/chunks/1myt_agentation_dist_index_mjs_0t2ksw5._.js (Script) 200
+[97303.1681] GET http://localhost:3018/icon?20f1845a38012e14 (Other) 200
+[97303.1682] GET http://localhost:3018/eve/v1/session/wrun_01M1RT1JKN04KN6ZRJDXV1H0GA/stream?startIndex=-128&includeTailIndex=1 (Fetch)
+[97303.1683] GET http://localhost:3018/eve/v1/session/wrun_01M1RT1JKN04KN6ZRJDXV1H0GA/stream?startIndex=-128&includeTailIndex=1 (Fetch) 200
+[97303.1684] POST http://localhost:3018/api/trpc/chats.save?batch=1 (Fetch) 200
+[97303.1685] POST http://localhost:3018/eve/v1/session/wrun_01M1RT1JKN04KN6ZRJDXV1H0GA (Fetch) 202
+[97303.1686] POST http://localhost:3018/api/trpc/chats.save?batch=1 (Fetch) 200
+[97303.1687] GET http://localhost:3018/eve/v1/session/wrun_01M1RT1JKN04KN6ZRJDXV1H0GA/stream?startIndex=25 (Fetch) 200
+[97303.1688] POST http://localhost:3018/api/trpc/chats.save?batch=1 (Fetch) 200
+[97303.1689] POST http://localhost:3018/eve/v1/session/wrun_01M1RT1JKN04KN6ZRJDXV1H0GA (Fetch) 409
+[97303.1690] POST http://localhost:3018/api/trpc/chats.save?batch=1 (Fetch) 200
+[97303.1691] POST http://localhost:3018/eve/v1/session/wrun_01M1RT1JKN04KN6ZRJDXV1H0GA (Fetch) 409
+[97303.1692] POST http://localhost:3018/eve/v1/session/wrun_01M1RT1JKN04KN6ZRJDXV1H0GA (Fetch) 409
+[97303.1693] POST http://localhost:3018/eve/v1/session/wrun_01M1RT1JKN04KN6ZRJDXV1H0GA (Fetch) 409

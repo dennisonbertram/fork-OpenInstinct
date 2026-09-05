@@ -1,0 +1,16 @@
+[
+  {
+    "id": "F-014-001",
+    "story_id": "STORY-014",
+    "severity": "high",
+    "category": "error-handling",
+    "criterion": "A failed/stop-attempted turn must permit clear same-session recovery.",
+    "score": "fail",
+    "description": "After a Stop attempt the UI displayed a generic failure, and a short follow-up submission did not appear or receive an answer.",
+    "expected": "A stopped or failed turn should return to a usable composer or explain why a follow-up cannot run, preserving the user's draft when rejected.",
+    "actual": "Stop was present in a fresh snapshot during the pending long prompt. After activation the UI showed Jory couldn't finish this request. One short follow-up was filled/submitted; the composer cleared but no new bubble/reply appeared. Network metadata includes an initial202 and later409 session POSTs. Cancellation acceptance and cause are unknown.",
+    "screenshot": "screenshots/mobile-error.png",
+    "suggested_fix": "Investigate terminal state and409 handling for same-session follow-up; distinguish user cancellation from request failure and preserve rejected input.",
+    "files_likely_involved": []
+  }
+]

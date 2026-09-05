@@ -1,0 +1,16 @@
+- main
+  - heading "Hey, Jory" [level=1, ref=e1]
+  - paragraph
+    - StaticText "Enter your phone number to request a sign-in code."
+  - paragraph
+    - StaticText "Local development does not send a text. Use code000000 on the next step."
+  - form
+    - group
+      - LabelText
+        - StaticText "Phone Number"
+      - textbox "Phone Number" [required, ref=e3]
+    - button "Send code" [ref=e2]
+  - image "Jory, the OpenInstinct assistant, at a desk"
+- button "Open Next.js Dev Tools" [expanded=false, ref=e4]
+  - image
+- alert

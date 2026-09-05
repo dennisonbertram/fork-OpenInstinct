@@ -89,7 +89,7 @@ export function TraceHistory({
   const succeeded = traces.filter((trace) => trace.status === "success").length;
 
   return (
-    <section aria-label="Browser trace history" className="grid gap-4">
+    <section aria-label="Browser trace history" className="grid min-w-0 gap-4">
       <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-2 type-label">
         {traces.length > 0 ? (
           <>
@@ -117,28 +117,26 @@ export function TraceHistory({
         </Alert>
       ) : null}
 
-      <Table className="table-fixed">
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[26%]">Task</TableHead>
-            <TableHead className="w-[9%]">Status</TableHead>
-            <TableHead className="w-[8%]">Duration</TableHead>
-            <TableHead className="w-[18%]">Domains</TableHead>
-            <TableHead className="w-[25%]">Result</TableHead>
-            <TableHead className="w-[14%]">Started</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {traces.length === 0 ? (
+      {traces.length === 0 ? (
+        <p className="type-supporting-body border-t px-2 py-8 text-center text-muted-foreground">
+          {history.isFetching
+            ? "Loading browser traces…"
+            : "No browser traces yet. Give the agent a browser task from the chat."}
+        </p>
+      ) : (
+        <Table className="min-w-[60rem] table-fixed">
+          <TableHeader>
             <TableRow>
-              <TableCell colSpan={6} variant="empty">
-                {history.isFetching
-                  ? "Loading browser traces…"
-                  : "No browser traces yet. Give the agent a browser task from the chat."}
-              </TableCell>
+              <TableHead className="w-[26%]">Task</TableHead>
+              <TableHead className="w-[9%]">Status</TableHead>
+              <TableHead className="w-[8%]">Duration</TableHead>
+              <TableHead className="w-[18%]">Domains</TableHead>
+              <TableHead className="w-[25%]">Result</TableHead>
+              <TableHead className="w-[14%]">Started</TableHead>
             </TableRow>
-          ) : (
-            traces.map((trace) => {
+          </TableHeader>
+          <TableBody>
+            {traces.map((trace) => {
               const status = statusLabel(trace.status);
               return (
                 <TableRow key={trace.sessionId}>
@@ -182,10 +180,10 @@ export function TraceHistory({
                   </TableCell>
                 </TableRow>
               );
-            })
-          )}
-        </TableBody>
-      </Table>
+            })}
+          </TableBody>
+        </Table>
+      )}
 
       {history.hasNextPage ? (
         <Button
