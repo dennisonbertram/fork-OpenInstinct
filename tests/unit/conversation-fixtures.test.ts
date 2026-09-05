@@ -5,7 +5,7 @@ import { test } from "vitest";
 import {
   startConversationFixtures,
   syntheticConversationOidcToken,
-} from "../fixtures";
+} from "@/evals/conversation/fixtures";
 const squareHeaders = {
   Authorization: "Bearer synthetic",
   "Square-Version": "2025-04-16",

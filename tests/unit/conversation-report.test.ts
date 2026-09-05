@@ -183,6 +183,130 @@ describe("conversation report evidence", () => {
       "Invalid trial key"
     );
   });
+  it("keeps human review readable and hides automated judgments until after rating", async () => {
+    const directory = await temporaryDirectory();
+    const record = makeTrialManifest()[0];
+    if (!record) throw new Error("Missing trial");
+    record.status = "failed";
+    record.turns.push({
+      user: "Please summarize",
+      turn: 1,
+      startedAt: "2026-09-05T10:00:00Z",
+      elapsedMs: 1,
+      status: "failed",
+      error: "Lookup failed",
+      text: "I could not get it.",
+      messages: ["I could not get it."],
+      reactions: ["thumbs_up"],
+      modelText: "INTERNAL_COMPLETION_MARKER",
+      toolCalls: [
+        {
+          name: "synthetic_lookup",
+          input: { payload: "BULKY_TOOL_PAYLOAD" },
+          output: { payload: "BULKY_TOOL_RESULT" },
+          status: "failed",
+        },
+      ],
+    });
+    record.checks = [
+      { name: "Lookup result", pass: false, detail: "No successful read" },
+    ];
+    record.judge = {
+      status: "uncalibrated",
+      ratings: [
+        {
+          dimension: "warmth",
+          score: 2,
+          reason: "AUTOMATED_RATING_REASON",
+          turns: [1],
+        },
+      ],
+      outcomes: [
+        {
+          criterion: "task correctness",
+          pass: false,
+          reason: "AUTOMATED_OUTCOME_REASON",
+          turns: [1],
+        },
+      ],
+    };
+    await writeReport(directory, { provenance: {}, budget, records: [record] });
+    const sample = await readFile(join(directory, "review-sample.md"), "utf8");
+    const full = await readFile(join(directory, "report.md"), "utf8");
+    for (const text of [
+      "Please summarize",
+      "I could not get it.",
+      "thumbs_up",
+      "Lookup failed",
+      "No successful read",
+      `trials/${record.key}.json`,
+      "Rate these conversations before viewing automated scores",
+    ])
+      expect(sample).toContain(text);
+    for (const text of [
+      "BULKY_TOOL_PAYLOAD",
+      "BULKY_TOOL_RESULT",
+      "INTERNAL_COMPLETION_MARKER",
+      "AUTOMATED_RATING_REASON",
+      "AUTOMATED_OUTCOME_REASON",
+    ]) {
+      expect(sample).not.toContain(text);
+      expect(full).toContain(text);
+    }
+    expect(sample).toContain("Human review: pending");
+  });
+  it("balances a clean completed run across six core and six Square cases", async () => {
+    const directory = await temporaryDirectory();
+    const records = makeTrialManifest();
+    for (const record of records) record.status = "completed";
+    await writeReport(directory, { provenance: {}, budget, records });
+    const sample = await readFile(join(directory, "review-sample.md"), "utf8");
+    const keys = [
+      ...sample.matchAll(/^### ([A-Z0-9-]+(?:-[a-z]+)*-\d)$/gmu),
+    ].map((match) => match[1]);
+    expect(keys).toHaveLength(12);
+    expect(keys.filter((key) => key?.startsWith("CORE-"))).toHaveLength(6);
+    expect(keys.filter((key) => key?.startsWith("SQ-"))).toHaveLength(6);
+    expect(
+      new Set(keys.map((key) => key?.split("-").slice(0, 2).join("-"))).size
+    ).toBe(12);
+    await writeReport(directory, {
+      provenance: {},
+      budget,
+      records: records.toReversed(),
+    });
+    expect(await readFile(join(directory, "review-sample.md"), "utf8")).toBe(
+      sample
+    );
+  });
+  it("keeps failure, blocked, and check-failure examples within each pack quota", async () => {
+    const directory = await temporaryDirectory();
+    const records = makeTrialManifest();
+    for (const record of records) record.status = "completed";
+    const priorities = [
+      "CORE-10-default-3",
+      "CORE-11-default-3",
+      "CORE-12-default-3",
+      "SQ-06-default-3",
+      "SQ-07-revoked-3",
+      "SQ-08-default-3",
+    ];
+    for (const [index, key] of priorities.entries()) {
+      const record = records.find((candidate) => candidate.key === key);
+      if (!record) throw new Error("Missing priority case");
+      if (index % 3 === 0) record.status = "failed";
+      else if (index % 3 === 1) record.status = "blocked";
+      else
+        record.checks = [
+          { name: "correct amount", pass: false, detail: "Wrong amount" },
+        ];
+    }
+    await writeReport(directory, { provenance: {}, budget, records });
+    const sample = await readFile(join(directory, "review-sample.md"), "utf8");
+    for (const key of priorities) expect(sample).toContain(`### ${key}`);
+    expect([...sample.matchAll(/^### CORE-/gmu)]).toHaveLength(6);
+    expect([...sample.matchAll(/^### SQ-/gmu)]).toHaveLength(6);
+  });
   it("renders quality tables with applicable denominators and separate N/A", async () => {
     const directory = await temporaryDirectory();
     const records = makeTrialManifest();
@@ -256,4 +380,113 @@ describe("conversation report evidence", () => {
     expect(markdown).toContain("    The model request failed");
     expect(markdown).toContain('"code": "SERVICE_UNAVAILABLE"');
   });
+  it("roundtrips and renders clarification prompts/options separately from delivered messages", async () => {
+    const directory = await temporaryDirectory();
+    const record = makeTrialManifest()[0];
+    if (!record) throw new Error("Missing trial");
+    record.turns.push({
+      user: "Write a note",
+      turn: 1,
+      startedAt: "2026-09-05T14:37:16Z",
+      elapsedMs: 10,
+      status: "waiting",
+      text: "",
+      messages: [],
+      toolCalls: [
+        {
+          name: "ask_question",
+          input: { prompt: "What changed?" },
+          status: "pending",
+        },
+      ],
+      inputRequests: [
+        {
+          requestId: "question-1",
+          prompt: "What changed?",
+          allowFreeform: true,
+          options: [
+            { id: "direct", label: "Direct", description: "A brief update" },
+          ],
+        },
+      ],
+    });
+    await writeTrial(directory, record);
+    const restored = await readTrial(directory, record.key);
+    expect(restored).toEqual(record);
+    await writeReport(directory, {
+      provenance: {},
+      budget,
+      records: [restored],
+    });
+    const markdown = await readFile(join(directory, "report.md"), "utf8");
+    expect(markdown).toContain(
+      "observed input request; action completion and channel rendering unobserved"
+    );
+    expect(markdown).toContain("    What changed?");
+    expect(markdown).toContain("    Direct: A brief update [direct]");
+    const review = await readFile(join(directory, "review-sample.md"), "utf8");
+    expect(review).toContain("    What changed?");
+    expect(review).toContain("    Direct: A brief update [direct]");
+    expect(review).toContain(
+      "action completion and channel rendering unobserved"
+    );
+    expect(markdown).toContain("No completed text-message request captured.");
+  });
+});
+
+it("roundtrips authorization observations into report and human sample without claiming success", async () => {
+  const directory = await temporaryDirectory();
+  const record = makeTrialManifest()[0];
+  if (!record) throw new Error("Missing trial");
+  record.turns.push({
+    user: "Check sales",
+    turn: 1,
+    startedAt: "2026-09-05T14:37:16Z",
+    elapsedMs: 10,
+    status: "waiting",
+    text: "",
+    messages: [],
+    toolCalls: [],
+    inputRequests: [{ requestId: "question-1", prompt: "Which location?" }],
+    authorizationRequests: [
+      {
+        name: "square",
+        description: "Connect Square",
+        turnId: "turn-1",
+        stepIndex: 1,
+        sequence: 0,
+        authorization: {
+          url: "https://example.invalid/square/authorize",
+          displayName: "Square",
+        },
+      },
+    ],
+    authorizationOutcomes: [
+      {
+        name: "square",
+        turnId: "turn-1",
+        stepIndex: 1,
+        sequence: 0,
+        outcome: "declined",
+      },
+    ],
+  });
+  await writeTrial(directory, record);
+  const restored = await readTrial(directory, record.key);
+  expect(restored).toEqual(record);
+  await writeReport(directory, { provenance: {}, budget, records: [restored] });
+  const rendered = await Promise.all(
+    ["report.md", "review-sample.md"].map((file) =>
+      readFile(join(directory, file), "utf8")
+    )
+  );
+  for (const markdown of rendered) {
+    expect(markdown).toContain(
+      "observed framework request; authorization completion and channel rendering unobserved"
+    );
+    expect(markdown).toContain("https://example.invalid/square/authorize");
+    expect(markdown).toContain('"outcome": "declined"');
+    expect(markdown).toContain("Which location?");
+    expect(markdown).toContain("No completed text-message request captured.");
+  }
 });

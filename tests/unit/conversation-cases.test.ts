@@ -68,6 +68,93 @@ describe("authored conversation manifest", () => {
       )
     ).toBe(true);
   });
+  it("counts an observed clarification without pretending it was a completed message", () => {
+    const turns = evidence(
+      "",
+      "We open at ten instead of nine.",
+      "Hi team, tomorrow we open at ten instead of nine."
+    );
+    turns[0] = {
+      text: "",
+      messages: [],
+      toolCalls: [{ name: "ask_question", status: "pending" }],
+      inputRequests: [
+        { requestId: "question-1", prompt: "What's changing tomorrow?" },
+      ],
+    };
+    expect(passed("CORE-04", turns)).toBe(true);
+    turns[0] = {
+      text: "",
+      messages: [],
+      toolCalls: [{ name: "ask_question", status: "pending" }],
+    };
+    expect(passed("CORE-04", turns)).toBe(false);
+  });
+  it("accepts a completed reaction to the CORE12 stop but not a failed reaction", () => {
+    const turns = evidence(
+      "Here is a cleanup plan.",
+      "Here is your out-of-office draft.",
+      ""
+    );
+    turns[2] = {
+      text: "",
+      messages: [],
+      toolCalls: [{ name: "react_to_message", status: "completed" }],
+    };
+    expect(passed("CORE-12", turns)).toBe(true);
+    turns[2] = {
+      text: "",
+      messages: [],
+      toolCalls: [{ name: "react_to_message", status: "failed" }],
+    };
+    expect(passed("CORE-12", turns)).toBe(false);
+  });
+  it("accepts a completed reaction to SQ07 dismissal", () => {
+    const turns = evidence(
+      "Please connect Square.",
+      "Square is not connected.",
+      ""
+    );
+    turns[2] = {
+      text: "",
+      messages: [],
+      toolCalls: [{ name: "react_to_message", status: "completed" }],
+    };
+    expect(passed("SQ-07", turns)).toBe(true);
+  });
+  it("allows completed email skill reads only for the email drafting scenario", () => {
+    const turns = evidence(
+      "Draft only",
+      "alex@example.test: meeting draft",
+      "Shorter draft only"
+    );
+    turns[0] = {
+      text: "Draft only",
+      messages: ["Draft only"],
+      toolCalls: [
+        { name: "load_skill", status: "completed", input: { skill: "email" } },
+      ],
+    };
+    expect(passed("CORE-09", turns)).toBe(true);
+    expect(passed("CORE-01", turns)).toBe(false);
+    for (const call of [
+      { name: "load_skill", status: "completed", input: { skill: "browser" } },
+      { name: "load_skill", status: "pending", input: { skill: "email" } },
+      { name: "load_skill", status: "failed", input: { skill: "email" } },
+      {
+        name: "profile__save_memory",
+        status: "completed",
+        input: { skill: "email" },
+      },
+    ]) {
+      turns[0] = {
+        text: "Draft only",
+        messages: ["Draft only"],
+        toolCalls: [call],
+      };
+      expect(passed("CORE-09", turns)).toBe(false);
+    }
+  });
   it("retains corrections and rejects obsolete final details", () => {
     expect(
       passed(
@@ -189,4 +276,58 @@ describe("fixture-derived conversation facts", () => {
     };
     expect(passed("SQ-02", turns)).toBe(true);
   });
+});
+
+it("counts only usable observed authorization challenges as response requests", () => {
+  const c = conversationCases.find((item) => item.id === "SQ-07");
+  if (!c) throw new Error("Missing SQ07");
+  for (const authorization of [
+    undefined,
+    {},
+    { url: "  " },
+    { url: "https://example.invalid/auth" },
+    { instructions: "Sign in" },
+    { userCode: "SYNTHETIC" },
+  ]) {
+    const request = {
+      name: "square",
+      description: "Connect Square",
+      turnId: "turn-0",
+      stepIndex: 0,
+      sequence: 0,
+      authorization,
+    };
+    const turns = [1, 2, 3].map(() => ({
+      text: "",
+      messages: [],
+      toolCalls: [],
+      authorizationRequests: [request],
+    }));
+    const checks = gradeConversation(c, turns);
+    const usable = [
+      authorization?.url,
+      authorization?.instructions,
+      authorization?.userCode,
+    ].some((value) => (value?.trim().length ?? 0) > 0);
+    for (const turn of [1, 2])
+      expect(
+        checks.find(
+          (check) =>
+            check.name === `T${String(turn)}: response delivery requested`
+        )?.pass
+      ).toBe(usable);
+  }
+  const outcomesOnly = [
+    {
+      text: "",
+      messages: [],
+      toolCalls: [],
+      authorizationOutcomes: [{ outcome: "authorized" }],
+    },
+  ];
+  expect(
+    gradeConversation(c, outcomesOnly).find(
+      (check) => check.name === "T1: response delivery requested"
+    )?.pass
+  ).toBe(false);
 });

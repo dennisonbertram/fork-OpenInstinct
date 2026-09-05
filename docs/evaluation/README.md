@@ -199,7 +199,13 @@ ledger. It only starts previously blocked trials with no captured turns and no
 paid requests. It refuses attempted partial trials rather than replacing them
 with a cleaner result. The prior run must be marked `interrupted` with cleanup
 `completed`, all prior costs reconciled, and the same manifest, agent, scenarios,
-rubric, agent model, and judge model. Before continuing, it archives the previous
+rubric, agent model, and judge model. New runs also record a separate content
+hash for the executor, conversation fixtures, preload, setup, clarification
+schema, Square fake implementation/data, and Square grading helpers; resume
+compares that hash even when changes have been committed. Legacy runs lacking this evidence
+are refused as unverifiable. Do not backfill the hash from newer source to force
+a legacy resume. Authorized supervisor, budget, and report changes are excluded
+from this stable measurement hash. Before continuing, it archives the previous
 summary, report, budget, and provenance under `checkpoints/<timestamp>/`.
 A fresh run may also use `--budget-usd 20` when authorized; `--budget-usd 10`
 remains supported with the matching $8 native quota.

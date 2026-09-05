@@ -11,7 +11,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
-import { reserveRequest, startBudgetGateway } from "../budget";
+import {
+  reserveRequest,
+  startBudgetGateway,
+} from "@/evals/conversation/budget";
 
 const price = { inputUsdPerToken: 0.00001, outputUsdPerToken: 0.000033 };
 const body = {

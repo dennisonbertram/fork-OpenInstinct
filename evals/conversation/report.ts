@@ -1,3 +1,8 @@
+import {
+  conversationAuthorizationRequestSchema,
+  conversationAuthorizationOutcomeSchema,
+} from "./input-request";
+import { conversationInputRequestSchema } from "./input-request";
 /* oxlint-disable anti-slop/no-unsafe-dictionary-type -- Provenance is authored run metadata; values are serialized as data, never executed. */
 import {
   lstat,
@@ -26,6 +31,13 @@ const turnRecordSchema = z.object({
   error: z.string().optional(),
   text: z.string(),
   messages: z.array(z.string()),
+  inputRequests: z.array(conversationInputRequestSchema).optional(),
+  authorizationRequests: z
+    .array(conversationAuthorizationRequestSchema)
+    .optional(),
+  authorizationOutcomes: z
+    .array(conversationAuthorizationOutcomeSchema)
+    .optional(),
   toolCalls: z.array(
     z.object({
       name: z.string(),
@@ -189,15 +201,21 @@ function costFor(record: TrialRecord, budget: BudgetSnapshot, runId: string) {
 function trialMarkdown(
   record: TrialRecord,
   budget: BudgetSnapshot,
-  runId: string
+  runId: string,
+  presentation: "full" | "human-review" = "full"
 ): string {
+  const full = presentation === "full";
   const costs = costFor(record, budget, runId);
   const result = [
     `### ${cell(record.key)}`,
     "",
-    `Execution: ${record.status}. Judge: ${record.judge.status}; automated quality judgments are uncalibrated.`,
+    full
+      ? `Execution: ${record.status}. Judge: ${record.judge.status}; automated quality judgments are uncalibrated.`
+      : `Execution: ${record.status}.`,
     "",
-    `Provider-reported cost: ${usd(costs.reportedUsd)} across ${String(costs.requests)} requests. Unreconciled reservation: ${usd(costs.reservedUnknownUsd)}.`,
+    full
+      ? `Provider-reported cost: ${usd(costs.reportedUsd)} across ${String(costs.requests)} requests. Unreconciled reservation: ${usd(costs.reservedUnknownUsd)}.`
+      : `[Full trial JSON](trials/${encodeURIComponent(record.key)}.json) · [Full report](report.md)`,
     "",
     "Delivery: completed message requests are shown below. Channel acceptance, visible web rendering, recipient receipt, and visible-response latency are **unobserved**.",
     "",
@@ -224,6 +242,47 @@ function trialMarkdown(
         literal(turn.error),
         ""
       );
+    for (const request of turn.authorizationRequests ?? [])
+      result.push(
+        "Authorization request (observed framework request; authorization completion and channel rendering unobserved):",
+        "",
+        literal(JSON.stringify(request, null, 2)),
+        ""
+      );
+    for (const outcome of turn.authorizationOutcomes ?? [])
+      result.push(
+        "Authorization outcome (explicit framework event; channel rendering unobserved):",
+        "",
+        literal(JSON.stringify(outcome, null, 2)),
+        ""
+      );
+    for (const request of turn.inputRequests ?? []) {
+      result.push(
+        `Clarification request ${cell(request.requestId)} (observed input request; action completion and channel rendering unobserved):`,
+        "",
+        literal(request.prompt),
+        ""
+      );
+      if (request.options?.length)
+        result.push(
+          "Options:",
+          "",
+          literal(
+            request.options
+              .map(
+                (option) =>
+                  `${option.label}${option.description ? `: ${option.description}` : ""} [${option.id}]`
+              )
+              .join("\n")
+          ),
+          ""
+        );
+      if (request.allowFreeform !== undefined)
+        result.push(
+          `Freeform response allowed: ${String(request.allowFreeform)}.`,
+          ""
+        );
+    }
     for (const [index, message] of turn.messages.entries())
       result.push(
         `Completed message request ${String(index + 1)}:`,
@@ -235,20 +294,39 @@ function trialMarkdown(
       result.push("No completed text-message request captured.", "");
     for (const reaction of turn.reactions ?? [])
       result.push("Reaction request:", "", literal(reaction), "");
-    if (turn.modelText)
+    if (full && turn.modelText)
       result.push(
         "Internal model output (may contain completion markers; not a delivered message):",
         "",
         literal(turn.modelText),
         ""
       );
-    if (turn.toolCalls.length)
+    if (full && turn.toolCalls.length)
       result.push(
         "Tool evidence (synthetic isolated execution):",
         "",
         literal(JSON.stringify(turn.toolCalls, null, 2)),
         ""
       );
+  }
+  if (!full) {
+    const failures = record.checks.filter((check) => !check.pass);
+    result.push(
+      "Observed content/boundary checks:",
+      "",
+      record.checks.length
+        ? `${String(record.checks.length - failures.length)} passed; ${String(failures.length)} failed. These checks do not establish complete semantic correctness.`
+        : "No deterministic checks available.",
+      ""
+    );
+    for (const check of failures)
+      result.push(`- FAIL: ${cell(check.name)}. ${cell(check.detail)}`);
+    result.push(
+      "",
+      "Human review: pending. Record your ratings and supporting turns before opening the full report's automated judgments.",
+      ""
+    );
+    return result.join("\n");
   }
   result.push("Deterministic content and boundary checks:", "");
   if (record.checks.length === 0)
@@ -290,38 +368,40 @@ function counts(records: readonly TrialRecord[]) {
 function reviewRecords(records: readonly TrialRecord[]) {
   const ordered = [...records].toSorted((a, b) => a.key.localeCompare(b.key));
   const selected: TrialRecord[] = [];
-  const add = (record: TrialRecord | undefined) => {
-    if (record && !selected.some((existing) => existing.key === record.key))
-      selected.push(record);
-  };
-  // Include both packs and each observed execution status before filling a stable scenario spread.
-  for (const pack of ["core", "square"] as const)
-    for (const status of [
-      "failed",
-      "blocked",
-      "completed",
-      "running",
-      "pending",
-    ] as const)
-      add(
-        ordered.find(
-          (record) => record.pack === pack && record.status === status
-        )
-      );
-  for (const pack of ["core", "square"] as const)
-    add(
-      ordered.find(
-        (record) =>
-          record.pack === pack && record.checks.some((check) => !check.pass)
+  for (const pack of ["core", "square"] as const) {
+    const group = ordered.filter((record) => record.pack === pack);
+    const sample: TrialRecord[] = [];
+    const add = (record: TrialRecord | undefined) => {
+      if (
+        record &&
+        sample.length < 6 &&
+        !sample.some((existing) => existing.key === record.key)
       )
-    );
-  for (const record of ordered) {
-    if (selected.length >= 12) break;
-    if (!selected.some((existing) => existing.caseId === record.caseId))
+        sample.push(record);
+    };
+    // Reserve each pack's six slots for representative problems before widening case coverage.
+    for (const status of ["failed", "blocked"] as const)
+      add(group.find((record) => record.status === status));
+    add(group.find((record) => record.checks.some((check) => !check.pass)));
+    for (const status of ["running", "pending", "completed"] as const) {
+      if (!sample.some((record) => record.status === status))
+        add(group.find((record) => record.status === status));
+    }
+    for (const record of group) {
+      if (sample.length >= 6) break;
+      if (!sample.some((existing) => existing.caseId === record.caseId))
+        add(record);
+    }
+    // Small filtered packs can have fewer than six distinct cases; retain other trials in key order.
+    for (const record of group) {
+      if (sample.length >= 6) break;
       add(record);
+    }
+    selected.push(...sample);
   }
   return selected;
 }
+
 const runCost = (rows: BudgetSnapshot["requests"]) =>
   rows.reduce((sum, row) => sum + (row.costUsd ?? row.reservedUsd), 0);
 export async function writeReport(
@@ -477,12 +557,12 @@ export async function writeReport(
     [
       "# Conversations for human review",
       "",
-      "Deterministic sample: both packs, observed execution statuses, content-check failures, then distinct scenarios in key order. This is not a selection of only successful or highest-rated answers. Full evidence remains in report.md and summary.json.",
+      "Deterministic sample: up to six trials per pack, prioritizing representative failed/blocked executions and content-check failures, then other statuses and distinct scenarios in key order. This is not a selection of only successful or highest-rated answers. Full evidence remains in report.md and summary.json.",
       "",
-      "This baseline contains no candidate revision, so these are single-conversation review examples, not baseline/candidate pairs. Rate warmth, effort, continuity, composition, personality when applicable, and respect for attention. Note the turns supporting each judgment. Delivery timing beyond the runner is unobserved.",
+      "This baseline contains no candidate revision, so these are single-conversation review examples, not baseline/candidate pairs. Rate warmth, effort, continuity, composition, personality when applicable, and respect for attention. Note the turns supporting each judgment. Rate these conversations before viewing automated scores in the full report. Human review is pending. Delivery timing beyond the runner is unobserved.",
       "",
       ...review.map((record) =>
-        trialMarkdown(record, budget, basename(outputDir))
+        trialMarkdown(record, budget, basename(outputDir), "human-review")
       ),
     ].join("\n")
   );

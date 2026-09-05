@@ -11,6 +11,11 @@ import { createGateway } from "ai";
 import { z } from "zod";
 import { startBudgetGateway } from "./budget";
 import {
+  measurementSourceHash,
+  trialFilesHash,
+  mayRestoreResumeCheckpoint,
+} from "./resume";
+import {
   startConversationFixtures,
   syntheticConversationOidcToken,
 } from "./fixtures";
@@ -75,6 +80,12 @@ const resumedProvenance = resumeId
         agentSourceHash: z.string(),
         rubricHash: z.string(),
         scenarioHash: z.string(),
+        measurementSourceHash: z
+          .string({
+            error:
+              "Resume requires a recorded measurement source hash; legacy runs cannot be verified",
+          })
+          .regex(/^[a-f0-9]{64}$/u),
         agentModel: z.string(),
         judgeModel: z.string(),
       })
@@ -82,6 +93,7 @@ const resumedProvenance = resumeId
         JSON.parse(await readFile(join(outputDir, "provenance.json"), "utf8"))
       )
   : undefined;
+let resumeEvidence: { trialHash: string; paidRequests: number } | undefined;
 if (resumedProvenance) {
   const previousBudget = z
     .object({
@@ -121,6 +133,10 @@ if (resumedProvenance) {
         `Resume refuses to replace an attempted trial: ${prior.key}`
       );
   }
+  resumeEvidence = {
+    trialHash: await trialFilesHash(outputDir),
+    paidRequests: previousBudget.requests.length,
+  };
   const checkpoint = join(outputDir, "checkpoints", checkpointId);
   await mkdir(checkpoint, { recursive: true });
   for (const name of [
@@ -240,6 +256,7 @@ interface BaselineProvenance {
   rubricHash?: string;
   scenarioHash?: string;
   harnessSourceHash?: string;
+  measurementSourceHash?: string;
   agentModel?: string;
   judgeModel?: string;
   reasoning?: string;
@@ -435,6 +452,7 @@ try {
   const harnessHash = createHash("sha256");
   for (const file of [
     "run.ts",
+    "resume.ts",
     "setup.ts",
     "execute.ts",
     "cases.ts",
@@ -448,6 +466,7 @@ try {
       .update(await readFile(join(root, "evals/conversation", file)));
   }
   provenance.harnessSourceHash = harnessHash.digest("hex");
+  provenance.measurementSourceHash = await measurementSourceHash(root);
 
   if (resumedProvenance) {
     const agentDrift = await command(
@@ -483,7 +502,9 @@ try {
       measurementDrift.output.trim() ||
       resumedProvenance.agentSourceHash !== provenance.agentSourceHash ||
       resumedProvenance.rubricHash !== provenance.rubricHash ||
-      resumedProvenance.scenarioHash !== provenance.scenarioHash
+      resumedProvenance.scenarioHash !== provenance.scenarioHash ||
+      resumedProvenance.measurementSourceHash !==
+        provenance.measurementSourceHash
     )
       throw new Error("Resume requires the same agent, scenarios, and rubric");
   }
@@ -763,13 +784,23 @@ try {
       process.exitCode = 1;
     } else provenance.cleanup = "completed";
   }
-  if (resumedProvenance && !budget && provenance.cleanup !== "failed") {
+  const restoreCheckpoint =
+    resumedProvenance &&
+    resumeEvidence &&
+    mayRestoreResumeCheckpoint(resumeEvidence, {
+      paidRequests:
+        budget?.snapshot().requests.length ?? resumeEvidence.paidRequests,
+      trialHash: await trialFilesHash(outputDir).catch(() => undefined),
+      status: provenance.status,
+      cleanup: provenance.cleanup,
+    });
+  if (restoreCheckpoint) {
     const checkpoint = join(outputDir, "checkpoints", checkpointId);
     await writeFile(
       join(checkpoint, "resume-error.json"),
       JSON.stringify(provenance, null, 2)
     );
-    // No paid requests were dispatched. Keep the prior evidence and resume point intact.
+    // No new paid attempts or trial-file changes occurred. Preserve the prior resume point even if the budget proxy initialized.
     for (const name of [
       "provenance.json",
       "summary.json",

@@ -1,3 +1,8 @@
+import { z } from "zod";
+import type {
+  ConversationAuthorizationRequest,
+  ConversationInputRequest,
+} from "@/evals/conversation/input-request";
 import {
   loadFixture,
   orderTotal,
@@ -25,6 +30,8 @@ export interface ConversationCase {
 export interface ConversationTurnEvidence {
   readonly text: string;
   readonly messages: readonly string[];
+  readonly inputRequests?: readonly ConversationInputRequest[];
+  readonly authorizationRequests?: readonly ConversationAuthorizationRequest[];
   readonly toolCalls: readonly {
     readonly name: string;
     readonly input?: unknown;
@@ -546,6 +553,8 @@ export function conversationFacts(fixture: Fixture = loadFixture()) {
   };
 }
 
+const emailSkillInput = z.object({ skill: z.literal("email") });
+
 /** These assertions establish content/tool evidence, not semantic correctness or recipient receipt. */
 export function gradeConversation(
   c: ConversationCase,
@@ -593,14 +602,29 @@ export function gradeConversation(
     const reactionOnly =
       (c.id === "CORE-07" && i === 2) ||
       (c.id === "CORE-11" && i === 3) ||
+      (c.id === "CORE-12" && i === 3) ||
+      (c.id === "SQ-07" && i === 3) ||
       (c.id === "SQ-03" && i === 3);
     const reaction = calls(i).some(
       (call) => call.name === "react_to_message" && call.status === "completed"
     );
     check(
       `T${String(i)}: response delivery requested`,
-      text(i).length > 0 || (reactionOnly && reaction),
-      "Requires nonempty completed message content or an allowed completed reaction; does not establish receipt."
+      text(i).length > 0 ||
+        (reactionOnly && reaction) ||
+        (turns[i - 1]?.authorizationRequests?.some((request) =>
+          [
+            request.authorization?.url,
+            request.authorization?.instructions,
+            request.authorization?.userCode,
+          ].some((value) => (value?.trim().length ?? 0) > 0)
+        ) ??
+          false) ||
+        (turns[i - 1]?.inputRequests?.some(
+          (request) => request.prompt.trim().length > 0
+        ) ??
+          false),
+      "Requires nonempty completed message content, an allowed completed reaction, an observed clarification request, or an observed usable authorization challenge. Input/authorization requests are not completed actions or successful authorization; none establishes rendering or receipt."
     );
   }
   const allCalls = turns.flatMap((turn) => turn.toolCalls);
@@ -621,8 +645,15 @@ export function gradeConversation(
   if (c.pack === "core" && !["CORE-10", "CORE-11"].includes(c.id)) {
     check(
       "no task/data tool calls",
-      allCalls.every((call) =>
-        ["send_message", "react_to_message"].includes(call.name)
+      allCalls.every(
+        (call) =>
+          ["send_message", "react_to_message", "ask_question"].includes(
+            call.name
+          ) ||
+          (c.id === "CORE-09" &&
+            call.name === "load_skill" &&
+            call.status === "completed" &&
+            emailSkillInput.safeParse(call.input).success)
       ),
       "These authored tasks require conversation only."
     );
