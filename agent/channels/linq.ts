@@ -396,8 +396,13 @@ export const linqChannelConfig = {
         "Scheduled result reporting was cancelled."
       );
     },
-    async "turn.failed"(event, _context, session) {
+    async "turn.failed"(event, context, session) {
       await releaseScheduledReportDelivery(session, event.message);
+
+      if (scheduledReportFromSession(session) || !context.thread) return;
+      await context.thread.post({
+        raw: "I couldn’t complete that request because of a service error. Please try again later.",
+      });
     },
   },
   async onMessage(context, message): Promise<OpenInstinctLinqInboundResult> {
