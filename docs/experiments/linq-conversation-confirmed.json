@@ -1,0 +1,202 @@
+{
+  "phase": "confirmed-treatment",
+  "sourceSha": "2322babb1330a0c5969f7fa36a610fadf596cd6a",
+  "deploymentId": "dpl_FQoec6rS5WhW4gv2JsvVPLgAjfHU",
+  "activationVerified": true,
+  "modelVerification": {
+    "checkedAt": "2026-09-06T13:28:58Z",
+    "model": "openai/gpt-5.6-luna-fast",
+    "modeOn": true,
+    "exactWorkspaceMatch": true
+  },
+  "note": "Case4 has a wider arrival interval due to an observation-call gap. No point estimate is substituted. All nine turns have actual role selection and project capability suppression metadata. The same durable conversation was retained; history and cache state changed across phases.",
+  "records": [
+    {
+      "caseId": 1,
+      "prompt": "Hey there!",
+      "sentAt": 1788701011125,
+      "lastAbsentAt": 1788701024098,
+      "observedAt": 1788701024669,
+      "response": "Hey there!",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 2,
+      "prompt": "What's 17 plus 28? Just the number, please.",
+      "sentAt": 1788701025215,
+      "lastAbsentAt": 1788701040417,
+      "observedAt": 1788701040954,
+      "response": "45",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 3,
+      "prompt": "Write a friendly six-word good-morning message.",
+      "sentAt": 1788701047298,
+      "lastAbsentAt": 1788701057017,
+      "observedAt": 1788701057582,
+      "response": "Good morning! Hope your day shines.",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 4,
+      "prompt": "For our next few messages, remember this: my imaginary picnic bag is teal and has three pears. Reply briefly.",
+      "sentAt": 1788701058095,
+      "lastAbsentAt": 1788701083041,
+      "observedAt": 1788701090641,
+      "response": "Got it.",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 5,
+      "prompt": "What color is the bag, and how many pears are in it?",
+      "sentAt": 1788701091184,
+      "lastAbsentAt": 1788701101734,
+      "observedAt": 1788701102288,
+      "response": "Teal, with three pears.",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 6,
+      "prompt": "Change the fruit to apples, keeping the color and quantity. What is in the bag now?",
+      "sentAt": 1788701109469,
+      "lastAbsentAt": 1788701127053,
+      "observedAt": 1788701127634,
+      "response": "A teal bag with three apples.",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 7,
+      "prompt": "Explain why leaves look green in one sentence.",
+      "sentAt": 1788701128159,
+      "lastAbsentAt": 1788701142564,
+      "observedAt": 1788701143156,
+      "response": "Leaves look green because chlorophyll absorbs red and blue light while reflecting green light.",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 8,
+      "prompt": "Thanks! Reply with a short text acknowledgment.",
+      "sentAt": 1788701151606,
+      "lastAbsentAt": 1788701161836,
+      "observedAt": 1788701162384,
+      "response": "You’re welcome!",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 9,
+      "prompt": "Fetch https://example.com and tell me its page title. Check the page rather than answering from memory.",
+      "sentAt": 1788701162922,
+      "lastAbsentAt": 1788701180638,
+      "observedAt": 1788701181236,
+      "response": "Example Domain",
+      "visibleAnswerCorrect": true
+    }
+  ],
+  "activationCheck": {
+    "prompt": "Check my scheduled reminders for this conversation and tell me only how many there are. Do not create, change, or delete anything.",
+    "sentAt": 1788700958202,
+    "lastAbsentAt": 1788700982431,
+    "observedAt": 1788700983011,
+    "response": "0",
+    "turnSequence": 43,
+    "roleSelected": true,
+    "projectCapabilitySuppressed": true,
+    "escalated": true,
+    "tools": [
+      "escalate_to_full_capabilities",
+      "schedules-list",
+      "send_message"
+    ],
+    "durationMs": 14222
+  },
+  "cleanup": {
+    "prompt": "Forget only the imaginary picnic bag facts from these tests; leave unrelated memory unchanged. Reply briefly when done.",
+    "response": "Done.",
+    "turnSequence": 53,
+    "successfulTools": [
+      "profile__remove_memory",
+      "send_message"
+    ]
+  },
+  "webAcceptance": {
+    "completed": false,
+    "reason": "Safari rendered the existing chat, but composer and navigation actions did not take effect. No new web request was submitted."
+  },
+  "restoration": {
+    "deploymentId": "dpl_D1eUMmZsLY737t7daavHrrkp4Lv8",
+    "sourceSha": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+    "canonicalAliasVerified": true,
+    "healthReady": true,
+    "temporaryFlagsRemoved": true,
+    "deploymentCreatedLocalEnvRemoved": true
+  },
+  "derivedStageTiming": {
+    "method": "loggedTurnStart = server final emission timestamp - Evlog durationMs. Local send/arrival use local wall clock. Cross-machine clock offset was not calibrated. These are approximate derived intervals, not directly measured ingress or inference spans.",
+    "records": [
+      {
+        "caseId": 1,
+        "localSendToLoggedTurnStartMs": 10043,
+        "loggedTurnStartToArrivalLowerMs": 2930,
+        "loggedTurnStartToArrivalUpperMs": 3501,
+        "finalEmissionAfterObservedArrivalMs": 4181
+      },
+      {
+        "caseId": 2,
+        "localSendToLoggedTurnStartMs": 12671,
+        "loggedTurnStartToArrivalLowerMs": 2531,
+        "loggedTurnStartToArrivalUpperMs": 3068,
+        "finalEmissionAfterObservedArrivalMs": 3012
+      },
+      {
+        "caseId": 3,
+        "localSendToLoggedTurnStartMs": 6907,
+        "loggedTurnStartToArrivalLowerMs": 2812,
+        "loggedTurnStartToArrivalUpperMs": 3377,
+        "finalEmissionAfterObservedArrivalMs": 3280
+      },
+      {
+        "caseId": 4,
+        "localSendToLoggedTurnStartMs": 12951,
+        "loggedTurnStartToArrivalLowerMs": 11995,
+        "loggedTurnStartToArrivalUpperMs": 19595,
+        "finalEmissionAfterObservedArrivalMs": -3669
+      },
+      {
+        "caseId": 5,
+        "localSendToLoggedTurnStartMs": 7059,
+        "loggedTurnStartToArrivalLowerMs": 3491,
+        "loggedTurnStartToArrivalUpperMs": 4045,
+        "finalEmissionAfterObservedArrivalMs": 2368
+      },
+      {
+        "caseId": 6,
+        "localSendToLoggedTurnStartMs": 7658,
+        "loggedTurnStartToArrivalLowerMs": 9926,
+        "loggedTurnStartToArrivalUpperMs": 10507,
+        "finalEmissionAfterObservedArrivalMs": 2853
+      },
+      {
+        "caseId": 7,
+        "localSendToLoggedTurnStartMs": 11063,
+        "loggedTurnStartToArrivalLowerMs": 3342,
+        "loggedTurnStartToArrivalUpperMs": 3934,
+        "finalEmissionAfterObservedArrivalMs": 3201
+      },
+      {
+        "caseId": 8,
+        "localSendToLoggedTurnStartMs": 7539,
+        "loggedTurnStartToArrivalLowerMs": 2691,
+        "loggedTurnStartToArrivalUpperMs": 3239,
+        "finalEmissionAfterObservedArrivalMs": 2782
+      },
+      {
+        "caseId": 9,
+        "localSendToLoggedTurnStartMs": 9873,
+        "loggedTurnStartToArrivalLowerMs": 7843,
+        "loggedTurnStartToArrivalUpperMs": 8441,
+        "finalEmissionAfterObservedArrivalMs": 3265
+      }
+    ]
+  }
+}

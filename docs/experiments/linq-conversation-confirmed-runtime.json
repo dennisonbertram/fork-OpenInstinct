@@ -1,0 +1,334 @@
+{
+  "sourceSha": "2322babb1330a0c5969f7fa36a610fadf596cd6a",
+  "deploymentId": "dpl_FQoec6rS5WhW4gv2JsvVPLgAjfHU",
+  "note": "Metadata only. Actual role selection and initial project-capability suppression confirmed for every scored turn. Framework memory and web_fetch remained callable without escalation.",
+  "records": [
+    {
+      "caseId": 1,
+      "turnSequence": 44,
+      "timestamp": "2026-09-06T13:23:48.850Z",
+      "durationMs": 7682,
+      "activation": {
+        "authenticatorIsLinqMessage": true,
+        "channelIsLinq": true,
+        "interactiveMode": true,
+        "roleSelected": true,
+        "targetWorkspaceConfigured": true,
+        "workspaceMatches": true,
+        "projectCapabilitySuppressed": true
+      },
+      "ai": {
+        "calls": 2,
+        "inputTokens": 79669,
+        "outputTokens": 35,
+        "totalTokens": 79704,
+        "steps": 2,
+        "cacheReadTokens": 72411,
+        "cacheWriteTokens": 7252,
+        "finishReason": "stop",
+        "costUsd": 0.006609,
+        "tools": [
+          {
+            "name": "send_message",
+            "durationMs": 171,
+            "success": true
+          }
+        ]
+      }
+    },
+    {
+      "caseId": 2,
+      "turnSequence": 45,
+      "timestamp": "2026-09-06T13:24:03.966Z",
+      "durationMs": 6080,
+      "activation": {
+        "authenticatorIsLinqMessage": true,
+        "channelIsLinq": true,
+        "interactiveMode": true,
+        "roleSelected": true,
+        "targetWorkspaceConfigured": true,
+        "workspaceMatches": true,
+        "projectCapabilitySuppressed": true
+      },
+      "ai": {
+        "calls": 2,
+        "inputTokens": 79855,
+        "outputTokens": 33,
+        "totalTokens": 79888,
+        "steps": 2,
+        "cacheReadTokens": 79663,
+        "cacheWriteTokens": 186,
+        "finishReason": "stop",
+        "costUsd": 0.003361,
+        "tools": [
+          {
+            "name": "send_message",
+            "durationMs": 146,
+            "success": true
+          }
+        ]
+      }
+    },
+    {
+      "caseId": 3,
+      "turnSequence": 46,
+      "timestamp": "2026-09-06T13:24:20.862Z",
+      "durationMs": 6657,
+      "activation": {
+        "authenticatorIsLinqMessage": true,
+        "channelIsLinq": true,
+        "interactiveMode": true,
+        "roleSelected": true,
+        "targetWorkspaceConfigured": true,
+        "workspaceMatches": true,
+        "projectCapabilitySuppressed": true
+      },
+      "ai": {
+        "calls": 2,
+        "inputTokens": 80057,
+        "outputTokens": 39,
+        "totalTokens": 80096,
+        "steps": 2,
+        "cacheReadTokens": 79849,
+        "cacheWriteTokens": 202,
+        "finishReason": "stop",
+        "costUsd": 0.003391,
+        "tools": [
+          {
+            "name": "send_message",
+            "durationMs": 193,
+            "success": true
+          }
+        ]
+      }
+    },
+    {
+      "caseId": 4,
+      "turnSequence": 47,
+      "timestamp": "2026-09-06T13:24:46.972Z",
+      "durationMs": 15926,
+      "activation": {
+        "authenticatorIsLinqMessage": true,
+        "channelIsLinq": true,
+        "interactiveMode": true,
+        "roleSelected": true,
+        "targetWorkspaceConfigured": true,
+        "workspaceMatches": true,
+        "projectCapabilitySuppressed": true
+      },
+      "ai": {
+        "calls": 4,
+        "inputTokens": 160984,
+        "outputTokens": 127,
+        "totalTokens": 161111,
+        "steps": 4,
+        "cacheReadTokens": 160501,
+        "cacheWriteTokens": 471,
+        "finishReason": "stop",
+        "costUsd": 0.006965,
+        "tools": [
+          {
+            "name": "profile__remove_memory",
+            "durationMs": 354,
+            "success": true
+          },
+          {
+            "name": "profile__save_memory",
+            "durationMs": 98,
+            "success": true,
+            "inputTokens": 76
+          },
+          {
+            "name": "send_message",
+            "durationMs": 170,
+            "success": true,
+            "inputTokens": 45
+          }
+        ]
+      }
+    },
+    {
+      "caseId": 5,
+      "turnSequence": 48,
+      "timestamp": "2026-09-06T13:25:04.656Z",
+      "durationMs": 6413,
+      "activation": {
+        "authenticatorIsLinqMessage": true,
+        "channelIsLinq": true,
+        "interactiveMode": true,
+        "roleSelected": true,
+        "targetWorkspaceConfigured": true,
+        "workspaceMatches": true,
+        "projectCapabilitySuppressed": true
+      },
+      "ai": {
+        "calls": 2,
+        "inputTokens": 80747,
+        "outputTokens": 47,
+        "totalTokens": 80794,
+        "steps": 2,
+        "cacheReadTokens": 34080,
+        "cacheWriteTokens": 46661,
+        "finishReason": "stop",
+        "costUsd": 0.024809,
+        "tools": [
+          {
+            "name": "send_message",
+            "durationMs": 204,
+            "success": true
+          }
+        ]
+      }
+    },
+    {
+      "caseId": 6,
+      "turnSequence": 49,
+      "timestamp": "2026-09-06T13:25:30.487Z",
+      "durationMs": 13360,
+      "activation": {
+        "authenticatorIsLinqMessage": true,
+        "channelIsLinq": true,
+        "interactiveMode": true,
+        "roleSelected": true,
+        "targetWorkspaceConfigured": true,
+        "workspaceMatches": true,
+        "projectCapabilitySuppressed": true
+      },
+      "ai": {
+        "calls": 4,
+        "inputTokens": 162281,
+        "outputTokens": 102,
+        "totalTokens": 162383,
+        "steps": 4,
+        "cacheReadTokens": 161852,
+        "cacheWriteTokens": 417,
+        "finishReason": "stop",
+        "costUsd": 0.006932,
+        "tools": [
+          {
+            "name": "profile__remove_memory",
+            "durationMs": 350,
+            "success": true
+          },
+          {
+            "name": "profile__save_memory",
+            "durationMs": 273,
+            "success": true,
+            "inputTokens": 47
+          },
+          {
+            "name": "send_message",
+            "durationMs": 73,
+            "success": true,
+            "inputTokens": 45
+          }
+        ]
+      }
+    },
+    {
+      "caseId": 7,
+      "turnSequence": 50,
+      "timestamp": "2026-09-06T13:25:46.357Z",
+      "durationMs": 7135,
+      "activation": {
+        "authenticatorIsLinqMessage": true,
+        "channelIsLinq": true,
+        "interactiveMode": true,
+        "roleSelected": true,
+        "targetWorkspaceConfigured": true,
+        "workspaceMatches": true,
+        "projectCapabilitySuppressed": true
+      },
+      "ai": {
+        "calls": 2,
+        "inputTokens": 81391,
+        "outputTokens": 61,
+        "totalTokens": 81452,
+        "steps": 2,
+        "cacheReadTokens": 34080,
+        "cacheWriteTokens": 47305,
+        "finishReason": "stop",
+        "costUsd": 0.025165,
+        "tools": [
+          {
+            "name": "send_message",
+            "durationMs": 229,
+            "success": true
+          }
+        ]
+      }
+    },
+    {
+      "caseId": 8,
+      "turnSequence": 51,
+      "timestamp": "2026-09-06T13:26:05.166Z",
+      "durationMs": 6021,
+      "activation": {
+        "authenticatorIsLinqMessage": true,
+        "channelIsLinq": true,
+        "interactiveMode": true,
+        "roleSelected": true,
+        "targetWorkspaceConfigured": true,
+        "workspaceMatches": true,
+        "projectCapabilitySuppressed": true
+      },
+      "ai": {
+        "calls": 2,
+        "inputTokens": 81616,
+        "outputTokens": 36,
+        "totalTokens": 81652,
+        "steps": 2,
+        "cacheReadTokens": 81385,
+        "cacheWriteTokens": 225,
+        "finishReason": "stop",
+        "costUsd": 0.003457,
+        "tools": [
+          {
+            "name": "send_message",
+            "durationMs": 301,
+            "success": true
+          }
+        ]
+      }
+    },
+    {
+      "caseId": 9,
+      "turnSequence": 52,
+      "timestamp": "2026-09-06T13:26:24.501Z",
+      "durationMs": 11706,
+      "activation": {
+        "authenticatorIsLinqMessage": true,
+        "channelIsLinq": true,
+        "interactiveMode": true,
+        "roleSelected": true,
+        "targetWorkspaceConfigured": true,
+        "workspaceMatches": true,
+        "projectCapabilitySuppressed": true
+      },
+      "ai": {
+        "calls": 3,
+        "inputTokens": 123274,
+        "outputTokens": 72,
+        "totalTokens": 123346,
+        "steps": 3,
+        "cacheReadTokens": 122573,
+        "cacheWriteTokens": 692,
+        "finishReason": "stop",
+        "costUsd": 0.005425,
+        "tools": [
+          {
+            "name": "web_fetch",
+            "durationMs": 265,
+            "success": true
+          },
+          {
+            "name": "send_message",
+            "durationMs": 87,
+            "success": true,
+            "inputTokens": 235
+          }
+        ]
+      }
+    }
+  ]
+}
