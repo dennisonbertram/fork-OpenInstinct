@@ -17,7 +17,7 @@ vi.mock("@/env", async (importOriginal) => {
   };
 });
 import evlogHook from "@/agent/hooks/evlog";
-import instrumentation from "@/agent/instrumentation";
+import instrumentation from "@/agent/instrumentation/runtime-context";
 
 const capturedEvents: WideEvent[] = [];
 

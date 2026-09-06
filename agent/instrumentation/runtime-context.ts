@@ -6,9 +6,6 @@ import {
 } from "@/agent/lib/linq/timing";
 
 export default defineInstrumentation({
-  recordInputs: true,
-  recordOutputs: true,
-  traceChannelRequests: true,
   events: {
     "step.started": (input) => {
       const preparedAtMs = Date.now();

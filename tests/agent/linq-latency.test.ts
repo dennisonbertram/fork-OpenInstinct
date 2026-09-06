@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.stubEnv("LINQ_LATENCY_MODE", "on");
 vi.stubEnv("LINQ_LATENCY_WORKSPACE_ID", "workspace-test");
 
-const { default: instrumentation } = await import("@/agent/instrumentation");
+const { default: instrumentation } =
+  await import("@/agent/instrumentation/runtime-context");
 
 afterEach(() => {
   vi.unstubAllEnvs();

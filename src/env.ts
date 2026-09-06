@@ -99,6 +99,7 @@ export const env = createEnv({
     LINQ_CONNECTOR: requiredValue.optional(),
     LINQ_LATENCY_MODE: z.enum(["on", "off"]).default("off"),
     LINQ_LATENCY_WORKSPACE_ID: requiredValue.optional(),
+    WORKFLOW_RESUME_TIMING: z.enum(["on", "off"]).default("off"),
     SQUARE_BASE_URL: squareLoopbackBaseUrlSchema.optional(),
     SQUARE_CONNECTOR_UID: requiredValue.optional(),
     SQUARE_ENVIRONMENT: z.enum(["sandbox", "production"]).default("sandbox"),
@@ -174,6 +175,10 @@ export const localPhoneAuthBypassEnabled =
 
 export function isContractFixtureEnabled() {
   return env.EVAL_CONTRACT_FIXTURE === "1";
+}
+
+export function isWorkflowResumeTimingEnabled() {
+  return env.WORKFLOW_RESUME_TIMING === "on";
 }
 
 const featureFlags = {

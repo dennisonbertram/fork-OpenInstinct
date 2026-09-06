@@ -8,6 +8,7 @@ import { isContractFixtureEnabled } from "@/env";
 
 export default defineAgent({
   experimental: {
+    instrumentationProviders: true,
     tasks: true,
   },
   model: defineDynamic({
