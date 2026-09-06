@@ -1,0 +1,178 @@
+{
+  "sourceSha": "30427ebe2eeaec975a8c2652bd8fb2122a3e32b4",
+  "deploymentId": "dpl_7jas6Sp7LofvmyquGxC2oJNyBz89",
+  "samples": [
+    {
+      "timestamp": "2026-09-06T14:11:43.259Z",
+      "latency": {
+        "admissionStartedAtMs": 1788703883053,
+        "admissionToTurnStartMs": 12687,
+        "phoneLookupMs": 5,
+        "scopeVerificationMs": 3,
+        "bridgeSendStarted": true,
+        "identityLookupMs": 4,
+        "bindingResolveMs": 7,
+        "inboundClaimMs": 6,
+        "pendingInputResolveMs": 5,
+        "markReadMs": 180,
+        "markReadSucceeded": true,
+        "admissionToBridgeSendStartMs": 213,
+        "bridgeSendToTurnStartMs": 12474,
+        "admissionToFirstStepStartedMs": 12850,
+        "modelIsLunaFast": true,
+        "admissionToFirstModelInputPreparedMs": 12856,
+        "admissionToProviderPostStartMs": 15833,
+        "admissionToProviderAcceptedMs": 15879,
+        "providerPostAccepted": true,
+        "admissionToFirstAssistantTextDeltaMs": 19221
+      },
+      "durationMs": 7441,
+      "ai": {
+        "calls": 2,
+        "inputTokens": 87175,
+        "outputTokens": 33,
+        "totalTokens": 87208,
+        "steps": 2,
+        "cacheWriteTokens": 87169,
+        "finishReason": "stop",
+        "costUsd": 0.043666,
+        "tools": [
+          {
+            "name": "send_message",
+            "durationMs": 235,
+            "success": true
+          }
+        ]
+      }
+    },
+    {
+      "timestamp": "2026-09-06T14:12:37.306Z",
+      "latency": {
+        "admissionStartedAtMs": 1788703940836,
+        "admissionToTurnStartMs": 7937,
+        "phoneLookupMs": 4,
+        "scopeVerificationMs": 2,
+        "bridgeSendStarted": true,
+        "identityLookupMs": 3,
+        "bindingResolveMs": 3,
+        "inboundClaimMs": 3,
+        "pendingInputResolveMs": 5,
+        "markReadMs": 71,
+        "markReadSucceeded": true,
+        "admissionToBridgeSendStartMs": 92,
+        "bridgeSendToTurnStartMs": 7845,
+        "admissionToFirstStepStartedMs": 8041,
+        "modelIsLunaFast": true,
+        "admissionToFirstModelInputPreparedMs": 8045,
+        "admissionToProviderPostStartMs": 11920,
+        "admissionToProviderAcceptedMs": 11967,
+        "providerPostAccepted": true,
+        "admissionToFirstAssistantTextDeltaMs": 15235
+      },
+      "durationMs": 8475,
+      "ai": {
+        "calls": 2,
+        "inputTokens": 87389,
+        "outputTokens": 33,
+        "totalTokens": 87422,
+        "steps": 2,
+        "cacheReadTokens": 87169,
+        "cacheWriteTokens": 214,
+        "finishReason": "stop",
+        "costUsd": 0.003675,
+        "tools": [
+          {
+            "name": "send_message",
+            "durationMs": 264,
+            "success": true
+          }
+        ]
+      }
+    },
+    {
+      "timestamp": "2026-09-06T14:13:29.137Z",
+      "latency": {
+        "admissionStartedAtMs": 1788703995316,
+        "admissionToTurnStartMs": 7098,
+        "phoneLookupMs": 30,
+        "scopeVerificationMs": 3,
+        "bridgeSendStarted": true,
+        "identityLookupMs": 3,
+        "bindingResolveMs": 3,
+        "inboundClaimMs": 3,
+        "pendingInputResolveMs": 6,
+        "markReadMs": 77,
+        "markReadSucceeded": true,
+        "admissionToBridgeSendStartMs": 126,
+        "bridgeSendToTurnStartMs": 6972,
+        "admissionToFirstStepStartedMs": 7202,
+        "modelIsLunaFast": true,
+        "admissionToFirstModelInputPreparedMs": 7205,
+        "admissionToProviderPostStartMs": 10216,
+        "admissionToProviderAcceptedMs": 10257,
+        "providerPostAccepted": true,
+        "admissionToFirstAssistantTextDeltaMs": 13440
+      },
+      "durationMs": 6672,
+      "ai": {
+        "calls": 2,
+        "inputTokens": 87597,
+        "outputTokens": 33,
+        "totalTokens": 87630,
+        "steps": 2,
+        "cacheReadTokens": 87383,
+        "cacheWriteTokens": 208,
+        "finishReason": "stop",
+        "costUsd": 0.003681,
+        "tools": [
+          {
+            "name": "send_message",
+            "durationMs": 269,
+            "success": true
+          }
+        ]
+      }
+    }
+  ],
+  "visibleSamples": [
+    {
+      "case": "A",
+      "correct": true,
+      "response": "45",
+      "sentAt": null,
+      "note": "Helper lost timestamp; excluded from end-to-end comparison."
+    },
+    {
+      "case": "B",
+      "prompt": "Synthetic timing check B: what is 23 plus 18? Reply with just the number.",
+      "sentAt": 1788703940044,
+      "lastAbsentAt": 1788703952764,
+      "observedAt": 1788703953578,
+      "response": "41",
+      "correct": true
+    },
+    {
+      "case": "C",
+      "prompt": "Synthetic timing check C: name the planet we live on, in one word.",
+      "sentAt": 1788703994818,
+      "lastAbsentAt": 1788704005328,
+      "observedAt": 1788704006104,
+      "response": "Earth",
+      "correct": true
+    }
+  ],
+  "limitations": "Cross-process Date.now timing is not clock-calibrated. Application admission excludes webhook/SDK work. Provider acceptance is distinct from local visible arrival. Same existing conversation; no context reset.",
+  "workflowRequestEvidence": {
+    "sample": "B",
+    "parentDeploymentId": "dpl_8eRJYZ2GRum5f9NZHRwy2XgXk1fH",
+    "parentSourceSha": "98742b99e5807e561240c2ad8a82c8d43c62e96f",
+    "parentRequestTimes": ["2026-09-06T14:12:21Z", "2026-09-06T14:12:38Z"],
+    "currentDeploymentFlowRequestTimes": [
+      "2026-09-06T14:12:26Z",
+      "2026-09-06T14:12:26Z",
+      "2026-09-06T14:12:27Z",
+      "2026-09-06T14:12:27Z"
+    ],
+    "note": "Request timestamps are second-resolution metadata. Existing conversation parent workflow runs on an older deployment; the candidate handles turn execution. Exact per-request queue versus hydration timing is not yet available."
+  }
+}
