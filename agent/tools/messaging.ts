@@ -18,6 +18,8 @@ import { sendMessageInputSchema } from "../lib/send-message";
 
 export default defineDynamic({
   events: {
+    // Clears registrations persisted before this resolver became step-scoped.
+    "turn.started": () => null,
     "step.started": (event, context) => {
       const parsed = stepEventSchema.safeParse(event);
       const turnId = parsed.success ? parsed.data.data.turnId : undefined;

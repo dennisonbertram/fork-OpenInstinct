@@ -90,3 +90,11 @@ describe("final conversation delivery", () => {
     ).not.toBeNull();
   });
 });
+
+it("removes a legacy turn-scoped messaging registration before resolving the current step", async () => {
+  const resolve = messaging.events["turn.started"];
+  expect(resolve).toBeTypeOf("function");
+  expect(
+    await resolve?.({ data: { turnId: "turn_legacy" } }, context)
+  ).toBeNull();
+});

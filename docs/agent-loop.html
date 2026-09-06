@@ -823,7 +823,9 @@
             <td>turn.started</td>
             <td>
               checkBudget on model tokens; a blown budget fails the turn before
-              the model runs
+              the model runs. Messaging also clears a legacy turn-scoped
+              registration here before its current step-scoped delivery tools
+              resolve.
             </td>
           </tr>
           <tr>
