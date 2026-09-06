@@ -70,3 +70,44 @@ variables and the task-created local environment export were removed.
 
 See `linq-latency-probe.json` for numeric records and
 `linq-latency-web-baseline.json` for a separate failed web-delivery baseline.
+
+## Lifecycle inspection and same-deployment control
+
+Read-only Workflow CLI 4.8.5 inspection retrieved lifecycle metadata without
+decrypting stored content. In sample B, the parent inbox received the delivery
+at 14:12:21.399 UTC. Its next hook was created at 14:12:25.140. Request metadata
+puts the parent request start at 14:12:21.547, so 3.593 seconds elapsed inside
+that request before the next hook. This is not all queue waiting.
+
+The parent then ran `turnStep` from 14:12:25.424 to 25.777, followed by
+`dispatchTurnStep` from 26.077 to 26.725. This confirms that the child fallback
+actually executed. The child was created at 26.650 and started at 26.757;
+its first `turnStep` started at 28.104. The application turn began at 28.773.
+Thus child run startup took 107 ms; the following gaps were 1,347 ms before the
+step and 669 ms inside the step before application turn start. Neither gap is
+yet attributed to a single internal operation.
+
+Two benign follow-ups in the earlier synthetic web session tested an existing,
+short-history session whose parent matched the serving deployment. Neither
+used `dispatchTurnStep`. They still took 3,127 ms and 3,025 ms from inbox receipt
+to the next hook. Each first turn step retried once, with 1,446 ms and 1,478 ms
+between the retry event and its next start. Error data was encrypted and was
+not decrypted; the retry cause remains unknown. Both replies were correct,
+arriving in 7,991–8,349 ms and 8,640–8,995 ms locally. These are framework
+controls, not matched Linq performance samples.
+
+This refutes deployment mismatch as the sole cause. The older parent adds a
+child dispatch, but a substantial pre-hook wait and first-step retries also
+occur without it. Do not infer that long conversation history alone causes
+the pre-hook delay.
+
+Eve 0.52.2 is being evaluated as an upgrade candidate. Its published package
+changelog identifies a 0.52.0 change (`b3e4b73`) removing hook-metadata decryption
+from session-ownership resolution and inbox registration/release checks. This
+is a relevant hypothesis to test, not measured proof that an upgrade reduces
+the observed interval. No release note has established a fix for these retries.
+The existing security and compatibility patches must pass their removal or
+retention tests before the upgraded runtime is deployed.
+
+Sanitized lifecycle records and control prompts are in
+`linq-latency-workflow-baseline.json`.
