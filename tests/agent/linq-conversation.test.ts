@@ -9,7 +9,7 @@ interface ConversationExperimentConfig {
 }
 
 interface ExperimentLogPayload {
-  readonly experiment: {
+  readonly eve: {
     readonly linqConversation: Readonly<Record<string, boolean>>;
   };
 }
@@ -290,9 +290,13 @@ describe("Linq conversational treatment", () => {
       context
     );
     escalateLinqConversation("turn-observed", context);
+    await calendar.events["step.started"]?.(
+      { data: { turnId: "turn-observed" } },
+      context
+    );
 
     expect(evlog.set).toHaveBeenCalledWith({
-      experiment: {
+      eve: {
         linqConversation: {
           authenticatorIsLinqMessage: true,
           channelIsLinq: true,
@@ -304,12 +308,15 @@ describe("Linq conversational treatment", () => {
       },
     });
     expect(evlog.set).toHaveBeenCalledWith({
-      experiment: {
+      eve: {
         linqConversation: { projectCapabilitySuppressed: true },
       },
     });
     expect(evlog.set).toHaveBeenCalledWith({
-      experiment: { linqConversation: { escalated: true } },
+      eve: { linqConversation: { escalated: true } },
+    });
+    expect(evlog.set).not.toHaveBeenCalledWith({
+      eve: { linqConversation: { projectCapabilitySuppressed: false } },
     });
   });
 
@@ -328,7 +335,7 @@ describe("Linq conversational treatment", () => {
     );
 
     expect(evlog.set).toHaveBeenCalledWith({
-      experiment: {
+      eve: {
         linqConversation: {
           authenticatorIsLinqMessage: true,
           channelIsLinq: true,
@@ -339,10 +346,8 @@ describe("Linq conversational treatment", () => {
         },
       },
     });
-    expect(evlog.set).toHaveBeenCalledWith({
-      experiment: {
-        linqConversation: { projectCapabilitySuppressed: false },
-      },
+    expect(evlog.set).not.toHaveBeenCalledWith({
+      eve: { linqConversation: { projectCapabilitySuppressed: false } },
     });
     expect(JSON.stringify(evlog.set.mock.calls)).not.toContain("personal:");
   });

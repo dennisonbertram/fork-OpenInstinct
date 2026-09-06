@@ -57,7 +57,7 @@ export function recordLinqConversationRoleSelection(
   const selection = resolveLinqConversationTreatmentSelection(context);
   if (env.LINQ_CONVERSATION_MODE === "on") {
     evlogLogger(context).set({
-      experiment: {
+      eve: {
         linqConversation: {
           authenticatorIsLinqMessage: selection.authenticatorIsLinqMessage,
           channelIsLinq: selection.channelIsLinq,
@@ -90,7 +90,7 @@ export function escalateLinqConversation(
   treatmentState.update(() => ({ escalatedTurnId: turnId }));
   if (context && env.LINQ_CONVERSATION_MODE === "on") {
     evlogLogger(context).set({
-      experiment: { linqConversation: { escalated: true } },
+      eve: { linqConversation: { escalated: true } },
     });
   }
 }
@@ -101,9 +101,9 @@ export function resolveLinqConversationCapability<T>(
   value: T
 ) {
   const suppressed = isLinqConversationFirstStep(turnId, context);
-  if (env.LINQ_CONVERSATION_MODE === "on") {
+  if (suppressed && env.LINQ_CONVERSATION_MODE === "on") {
     evlogLogger(context).set({
-      experiment: {
+      eve: {
         linqConversation: { projectCapabilitySuppressed: suppressed },
       },
     });
