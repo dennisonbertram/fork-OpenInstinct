@@ -111,3 +111,27 @@ retention tests before the upgraded runtime is deployed.
 
 Sanitized lifecycle records and control prompts are in
 `linq-latency-workflow-baseline.json`.
+
+## Corrected upgrade attribution and decoded retry cause
+
+Exact upstream call-site review shows that the 0.52 routing-decryption change
+runs before `hook_received`. In B, bridge send to inbox receipt was only 471 ms;
+it does not target the subsequent 3,741 ms. The 0.52.2 settled-stream fix is in
+the frontend replay/follow client, not server workflow resume. The upgrade
+candidate was therefore frozen before deployment rather than continued as
+unrelated maintenance. Its partial work remains isolated.
+
+The matching Workflow 5.0.0-beta.47 CLI successfully decoded the designated
+synthetic retry errors for Linq A and web E using existing project authorization.
+The earlier stable CLI had returned encrypted bytes even with its decrypt flag.
+Both errors say dynamic tool callback rebind failed to restore calendar, Gmail,
+schedule, and vault-setup callbacks; Linq A additionally lists `send_message`
+and `react_to_message`. This establishes the cause of those retries, not yet
+the underlying restoration defect. The turns recovered and delivered correct
+answers afterward. See `linq-latency-retry-errors.json` for the error-only record.
+
+The separate parent pre-hook delay is inside Workflow's event loading, replay,
+and hook/suspension commit path. Source inspection ruled out a normal fixed
+three-second debounce. Current timestamps do not distinguish event-list I/O,
+payload preparation, VM startup, replay, or commit costs. No speedup has been
+demonstrated, and the full 10x objective remains open.
