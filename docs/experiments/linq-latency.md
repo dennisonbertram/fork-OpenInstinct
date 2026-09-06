@@ -91,23 +91,21 @@ Two benign follow-ups in the earlier synthetic web session tested an existing,
 short-history session whose parent matched the serving deployment. Neither
 used `dispatchTurnStep`. They still took 3,127 ms and 3,025 ms from inbox receipt
 to the next hook. Each first turn step retried once, with 1,446 ms and 1,478 ms
-between the retry event and its next start. Error data was encrypted and was
-not decrypted; the retry cause remains unknown. Both replies were correct,
-arriving in 7,991–8,349 ms and 8,640–8,995 ms locally. These are framework
-controls, not matched Linq performance samples.
+between the retry event and its next start. The later decoded error record
+identifies callback rebind, described below. Both replies were correct, arriving
+in 7,991–8,349 ms and 8,640–8,995 ms locally. These are framework controls, not
+matched Linq performance samples.
 
 This refutes deployment mismatch as the sole cause. The older parent adds a
 child dispatch, but a substantial pre-hook wait and first-step retries also
 occur without it. Do not infer that long conversation history alone causes
 the pre-hook delay.
 
-Eve 0.52.2 is being evaluated as an upgrade candidate. Its published package
-changelog identifies a 0.52.0 change (`b3e4b73`) removing hook-metadata decryption
-from session-ownership resolution and inbox registration/release checks. This
-is a relevant hypothesis to test, not measured proof that an upgrade reduces
-the observed interval. No release note has established a fix for these retries.
-The existing security and compatibility patches must pass their removal or
-retention tests before the upgraded runtime is deployed.
+Eve 0.52.2 was considered because its 0.52.0 changelog (`b3e4b73`) removes
+hook-metadata decryption from session-ownership resolution and inbox
+registration/release checks. Call-site review placed that work before
+`hook_received`, so it does not explain the later measured interval. The upgrade
+candidate was frozen; no upgrade was deployed.
 
 Sanitized lifecycle records and control prompts are in
 `linq-latency-workflow-baseline.json`.
@@ -126,9 +124,30 @@ synthetic retry errors for Linq A and web E using existing project authorization
 The earlier stable CLI had returned encrypted bytes even with its decrypt flag.
 Both errors say dynamic tool callback rebind failed to restore calendar, Gmail,
 schedule, and vault-setup callbacks; Linq A additionally lists `send_message`
-and `react_to_message`. This establishes the cause of those retries, not yet
-the underlying restoration defect. The turns recovered and delivered correct
-answers afterward. See `linq-latency-retry-errors.json` for the error-only record.
+and `react_to_message`. Installed-source review established the restoration
+defect: an opted-in memory callback rebind checked unrelated prior-turn
+callbacks before their normal `turn.started` resolvers registered them. The
+first attempt restored memory and then threw; its retry bypassed that validation
+and reached the ordinary resolver boundary. The turns recovered and delivered
+correct answers afterward. See `linq-latency-retry-errors.json` for the
+error-only record.
+
+Candidate `629deb7adb6aab90c410e600fad457ac8e7efa9e` contains the smallest
+local Eve patch: validate only callbacks from resolvers actually re-run during
+the restore step, while retaining the failure for a missing callback from such
+a resolver. It also clears legacy turn-scoped messaging metadata before the
+current step-scoped delivery resolver runs. The regression reproduced the
+missing ordinary-callback error before the patch and passed after it. The full
+local check recorded 1,180 passed and two skipped tests, and synthetic
+`pnpm build` plus `pnpm build:eve` passed. Eve 0.52.2 was inspected and retains
+the same callback-rebind validation path. This candidate has not been deployed
+or live-measured, so it establishes neither a speedup nor a 10x result.
+
+The required Square evaluation at this candidate is red: [run
+34040836247](https://github.com/dennisonbertram/fork-OpenInstinct/actions/runs/34040836247)
+reported 10 passed, one failed, and two scored cases. The failed invoice case
+did not call `ListInvoices` for an ambiguous money-owed question. It blocks
+merge and deployment; it is unrelated to the callback-rebind regression.
 
 The separate parent pre-hook delay is inside Workflow's event loading, replay,
 and hook/suspension commit path. Source inspection ruled out a normal fixed
