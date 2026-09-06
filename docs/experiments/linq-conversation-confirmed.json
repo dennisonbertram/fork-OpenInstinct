@@ -114,10 +114,7 @@
     "prompt": "Forget only the imaginary picnic bag facts from these tests; leave unrelated memory unchanged. Reply briefly when done.",
     "response": "Done.",
     "turnSequence": 53,
-    "successfulTools": [
-      "profile__remove_memory",
-      "send_message"
-    ]
+    "successfulTools": ["profile__remove_memory", "send_message"]
   },
   "webAcceptance": {
     "completed": false,
