@@ -1,6 +1,10 @@
 import { defineDynamic, defineTool, type ToolContext } from "eve/tools";
 import { z } from "zod";
 import { resolveModeValue } from "@/agent/lib/mode";
+import {
+  resolveLinqConversationCapability,
+  stepStartedEventSchema,
+} from "@/agent/lib/linq-conversation";
 import { scheduledReportIdentity } from "@/agent/lib/schedules/identity";
 import { postScheduledRunRoute } from "@/agent/lib/schedules/request";
 import {
@@ -113,16 +117,22 @@ export const answerSchedule = defineTool({
 
 export default defineDynamic({
   events: {
-    "turn.started": (_event, context) =>
-      resolveModeValue(context, {
-        interactive: {
-          "schedules-answer": answerSchedule,
-          "schedules-create": createSchedule,
-          "schedules-list": listSchedules,
-          "schedules-update": updateSchedule,
-        },
-        "scheduled-report": { "schedules-answer": answerSchedule },
-      }),
+    "step.started": (event, context) => {
+      const parsed = stepStartedEventSchema.safeParse(event);
+      return resolveLinqConversationCapability(
+        parsed.success ? parsed.data.data.turnId : undefined,
+        context,
+        resolveModeValue(context, {
+          interactive: {
+            "schedules-answer": answerSchedule,
+            "schedules-create": createSchedule,
+            "schedules-list": listSchedules,
+            "schedules-update": updateSchedule,
+          },
+          "scheduled-report": { "schedules-answer": answerSchedule },
+        })
+      );
+    },
   },
 });
 

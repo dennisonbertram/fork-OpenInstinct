@@ -2,6 +2,10 @@ import { defineDynamic, defineTool } from "eve/tools";
 import { z } from "zod";
 import { searchGoogleContacts } from "@/agent/lib/google-workspace/contacts";
 import { resolveModeValue } from "@/agent/lib/mode";
+import {
+  resolveLinqConversationCapability,
+  stepStartedEventSchema,
+} from "@/agent/lib/linq-conversation";
 
 export const contactsSearch = defineTool({
   description:
@@ -17,10 +21,16 @@ export const contactsSearch = defineTool({
 
 export default defineDynamic({
   events: {
-    "turn.started": (_event, context) =>
-      resolveModeValue(context, {
-        interactive: { "contacts-search": contactsSearch },
-        "scheduled-worker": { "contacts-search": contactsSearch },
-      }),
+    "step.started": (event, context) => {
+      const parsed = stepStartedEventSchema.safeParse(event);
+      return resolveLinqConversationCapability(
+        parsed.success ? parsed.data.data.turnId : undefined,
+        context,
+        resolveModeValue(context, {
+          interactive: { "contacts-search": contactsSearch },
+          "scheduled-worker": { "contacts-search": contactsSearch },
+        })
+      );
+    },
   },
 });

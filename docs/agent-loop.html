@@ -830,8 +830,16 @@
             <td>step.started</td>
             <td>
               check auth and lease, then pick the workspace gateway model;
-              model-free contract evals select their local fixture.
-              <code>agent/agent.ts</code>
+              model-free contract evals select their local fixture. When the
+              opt-in Linq conversation mode matches the verified workspace, the
+              first step reduces project dynamic tools to delivery and
+              escalation; escalation restores project dynamic tools on the next
+              step. Framework-resolved browser and memory capabilities can
+              remain visible, but the treatment instructions require escalation
+              before using them. Normal and scheduled turns keep their existing
+              capabilities.
+              <code>agent/agent.ts</code> and <code>agent/tools/*</code>,
+              including <code>agent/tools/messaging.ts</code>
             </td>
           </tr>
           <tr>
@@ -930,8 +938,10 @@
         </li>
         <li>
           <strong>Web chat and iMessage share one agent.</strong> Different
-          channel files, same instructions, tools, and scope derivation. Only
-          the delivery step differs. A message marked <code>final: true</code>
+          channel files, same instructions, tools, and scope derivation. The
+          opt-in Linq conversation treatment temporarily narrows its project
+          tool surface for its first step. A message marked
+          <code>final: true</code>
           closes messaging for that turn; Linq first waits for provider
           acceptance and treats a failed send as unconfirmed. Later sends after
           confirmed completion are rejected and the next step omits messaging

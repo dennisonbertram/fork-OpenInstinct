@@ -1,0 +1,116 @@
+{
+  "phase": "baseline",
+  "sourceSha": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+  "deploymentId": "dpl_D1eUMmZsLY737t7daavHrrkp4Lv8",
+  "model": "openai/gpt-5.6-luna-fast",
+  "method": "Local Messages accessibility observation. sentAt is immediately before Return; lastAbsentAt is start of last snapshot without response; observedAt is completion of first snapshot with response. Millisecond Unix timestamps. Synthetic messages only. Same existing conversation; no history reset.",
+  "records": [
+    {
+      "caseId": 2,
+      "prompt": "What's 17 plus 28? Just the number, please.",
+      "sentAt": 1788697139735,
+      "lastAbsentAt": 1788697147225,
+      "observedAt": 1788697147871,
+      "response": "45",
+      "correct": true
+    },
+    {
+      "caseId": 3,
+      "prompt": "Write a friendly six-word good-morning message.",
+      "sentAt": 1788697179061,
+      "lastAbsentAt": 1788697187257,
+      "observedAt": 1788697187864,
+      "response": "Good morning! Hope today treats you kindly.",
+      "correct": false,
+      "reason": "Seven whitespace-delimited words; requested six."
+    },
+    {
+      "caseId": 4,
+      "prompt": "For our next few messages, remember this: my imaginary picnic bag is teal and has three pears. Reply briefly.",
+      "sentAt": 1788697205463,
+      "lastAbsentAt": 1788697217216,
+      "observedAt": 1788697217800,
+      "response": "Got it.",
+      "correct": true,
+      "observation": "Runtime metadata showed profile__save_memory despite temporary conversation scope."
+    },
+    {
+      "caseId": 5,
+      "prompt": "What color is the bag, and how many pears are in it?",
+      "sentAt": 1788697218311,
+      "lastAbsentAt": 1788697230836,
+      "observedAt": 1788697231417,
+      "response": "Teal, with three pears.",
+      "correct": true
+    },
+    {
+      "caseId": 6,
+      "prompt": "Change the fruit to apples, keeping the color and quantity. What is in the bag now?",
+      "sentAt": 1788697260860,
+      "lastAbsentAt": 1788697279203,
+      "observedAt": 1788697279794,
+      "response": "A teal bag with three apples.",
+      "correct": true,
+      "observation": "Runtime metadata showed profile__remove_memory and profile__save_memory."
+    },
+    {
+      "caseId": 7,
+      "prompt": "Explain why leaves look green in one sentence.",
+      "sentAt": 1788697390973,
+      "lastAbsentAt": 1788697399448,
+      "observedAt": 1788697400034,
+      "response": "Leaves look green because chlorophyll absorbs red and blue light while reflecting green light.",
+      "correct": true
+    },
+    {
+      "caseId": 8,
+      "prompt": "Thanks! Reply with a short text acknowledgment.",
+      "sentAt": 1788697400572,
+      "lastAbsentAt": 1788697413815,
+      "observedAt": 1788697414375,
+      "response": "You’re welcome!",
+      "correct": true
+    },
+    {
+      "caseId": 1,
+      "prompt": "Hey there!",
+      "sentAt": 1788697428851,
+      "lastAbsentAt": 1788697437092,
+      "observedAt": 1788697437674,
+      "response": "Hey there!",
+      "correct": true
+    }
+  ],
+  "excludedCalibration": [
+    {
+      "caseId": 1,
+      "sentAt": 1788696802354,
+      "lastAbsentAt": 1788696813636,
+      "observedAt": 1788697071155,
+      "response": "hey there!",
+      "reason": "Long gap between manual observations; not precise enough for latency comparison."
+    },
+    {
+      "caseId": 1,
+      "sentAt": 1788697081888,
+      "lastAbsentAt": 1788697106856,
+      "observedAt": 1788697139449,
+      "response": "hey there!",
+      "reason": "Composite snapshot parser failed to detect response; absence timestamps unreliable."
+    },
+    {
+      "caseId": 7,
+      "sentAt": 1788697280331,
+      "lastAbsentAt": 1788697339651,
+      "observedAt": 1788697390395,
+      "response": "Leaves look green because chlorophyll absorbs red and blue light while reflecting green light.",
+      "reason": "Accessibility attribute order changed; parser failed to detect response. Repeated after fixing parser to match Description independently of attribute order."
+    }
+  ],
+  "limitations": [
+    "One sample per case, one existing conversation, sequential before/after design.",
+    "Repeated calibration prompts and growing conversation history affect cache/context; these are not independent randomized trials.",
+    "User-visible arrival bounds include all routing, inference and delivery time; they are not inference-only measurements.",
+    "Correctness scores measure requested visible reply; profile-memory side effects are recorded separately."
+  ]
+}

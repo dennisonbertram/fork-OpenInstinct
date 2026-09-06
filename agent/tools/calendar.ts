@@ -8,6 +8,10 @@ import {
   listCalendarEvents,
 } from "@/agent/lib/google-workspace/calendar";
 import { resolveModeValue } from "@/agent/lib/mode";
+import {
+  resolveLinqConversationCapability,
+  stepStartedEventSchema,
+} from "@/agent/lib/linq-conversation";
 
 export const calendarListEvents = defineTool({
   description:
@@ -52,17 +56,23 @@ export const calendarCreateEvent = defineTool({
 
 export default defineDynamic({
   events: {
-    "turn.started": (_event, context) =>
-      resolveModeValue(context, {
-        interactive: {
-          "calendar-check-availability": calendarCheckAvailability,
-          "calendar-create-event": calendarCreateEvent,
-          "calendar-list-events": calendarListEvents,
-        },
-        "scheduled-worker": {
-          "calendar-check-availability": calendarCheckAvailability,
-          "calendar-list-events": calendarListEvents,
-        },
-      }),
+    "step.started": (event, context) => {
+      const parsed = stepStartedEventSchema.safeParse(event);
+      return resolveLinqConversationCapability(
+        parsed.success ? parsed.data.data.turnId : undefined,
+        context,
+        resolveModeValue(context, {
+          interactive: {
+            "calendar-check-availability": calendarCheckAvailability,
+            "calendar-create-event": calendarCreateEvent,
+            "calendar-list-events": calendarListEvents,
+          },
+          "scheduled-worker": {
+            "calendar-check-availability": calendarCheckAvailability,
+            "calendar-list-events": calendarListEvents,
+          },
+        })
+      );
+    },
   },
 });
