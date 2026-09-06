@@ -11,6 +11,10 @@ import {
   updateGmail,
 } from "@/agent/lib/google-workspace/gmail";
 import { resolveModeValue } from "@/agent/lib/mode";
+import {
+  resolveLinqConversationCapability,
+  stepStartedEventSchema,
+} from "@/agent/lib/linq-conversation";
 
 export const gmailConnect = defineTool({
   description:
@@ -78,19 +82,25 @@ export const gmailSend = defineTool({
 
 export default defineDynamic({
   events: {
-    "turn.started": (_event, context) =>
-      resolveModeValue(context, {
-        interactive: {
-          "gmail-connect": gmailConnect,
-          "gmail-read-thread": gmailReadThread,
-          "gmail-search": gmailSearch,
-          "gmail-send": gmailSend,
-          "gmail-update": gmailUpdate,
-        },
-        "scheduled-worker": {
-          "gmail-read-thread": gmailReadThread,
-          "gmail-search": gmailSearch,
-        },
-      }),
+    "step.started": (event, context) => {
+      const parsed = stepStartedEventSchema.safeParse(event);
+      return resolveLinqConversationCapability(
+        parsed.success ? parsed.data.data.turnId : undefined,
+        context,
+        resolveModeValue(context, {
+          interactive: {
+            "gmail-connect": gmailConnect,
+            "gmail-read-thread": gmailReadThread,
+            "gmail-search": gmailSearch,
+            "gmail-send": gmailSend,
+            "gmail-update": gmailUpdate,
+          },
+          "scheduled-worker": {
+            "gmail-read-thread": gmailReadThread,
+            "gmail-search": gmailSearch,
+          },
+        })
+      );
+    },
   },
 });

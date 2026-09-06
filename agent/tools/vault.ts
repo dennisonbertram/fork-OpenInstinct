@@ -1,6 +1,10 @@
 import { defineDynamic, defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveModeValue } from "@/agent/lib/mode";
+import {
+  resolveLinqConversationCapability,
+  stepStartedEventSchema,
+} from "@/agent/lib/linq-conversation";
 import { applicationOrigin } from "@/lib/application-origin";
 import { createVaultSetupUrl, vaultSetupRequestSchema } from "@/lib/vault";
 
@@ -32,13 +36,19 @@ export const requestVaultSetup = defineTool({
 
 export default defineDynamic({
   events: {
-    "turn.started": (_event, context) =>
-      resolveModeValue(context, {
-        interactive: {
-          request_vault_import: requestVaultImport,
-          request_vault_setup: requestVaultSetup,
-        },
-        "scheduled-report": { request_vault_setup: requestVaultSetup },
-      }),
+    "step.started": (event, context) => {
+      const parsed = stepStartedEventSchema.safeParse(event);
+      return resolveLinqConversationCapability(
+        parsed.success ? parsed.data.data.turnId : undefined,
+        context,
+        resolveModeValue(context, {
+          interactive: {
+            request_vault_import: requestVaultImport,
+            request_vault_setup: requestVaultSetup,
+          },
+          "scheduled-report": { request_vault_setup: requestVaultSetup },
+        })
+      );
+    },
   },
 });

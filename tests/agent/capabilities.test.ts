@@ -1,5 +1,23 @@
 import type { DynamicResolveContext } from "eve/tools";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+const state = vi.hoisted(() => {
+  const resets: (() => void)[] = [];
+  return { resets };
+});
+vi.mock("eve/context", () => ({
+  defineState: <T>(_name: string, initial: () => T) => {
+    let value = initial();
+    state.resets.push(() => {
+      value = initial();
+    });
+    return {
+      get: () => value,
+      update: (update: (current: T) => T) => {
+        value = update(value);
+      },
+    };
+  },
+}));
 import personalInfoMemory from "@/agent/memory/personal_info";
 import browserAgent from "@/agent/subagents/browser-agent/agent";
 import calendar from "@/agent/tools/calendar";
@@ -10,6 +28,10 @@ import schedules from "@/agent/tools/schedules";
 import vault from "@/agent/tools/vault";
 
 const groupedTools = [calendar, contacts, gmail, messaging, schedules, vault];
+
+beforeEach(() => {
+  for (const reset of state.resets) reset();
+});
 
 describe("authored mode capability matrix", () => {
   it.each(["linq-message", "scheduled-worker"])(
@@ -79,7 +101,9 @@ async function authoredCapabilities(authenticator: string) {
     groupedTools.map(async (definition) => {
       const resolve =
         definition.events["step.started"] ?? definition.events["turn.started"];
-      const resolved = resolve ? await resolve({}, context) : null;
+      const resolved = resolve
+        ? await resolve({ data: { turnId: "turn-capabilities" } }, context)
+        : null;
       return resolved && !("execute" in resolved) ? Object.keys(resolved) : [];
     })
   );

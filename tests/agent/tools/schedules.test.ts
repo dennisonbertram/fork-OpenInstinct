@@ -5,6 +5,24 @@ import type {
 } from "eve/tools";
 import { z } from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+const state = vi.hoisted(() => {
+  const resets: (() => void)[] = [];
+  return { resets };
+});
+vi.mock("eve/context", () => ({
+  defineState: <T>(_name: string, initial: () => T) => {
+    let value = initial();
+    state.resets.push(() => {
+      value = initial();
+    });
+    return {
+      get: () => value,
+      update: (update: (current: T) => T) => {
+        value = update(value);
+      },
+    };
+  },
+}));
 import type {
   createScheduledAgentJob,
   getScheduledAgentRunInput,
@@ -38,21 +56,25 @@ import schedules, {
 
 describe("schedule tools", () => {
   beforeEach(() => {
+    for (const reset of state.resets) reset();
     vi.clearAllMocks();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null)));
   });
 
   it("lets interactive and reporting turns resume scheduled input", async () => {
-    const resolve = schedules.events["turn.started"];
+    const resolve = schedules.events["step.started"];
     expect(resolve).toBeDefined();
     if (!resolve) return;
 
-    expect(await resolve({}, dynamicContext("scheduled-worker"))).toBeNull();
-    expect(await resolve({}, resumedWorkerContext())).toBeNull();
+    const stepEvent = { data: { turnId: "turn-1" } };
     expect(
-      await resolve({}, dynamicContext("scheduled-result"))
+      await resolve(stepEvent, dynamicContext("scheduled-worker"))
+    ).toBeNull();
+    expect(await resolve(stepEvent, resumedWorkerContext())).toBeNull();
+    expect(
+      await resolve(stepEvent, dynamicContext("scheduled-result"))
     ).not.toBeNull();
-    const interactiveTools = await resolve({}, dynamicContext("linq"));
+    const interactiveTools = await resolve(stepEvent, dynamicContext("linq"));
     const answer =
       interactiveTools && !("execute" in interactiveTools)
         ? interactiveTools["schedules-answer"]
@@ -89,7 +111,10 @@ describe("schedule tools", () => {
       leaseToken: "00000000-0000-4000-8000-000000000003",
       runId: "00000000-0000-4000-8000-000000000002",
     });
-    const reportTools = await resolve({}, dynamicContext("scheduled-result"));
+    const reportTools = await resolve(
+      stepEvent,
+      dynamicContext("scheduled-result")
+    );
     const reportAnswer =
       reportTools && !("execute" in reportTools)
         ? reportTools["schedules-answer"]
@@ -218,11 +243,19 @@ describe("schedule tools", () => {
     if (!resolveMessaging) return;
 
     expect(
-      await resolveMessaging({}, dynamicContext("scheduled-worker"))
+      await resolveMessaging(
+        { data: { turnId: "turn-messaging" } },
+        dynamicContext("scheduled-worker")
+      )
     ).toBeNull();
-    expect(await resolveMessaging({}, resumedWorkerContext())).toBeNull();
+    expect(
+      await resolveMessaging(
+        { data: { turnId: "turn-messaging" } },
+        resumedWorkerContext()
+      )
+    ).toBeNull();
     const reportMessaging = await resolveMessaging(
-      {},
+      { data: { turnId: "turn-messaging" } },
       dynamicContext("scheduled-result", "channel:linq")
     );
     expect(Object.keys(reportMessaging ?? {})).toEqual(["send_message"]);

@@ -88,6 +88,46 @@ describe("evlog hook", () => {
     expect(capturedEvents[1]).not.toHaveProperty("message.response");
     expect(capturedEvents[1]).not.toHaveProperty("channel.linq");
   });
+
+  it("keeps eve-scoped experiment metadata on its originating turn", async () => {
+    const first = hookContext("turn-experiment-1", 2);
+    const second = hookContext("turn-experiment-2", 3);
+    const offset = capturedEvents.length;
+
+    await emit("turn.started", turnStarted("turn-experiment-1", 2), first);
+    useLogger(first).set({
+      eve: {
+        linqConversation: {
+          escalated: true,
+          projectCapabilitySuppressed: true,
+          roleSelected: true,
+        },
+      },
+    });
+    await emit("turn.completed", turnCompleted("turn-experiment-1"), first);
+
+    await emit("turn.started", turnStarted("turn-experiment-2", 3), second);
+    await emit("turn.completed", turnCompleted("turn-experiment-2"), second);
+
+    expect(capturedEvents.slice(offset)).toMatchObject([
+      {
+        eve: {
+          linqConversation: {
+            escalated: true,
+            projectCapabilitySuppressed: true,
+            roleSelected: true,
+          },
+          turnSequence: 2,
+        },
+      },
+      {
+        eve: { turnSequence: 3 },
+      },
+    ]);
+    expect(capturedEvents[offset + 1]).not.toHaveProperty(
+      "eve.linqConversation"
+    );
+  });
 });
 
 type EvlogEvents = NonNullable<typeof evlogHook.events>;

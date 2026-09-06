@@ -1,0 +1,228 @@
+{
+  "note": "Metadata-only production logs for sequential designated synthetic tests. turn24=case2,25=case3,26=case4,27=case5,28=case6,29=excluded case7 calibration,30=case7,31=case8,32=case1. Tool execution duration excludes channel delivery hook. Input tokens aggregate all calls.",
+  "records": [
+    {
+      "turnSequence": 24,
+      "timestamp": "2026-09-06T12:19:10.246Z",
+      "durationMs": 5354,
+      "commitHash": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+      "calls": 2,
+      "inputTokens": 69528,
+      "outputTokens": 48,
+      "totalTokens": 69576,
+      "steps": 2,
+      "cacheReadTokens": 69303,
+      "cacheWriteTokens": 219,
+      "finishReason": "stop",
+      "costUsd": 0.002999,
+      "tools": [
+        {
+          "name": "send_message",
+          "durationMs": 179,
+          "success": true
+        }
+      ]
+    },
+    {
+      "turnSequence": 25,
+      "timestamp": "2026-09-06T12:19:57.722Z",
+      "durationMs": 13091,
+      "commitHash": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+      "calls": 4,
+      "inputTokens": 140457,
+      "outputTokens": 285,
+      "totalTokens": 140742,
+      "steps": 4,
+      "cacheReadTokens": 139696,
+      "cacheWriteTokens": 749,
+      "finishReason": "stop",
+      "costUsd": 0.006651,
+      "tools": [
+        {
+          "name": "send_message",
+          "durationMs": 51,
+          "success": true
+        },
+        {
+          "name": "send_message",
+          "durationMs": 98,
+          "success": false,
+          "error": "Final delivery already completed for this turn. Finish with DELIVERY_COMPLETE.",
+          "inputTokens": 458
+        }
+      ]
+    },
+    {
+      "turnSequence": 26,
+      "timestamp": "2026-09-06T12:20:20.146Z",
+      "durationMs": 9092,
+      "commitHash": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+      "calls": 3,
+      "inputTokens": 106878,
+      "outputTokens": 87,
+      "totalTokens": 106965,
+      "steps": 3,
+      "cacheReadTokens": 106056,
+      "cacheWriteTokens": 813,
+      "finishReason": "stop",
+      "costUsd": 0.004861,
+      "tools": [
+        {
+          "name": "profile__save_memory",
+          "durationMs": 415,
+          "success": true
+        },
+        {
+          "name": "send_message",
+          "durationMs": 210,
+          "success": true,
+          "inputTokens": 70
+        }
+      ]
+    },
+    {
+      "turnSequence": 27,
+      "timestamp": "2026-09-06T12:20:33.781Z",
+      "durationMs": 5924,
+      "commitHash": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+      "calls": 2,
+      "inputTokens": 71463,
+      "outputTokens": 49,
+      "totalTokens": 71512,
+      "steps": 2,
+      "cacheReadTokens": 38444,
+      "cacheWriteTokens": 33013,
+      "finishReason": "stop",
+      "costUsd": 0.018164,
+      "tools": [
+        {
+          "name": "send_message",
+          "durationMs": 170,
+          "success": true
+        }
+      ]
+    },
+    {
+      "turnSequence": 28,
+      "timestamp": "2026-09-06T12:21:21.731Z",
+      "durationMs": 14106,
+      "commitHash": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+      "calls": 4,
+      "inputTokens": 143749,
+      "outputTokens": 134,
+      "totalTokens": 143883,
+      "steps": 4,
+      "cacheReadTokens": 143254,
+      "cacheWriteTokens": 483,
+      "finishReason": "stop",
+      "costUsd": 0.006298,
+      "tools": [
+        {
+          "name": "profile__remove_memory",
+          "durationMs": 252,
+          "success": true
+        },
+        {
+          "name": "profile__save_memory",
+          "durationMs": 239,
+          "success": true,
+          "inputTokens": 79
+        },
+        {
+          "name": "send_message",
+          "durationMs": 187,
+          "success": true,
+          "inputTokens": 45
+        }
+      ]
+    },
+    {
+      "turnSequence": 29,
+      "timestamp": "2026-09-06T12:21:37.926Z",
+      "durationMs": 7103,
+      "commitHash": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+      "calls": 2,
+      "inputTokens": 72275,
+      "outputTokens": 57,
+      "totalTokens": 72332,
+      "steps": 2,
+      "cacheReadTokens": 55360,
+      "cacheWriteTokens": 16909,
+      "finishReason": "stop",
+      "costUsd": 0.010808,
+      "tools": [
+        {
+          "name": "send_message",
+          "durationMs": 170,
+          "success": true
+        }
+      ]
+    },
+    {
+      "turnSequence": 30,
+      "timestamp": "2026-09-06T12:23:21.764Z",
+      "durationMs": 5256,
+      "commitHash": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+      "calls": 2,
+      "inputTokens": 72401,
+      "outputTokens": 47,
+      "totalTokens": 72448,
+      "steps": 2,
+      "cacheReadTokens": 55353,
+      "cacheWriteTokens": 17042,
+      "finishReason": "stop",
+      "costUsd": 0.01085,
+      "tools": [
+        {
+          "name": "send_message",
+          "durationMs": 173,
+          "success": true
+        }
+      ]
+    },
+    {
+      "turnSequence": 31,
+      "timestamp": "2026-09-06T12:23:36.638Z",
+      "durationMs": 5575,
+      "commitHash": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+      "calls": 2,
+      "inputTokens": 72612,
+      "outputTokens": 36,
+      "totalTokens": 72648,
+      "steps": 2,
+      "cacheReadTokens": 72395,
+      "cacheWriteTokens": 211,
+      "finishReason": "stop",
+      "costUsd": 0.00309,
+      "tools": [
+        {
+          "name": "send_message",
+          "durationMs": 178,
+          "success": true
+        }
+      ]
+    },
+    {
+      "turnSequence": 32,
+      "timestamp": "2026-09-06T12:24:00.749Z",
+      "durationMs": 6467,
+      "commitHash": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+      "calls": 2,
+      "inputTokens": 72799,
+      "outputTokens": 35,
+      "totalTokens": 72834,
+      "steps": 2,
+      "cacheReadTokens": 72606,
+      "cacheWriteTokens": 187,
+      "finishReason": "stop",
+      "costUsd": 0.003084,
+      "tools": [
+        {
+          "name": "send_message",
+          "durationMs": 207,
+          "success": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "phase": "candidate-wave1",
+  "sourceSha": "2ede1f2e6450dc8a69e9cba6db22094a8d8ae454",
+  "deploymentId": "dpl_FKi5eCwabJvXNZbK2mdpC7kMZygT",
+  "activationVerified": false,
+  "note": "No escalation observed and temporary facts still persisted. Preserve measurements but do not treat them as proof of lightweight-path performance until activation is resolved. Production restored and both temporary flags removed afterward.",
+  "records": [
+    {
+      "caseId": 1,
+      "prompt": "Hey there!",
+      "sentAt": 1788699290503,
+      "lastAbsentAt": 1788699307375,
+      "observedAt": 1788699308002,
+      "response": "Hey there!",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 2,
+      "prompt": "What's 17 plus 28? Just the number, please.",
+      "sentAt": 1788699326389,
+      "lastAbsentAt": 1788699335004,
+      "observedAt": 1788699335639,
+      "response": "45",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 3,
+      "prompt": "Write a friendly six-word good-morning message.",
+      "sentAt": 1788699336219,
+      "lastAbsentAt": 1788699348526,
+      "observedAt": 1788699349169,
+      "response": "Good morning! Hope your day shines.",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 4,
+      "prompt": "For our next few messages, remember this: my imaginary picnic bag is teal and has three pears. Reply briefly.",
+      "sentAt": 1788699384862,
+      "lastAbsentAt": 1788699401997,
+      "observedAt": 1788699402576,
+      "response": "Got it.",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 5,
+      "prompt": "What color is the bag, and how many pears are in it?",
+      "sentAt": 1788699403123,
+      "lastAbsentAt": 1788699419271,
+      "observedAt": 1788699419879,
+      "response": "Teal, with three pears.",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 6,
+      "prompt": "Change the fruit to apples, keeping the color and quantity. What is in the bag now?",
+      "sentAt": 1788699435157,
+      "lastAbsentAt": 1788699451558,
+      "observedAt": 1788699452193,
+      "response": "A teal bag with three apples.",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 7,
+      "prompt": "Explain why leaves look green in one sentence.",
+      "sentAt": 1788699452759,
+      "lastAbsentAt": 1788699466065,
+      "observedAt": 1788699466695,
+      "response": "Leaves look green because chlorophyll absorbs red and blue light while reflecting green light.",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 8,
+      "prompt": "Thanks! Reply with a short text acknowledgment.",
+      "sentAt": 1788699482078,
+      "lastAbsentAt": 1788699490869,
+      "observedAt": 1788699491508,
+      "response": "You’re welcome!",
+      "visibleAnswerCorrect": true
+    },
+    {
+      "caseId": 9,
+      "prompt": "Fetch https://example.com and tell me its page title. Check the page rather than answering from memory.",
+      "sentAt": 1788699505243,
+      "lastAbsentAt": 1788699518182,
+      "observedAt": 1788699518841,
+      "response": "Example Domain",
+      "visibleAnswerCorrect": true
+    }
+  ],
+  "environmentReadback": {
+    "checkedAt": "2026-09-06T13:00:35.733Z",
+    "mode": "on",
+    "exactWorkspaceMatch": true
+  },
+  "restoration": {
+    "deploymentId": "dpl_D1eUMmZsLY737t7daavHrrkp4Lv8",
+    "sourceSha": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+    "canonicalAliasVerified": true,
+    "temporaryFlagsRemoved": true
+  }
+}

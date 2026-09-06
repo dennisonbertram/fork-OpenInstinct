@@ -1,0 +1,27 @@
+{
+  "phase": "baseline",
+  "sourceSha": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+  "deploymentId": "dpl_D1eUMmZsLY737t7daavHrrkp4Lv8",
+  "purpose": "Separate capability-dependent case to measure escalation overhead; excluded from the eight conversational cases.",
+  "caseId": 9,
+  "prompt": "Fetch https://example.com and tell me its page title. Check the page rather than answering from memory.",
+  "sentAt": 1788698066446,
+  "lastAbsentAt": 1788698087609,
+  "observedAt": 1788698088221,
+  "response": "Example Domain",
+  "visibleAnswerCorrect": true,
+  "capabilityInvocationVerified": true,
+  "runtime": {
+    "turnSequence": 33,
+    "completedAt": "2026-09-06T12:34:50.478Z",
+    "durationMs": 14465,
+    "calls": 4,
+    "inputTokens": 146938,
+    "outputTokens": 155,
+    "cacheReadTokens": 145953,
+    "cacheWriteTokens": 973,
+    "costUsd": 0.006701,
+    "tools": ["web_fetch", "web_fetch", "send_message"]
+  },
+  "note": "Runtime metadata confirms two successful web_fetch calls before send_message. Arrival interval is 21.163–21.775 seconds; server turn completion is separate."
+}

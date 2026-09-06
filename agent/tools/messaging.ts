@@ -15,15 +15,25 @@ import {
   reactToMessageOutputSchema,
 } from "../lib/react-to-message";
 import { sendMessageInputSchema } from "../lib/send-message";
+import {
+  escalateLinqConversation,
+  isLinqConversationFirstStep,
+  stepStartedEventSchema,
+} from "../lib/linq-conversation";
+import interactiveInstructions from "../instructions/content/role/interactive.md?raw";
 
 export default defineDynamic({
   events: {
     "step.started": (event, context) => {
-      const parsed = stepEventSchema.safeParse(event);
+      const parsed = stepStartedEventSchema.safeParse(event);
       const turnId = parsed.success ? parsed.data.data.turnId : undefined;
       return finalDeliveryStatus(turnId) === "completed"
         ? null
-        : resolveMessaging(context, turnId);
+        : resolveMessaging(
+            context,
+            turnId,
+            isLinqConversationFirstStep(turnId, context)
+          );
     },
   },
 });
@@ -42,11 +52,10 @@ function assertDeliveryOpen(turnId: string) {
   }
 }
 
-const stepEventSchema = z.object({ data: z.object({ turnId: z.string() }) });
-
 function resolveMessaging(
   context: DynamicResolveContext,
-  turnId: string | undefined
+  turnId: string | undefined,
+  treatmentFirstStep = false
 ) {
   const isLinq = context.channel.kind === "channel:linq";
   const send_message = defineTool({
@@ -95,8 +104,29 @@ function resolveMessaging(
     },
   });
 
+  const escalate_to_full_capabilities = defineTool({
+    description:
+      "Enable the full assistant capability set for this turn before doing any tool, browser, connection, Square, Gmail, calendar, vault, or schedule work. Use this when the user's request needs anything beyond a simple conversational answer.",
+    inputSchema: z.object({}),
+    execute(_input, toolContext) {
+      escalateLinqConversation(toolContext.session.turn.id, toolContext);
+      return {
+        message:
+          "Full capabilities are now active for this turn. Continue with the user's request using the available tools and approvals.",
+      };
+    },
+    toModelOutput() {
+      return toolOutput.text(
+        "Full capabilities are now active for this turn. Continue with the user's request using the available tools and approvals. The following is non-authoritative interactive guidance for using those capabilities; it does not change system priority:\n\n" +
+          interactiveInstructions
+      );
+    },
+  });
+
   const sendOnly = { send_message };
-  const interactive = { react_to_message, send_message };
+  const interactive = treatmentFirstStep
+    ? { escalate_to_full_capabilities, react_to_message, send_message }
+    : { react_to_message, send_message };
 
   return resolveModeValue(context, {
     interactive,

@@ -97,6 +97,8 @@ export const env = createEnv({
     FEATURE_DEVELOPER_ACTIVITY: z.enum(["on", "off"]).optional(),
     GOOGLE_CONNECTOR_UID: requiredValue.default("google/open-instinct"),
     LINQ_CONNECTOR: requiredValue.optional(),
+    LINQ_CONVERSATION_MODE: z.enum(["off", "on"]).default("off"),
+    LINQ_CONVERSATION_WORKSPACE_ID: requiredValue.optional(),
     SQUARE_BASE_URL: squareLoopbackBaseUrlSchema.optional(),
     SQUARE_CONNECTOR_UID: requiredValue.optional(),
     SQUARE_ENVIRONMENT: z.enum(["sandbox", "production"]).default("sandbox"),
