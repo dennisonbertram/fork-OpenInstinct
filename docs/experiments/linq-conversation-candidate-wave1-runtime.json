@@ -1,0 +1,225 @@
+{
+  "deploymentId": "dpl_FKi5eCwabJvXNZbK2mdpC7kMZygT",
+  "sourceSha": "2ede1f2e6450dc8a69e9cba6db22094a8d8ae454",
+  "note": "Metadata only. Sequential case IDs1–9 map to turnSequence34–42. No escalation call observed; intended treatment activation remains unproven despite verified production environment mode on and exact workspace match. Do not report as a valid lightweight-path comparison.",
+  "records": [
+    {
+      "turnSequence": 34,
+      "timestamp": "2026-09-06T12:55:11.094Z",
+      "durationMs": 7186,
+      "calls": 2,
+      "inputTokens": 69593,
+      "outputTokens": 35,
+      "totalTokens": 69628,
+      "steps": 2,
+      "cacheWriteTokens": 69587,
+      "finishReason": "stop",
+      "costUsd": 0.03488,
+      "tools": [
+        {
+          "name": "send_message",
+          "durationMs": 233,
+          "success": true
+        }
+      ]
+    },
+    {
+      "turnSequence": 35,
+      "timestamp": "2026-09-06T12:55:37.991Z",
+      "durationMs": 5844,
+      "calls": 2,
+      "inputTokens": 69797,
+      "outputTokens": 33,
+      "totalTokens": 69830,
+      "steps": 2,
+      "cacheReadTokens": 69587,
+      "cacheWriteTokens": 204,
+      "finishReason": "stop",
+      "costUsd": 0.002967,
+      "tools": [
+        {
+          "name": "send_message",
+          "durationMs": 185,
+          "success": true
+        }
+      ]
+    },
+    {
+      "turnSequence": 36,
+      "timestamp": "2026-09-06T12:55:52.156Z",
+      "durationMs": 6556,
+      "calls": 2,
+      "inputTokens": 70034,
+      "outputTokens": 74,
+      "totalTokens": 70108,
+      "steps": 2,
+      "cacheReadTokens": 69791,
+      "cacheWriteTokens": 237,
+      "finishReason": "stop",
+      "costUsd": 0.00309,
+      "tools": [
+        {
+          "name": "send_message",
+          "durationMs": 149,
+          "success": true
+        }
+      ]
+    },
+    {
+      "turnSequence": 37,
+      "timestamp": "2026-09-06T12:56:44.671Z",
+      "durationMs": 13693,
+      "calls": 4,
+      "inputTokens": 140978,
+      "outputTokens": 117,
+      "totalTokens": 141095,
+      "steps": 4,
+      "cacheReadTokens": 140480,
+      "cacheWriteTokens": 486,
+      "finishReason": "stop",
+      "costUsd": 0.006148,
+      "tools": [
+        {
+          "name": "profile__remove_memory",
+          "durationMs": 328,
+          "success": true
+        },
+        {
+          "name": "profile__save_memory",
+          "durationMs": 346,
+          "success": true,
+          "inputTokens": 66
+        },
+        {
+          "name": "send_message",
+          "durationMs": 50,
+          "success": true,
+          "inputTokens": 45
+        }
+      ]
+    },
+    {
+      "turnSequence": 38,
+      "timestamp": "2026-09-06T12:57:02.710Z",
+      "durationMs": 6649,
+      "calls": 2,
+      "inputTokens": 70739,
+      "outputTokens": 47,
+      "totalTokens": 70786,
+      "steps": 2,
+      "cacheReadTokens": 34080,
+      "cacheWriteTokens": 36653,
+      "finishReason": "stop",
+      "costUsd": 0.019805,
+      "tools": [
+        {
+          "name": "send_message",
+          "durationMs": 204,
+          "success": true
+        }
+      ]
+    },
+    {
+      "turnSequence": 39,
+      "timestamp": "2026-09-06T12:57:35.026Z",
+      "durationMs": 13771,
+      "calls": 4,
+      "inputTokens": 142271,
+      "outputTokens": 104,
+      "totalTokens": 142375,
+      "steps": 4,
+      "cacheReadTokens": 141838,
+      "cacheWriteTokens": 421,
+      "finishReason": "stop",
+      "costUsd": 0.006138,
+      "tools": [
+        {
+          "name": "profile__remove_memory",
+          "durationMs": 265,
+          "success": true
+        },
+        {
+          "name": "profile__save_memory",
+          "durationMs": 250,
+          "success": true,
+          "inputTokens": 49
+        },
+        {
+          "name": "send_message",
+          "durationMs": 55,
+          "success": true,
+          "inputTokens": 45
+        }
+      ]
+    },
+    {
+      "turnSequence": 40,
+      "timestamp": "2026-09-06T12:57:49.329Z",
+      "durationMs": 6166,
+      "calls": 2,
+      "inputTokens": 71385,
+      "outputTokens": 59,
+      "totalTokens": 71444,
+      "steps": 2,
+      "cacheReadTokens": 34080,
+      "cacheWriteTokens": 37299,
+      "finishReason": "stop",
+      "costUsd": 0.020157,
+      "tools": [
+        {
+          "name": "send_message",
+          "durationMs": 200,
+          "success": true
+        }
+      ]
+    },
+    {
+      "turnSequence": 41,
+      "timestamp": "2026-09-06T12:58:14.307Z",
+      "durationMs": 6312,
+      "calls": 2,
+      "inputTokens": 71608,
+      "outputTokens": 36,
+      "totalTokens": 71644,
+      "steps": 2,
+      "cacheReadTokens": 71379,
+      "cacheWriteTokens": 223,
+      "finishReason": "stop",
+      "costUsd": 0.003055,
+      "tools": [
+        {
+          "name": "send_message",
+          "durationMs": 59,
+          "success": true
+        }
+      ]
+    },
+    {
+      "turnSequence": 42,
+      "timestamp": "2026-09-06T12:58:41.263Z",
+      "durationMs": 10059,
+      "calls": 3,
+      "inputTokens": 108264,
+      "outputTokens": 73,
+      "totalTokens": 108337,
+      "steps": 3,
+      "cacheReadTokens": 107561,
+      "cacheWriteTokens": 694,
+      "finishReason": "stop",
+      "costUsd": 0.004828,
+      "tools": [
+        {
+          "name": "web_fetch",
+          "durationMs": 210,
+          "success": true
+        },
+        {
+          "name": "send_message",
+          "durationMs": 176,
+          "success": true,
+          "inputTokens": 236
+        }
+      ]
+    }
+  ]
+}

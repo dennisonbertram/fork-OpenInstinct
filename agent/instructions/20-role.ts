@@ -4,12 +4,12 @@ import interactiveInstructions from "./content/role/interactive.md?raw";
 import scheduledReportInstructions from "./content/role/scheduled-report.md?raw";
 import scheduledWorkerInstructions from "./content/role/scheduled-worker.md?raw";
 import treatmentInstructions from "./content/role/linq-conversation-treatment.md?raw";
-import { isLinqConversationTreatment } from "@/agent/lib/linq-conversation";
+import { recordLinqConversationRoleSelection } from "@/agent/lib/linq-conversation";
 
 export default defineDynamic({
   events: {
     "turn.started": (_event, context) =>
-      isLinqConversationTreatment(context)
+      recordLinqConversationRoleSelection(context)
         ? defineInstructions({ content: treatmentInstructions })
         : resolveModeInstructions(context, {
             interactive: interactiveInstructions,

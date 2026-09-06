@@ -8,6 +8,12 @@ interface ConversationExperimentConfig {
   workspaceId: string | undefined;
 }
 
+interface ExperimentLogPayload {
+  readonly experiment: {
+    readonly linqConversation: Readonly<Record<string, boolean>>;
+  };
+}
+
 const state = vi.hoisted(() => {
   const resets: (() => void)[] = [];
   return { resets };
@@ -15,6 +21,9 @@ const state = vi.hoisted(() => {
 const config = vi.hoisted<ConversationExperimentConfig>(() => ({
   mode: "off",
   workspaceId: undefined,
+}));
+const evlog = vi.hoisted(() => ({
+  set: vi.fn<(payload: ExperimentLogPayload) => void>(),
 }));
 vi.mock("@/env", async (importOriginal) => {
   const actual = await importOriginal<typeof EnvModule>();
@@ -31,6 +40,9 @@ vi.mock("@/env", async (importOriginal) => {
     },
   };
 });
+vi.mock("evlog/eve", () => ({
+  useLogger: () => evlog,
+}));
 vi.mock("eve/context", () => ({
   defineState: <T>(_name: string, initial: () => T) => {
     let value = initial();
@@ -58,6 +70,7 @@ describe("Linq conversational treatment", () => {
     for (const reset of state.resets) reset();
     config.mode = "off";
     config.workspaceId = undefined;
+    evlog.set.mockReset();
   });
 
   it("reduces the first treatment step and restores tools after escalation without mutating resolver context", async () => {
@@ -264,6 +277,74 @@ describe("Linq conversational treatment", () => {
     expect(selected?.content).toContain(
       "Emit `DELIVERY_COMPLETE` only after the delivery tool completed in the current turn"
     );
+  });
+
+  it("records the actual selected role and first-step capability suppression for an enabled treatment", async () => {
+    config.mode = "on";
+    config.workspaceId = "personal:treatment";
+    const context = contextFor({ workspaceId: "personal:treatment" });
+
+    await roleInstructions.events["turn.started"]?.({}, context);
+    await calendar.events["step.started"]?.(
+      { data: { turnId: "turn-observed" } },
+      context
+    );
+    escalateLinqConversation("turn-observed", context);
+
+    expect(evlog.set).toHaveBeenCalledWith({
+      experiment: {
+        linqConversation: {
+          authenticatorIsLinqMessage: true,
+          channelIsLinq: true,
+          interactiveMode: true,
+          roleSelected: true,
+          targetWorkspaceConfigured: true,
+          workspaceMatches: true,
+        },
+      },
+    });
+    expect(evlog.set).toHaveBeenCalledWith({
+      experiment: {
+        linqConversation: { projectCapabilitySuppressed: true },
+      },
+    });
+    expect(evlog.set).toHaveBeenCalledWith({
+      experiment: { linqConversation: { escalated: true } },
+    });
+  });
+
+  it("keeps observations off outside the experiment and identifies an ineligible role without recording scope values", async () => {
+    const context = contextFor({ workspaceId: "personal:other" });
+
+    await roleInstructions.events["turn.started"]?.({}, context);
+    expect(evlog.set).not.toHaveBeenCalled();
+
+    config.mode = "on";
+    config.workspaceId = "personal:treatment";
+    await roleInstructions.events["turn.started"]?.({}, context);
+    await calendar.events["step.started"]?.(
+      { data: { turnId: "turn-ineligible" } },
+      context
+    );
+
+    expect(evlog.set).toHaveBeenCalledWith({
+      experiment: {
+        linqConversation: {
+          authenticatorIsLinqMessage: true,
+          channelIsLinq: true,
+          interactiveMode: true,
+          roleSelected: false,
+          targetWorkspaceConfigured: true,
+          workspaceMatches: false,
+        },
+      },
+    });
+    expect(evlog.set).toHaveBeenCalledWith({
+      experiment: {
+        linqConversation: { projectCapabilitySuppressed: false },
+      },
+    });
+    expect(JSON.stringify(evlog.set.mock.calls)).not.toContain("personal:");
   });
 });
 

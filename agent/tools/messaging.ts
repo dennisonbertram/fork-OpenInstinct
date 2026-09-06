@@ -109,7 +109,7 @@ function resolveMessaging(
       "Enable the full assistant capability set for this turn before doing any tool, browser, connection, Square, Gmail, calendar, vault, or schedule work. Use this when the user's request needs anything beyond a simple conversational answer.",
     inputSchema: z.object({}),
     execute(_input, toolContext) {
-      escalateLinqConversation(toolContext.session.turn.id);
+      escalateLinqConversation(toolContext.session.turn.id, toolContext);
       return {
         message:
           "Full capabilities are now active for this turn. Continue with the user's request using the available tools and approvals.",
