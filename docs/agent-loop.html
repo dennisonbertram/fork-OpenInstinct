@@ -872,7 +872,11 @@
           <tr>
             <td>every event</td>
             <td>
-              evlog, redacted, message bodies omitted.
+              evlog, redacted, message bodies omitted. With the off-by-default
+              exact-workspace Linq latency diagnostic enabled, its final turn
+              record contains stage durations only: application admission,
+              handoff, model preparation, and provider acceptance. It does not
+              change message handling.
               <code>agent/hooks/evlog.ts</code>
             </td>
           </tr>
