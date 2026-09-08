@@ -1,0 +1,27 @@
+{
+  "source": "Vercel Runtime Logs request detail",
+  "samples": [
+    {
+      "sample": "B",
+      "requestStartedAt": "2026-09-08T12:23:00.055Z",
+      "functionExecutionDurationMs": 11320,
+      "responseFinishedDurationMs": 11700,
+      "functionStartType": "cold",
+      "coldStartDurationMs": 2070,
+      "peakConcurrency": 1
+    },
+    {
+      "sample": "C",
+      "requestStartedAt": "2026-09-08T12:23:44.277Z",
+      "functionExecutionDurationMs": 5990,
+      "responseFinishedDurationMs": 6000,
+      "functionStartType": "hot",
+      "coldStartDurationMs": null,
+      "peakConcurrency": 1
+    }
+  ],
+  "limitations": [
+    "Function execution duration is wall time, not CPU time.",
+    "The request detail did not expose a span waterfall or event/replay breakdown."
+  ]
+}

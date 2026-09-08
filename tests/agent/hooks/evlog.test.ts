@@ -1,3 +1,4 @@
+import { streamText } from "ai";
 import type { HookContext } from "eve/hooks";
 import type { DrainContext, WideEvent } from "evlog";
 import { initLogger } from "evlog";
@@ -18,6 +19,8 @@ vi.mock("@/env", async (importOriginal) => {
 });
 import evlogHook from "@/agent/hooks/evlog";
 import instrumentation from "@/agent/instrumentation/runtime-context";
+import { wrapLinqModelDurationProbe } from "@/agent/lib/linq/timing";
+import { contractFixtureModel } from "@/evals/contract/fixture-model";
 
 const capturedEvents: WideEvent[] = [];
 
@@ -101,6 +104,46 @@ describe("evlog hook", () => {
     expect(capturedEvents[1]).not.toHaveProperty("message.received");
     expect(capturedEvents[1]).not.toHaveProperty("message.response");
     expect(capturedEvents[1]).not.toHaveProperty("channel.linq");
+  });
+
+  it("flushes scoped numeric model-stream timing without message content", async () => {
+    const before = capturedEvents.length;
+    const context = hookContext("model-stream-turn", 4, timingAttributes());
+    await emit("turn.started", turnStarted("model-stream-turn", 4), context);
+    const model = wrapLinqModelDurationProbe(contractFixtureModel, {
+      auth: context.session.auth.current,
+      sessionId: context.session.id,
+      turnId: "model-stream-turn",
+    });
+    await streamText({
+      messages: [{ content: "silent", role: "user" }],
+      model,
+      tools: {},
+    }).consumeStream();
+    await emit("turn.completed", turnCompleted("model-stream-turn"), context);
+
+    const [event] = capturedEvents.slice(before);
+    expect(event).toHaveProperty(
+      "eve.linqLatency.admissionToFirstModelProviderStartMs",
+      expect.any(Number)
+    );
+    expect(event).toHaveProperty(
+      "eve.linqLatency.firstModelProviderDoStreamReturnMs",
+      expect.any(Number)
+    );
+    expect(event).toHaveProperty(
+      "eve.linqLatency.firstModelProviderTimeToFirstConsumedChunkMs",
+      expect.any(Number)
+    );
+    expect(event).toHaveProperty(
+      "eve.linqLatency.firstModelProviderConsumedStreamLifetimeMs",
+      expect.any(Number)
+    );
+    expect(event).toHaveProperty(
+      "eve.linqLatency.firstModelProviderStreamCompleted",
+      true
+    );
+    expect(JSON.stringify(event)).not.toContain("silent");
   });
 
   it("records eligible Linq timing stages without retaining them for later turns", async () => {

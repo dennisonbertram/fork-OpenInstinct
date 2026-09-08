@@ -15,7 +15,8 @@ vi.mock("@/db/services/scheduled-agent-run-leases", () => ({
 vi.mock("@/db/services/settings", () => ({
   getGatewayModel: services.getModel,
 }));
-vi.mock("@/env", () => ({
+vi.mock("@/env", async (importOriginal) => ({
+  ...(await importOriginal()),
   isContractFixtureEnabled: () => fixture.enabled,
 }));
 

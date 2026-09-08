@@ -192,6 +192,41 @@ The diagnostic request used a `closed_at` filter, but the fake Square schema has
 no `closed_at` filter. This run therefore does not establish production
 `closed_at` filtering behavior.
 
-The numeric resume-timing logger is implemented and passes local checks, but no
-hosted timing evidence has been captured from it. The current 10x objective
-remains unproven.
+The numeric resume-timing logger emitted two hosted records on September 8:
+670 ms and 1,026 ms total. It is process-wide and contains no conversation
+identifier, so those records cannot be joined to either iMessage sample. The
+current 10x objective remains unproven.
+
+## Scoped model-stream measurement
+
+The next diagnostic revision adds an off-by-default, exact-workspace Linq probe
+at the AI SDK model boundary. It records only numeric durations and fixed
+booleans in the existing redacted `eve.linqLatency` event context. It records
+one model-provider attempt per turn: admission to the `doStream` start,
+`doStream` return (the SDK returned its stream result), first source chunk
+consumed, and consumed-stream lifetime. The lifetime includes downstream
+backpressure, so it is not a pure model inference duration. It also records a
+fixed completion, failure, or cancellation outcome. It preserves request
+headers, provider options, response metadata, chunk order, and cancellation;
+it does not inspect model text, tool data, error payloads, identifiers, or
+content.
+
+A successful `modelIsLunaFast: true` remains the existing proof that the first
+step selected Luna Fast. `false` only means another model was selected; this
+probe does not record a model name or identifier.
+
+The sanitized numeric request projection is
+[`linq-latency-request-timing.json`](linq-latency-request-timing.json).
+PR #139 emitted two global workflow-resume records (670 ms and 1,026 ms), but
+they cannot be joined to a conversation and do not show a 10x improvement.
+For the observed iMessage child paths, the old-workflow request started at
+12:23:00.055 for B and 12:23:44.277 for C. The platform reported function
+execution durations of 11.32 seconds and 5.99 seconds, with responses finished
+at about 11.7 and 6.0 seconds. The parent first `turnStep` started at
+12:23:09.793 and 12:23:48.188, leaving 9.738 and 3.911 seconds before that step
+within each request envelope. Expanded Fluid UI metadata reports a 2.07-second
+cold start for B and a hot start for C; both peak concurrency values were one.
+Cold start adds cost to B but cannot explain C's 3.911-second pre-step interval.
+Function execution duration is wall time, not CPU time, and these values do not
+establish a complete cause. The new model-stream probe is implemented locally
+but has no hosted capture yet. The 10x goal remains unproven.
