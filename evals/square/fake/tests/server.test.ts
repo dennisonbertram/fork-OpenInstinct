@@ -56,7 +56,7 @@ async function json<T>(res: Response, schema: z.ZodType<T>): Promise<T> {
 }
 
 describe("fake Square server", () => {
-  let square: { url: string; close(): Promise<void> };
+  let square: Awaited<ReturnType<typeof startFakeSquare>>;
 
   beforeEach(async () => {
     square = await startFakeSquare({ port: 0 });
@@ -215,6 +215,106 @@ describe("fake Square server", () => {
           0
         )
     ).toBe(5575);
+  });
+
+  it("captures bounded synthetic SearchOrders diagnostics without request headers or order content", async () => {
+    const first = await post(
+      "/v2/orders/search",
+      {
+        location_ids: ["LQK1QAMZG63BM"],
+        query: {
+          filter: {
+            date_time_filter: {
+              created_at: {
+                start_at: "2026-11-01T04:00:00.000Z",
+                end_at: "2026-11-02T04:59:59.999Z",
+              },
+            },
+            state_filter: { states: ["COMPLETED"] },
+          },
+        },
+      },
+      { authorization: "Bearer AUTHORIZATION_CANARY" }
+    );
+    const firstPage = await json(first, ordersResponseSchema);
+    if (!firstPage.cursor) throw new Error("Expected a cursor in first page.");
+    await post("/v2/orders/search", {
+      cursor: firstPage.cursor,
+      location_ids: ["LQK1QAMZG63BM"],
+      query: {
+        filter: {
+          date_time_filter: {
+            created_at: {
+              start_at: "2026-11-01T04:00:00.000Z",
+              end_at: "2026-11-02T04:59:59.999Z",
+            },
+          },
+          state_filter: { states: ["COMPLETED"] },
+        },
+      },
+    });
+
+    expect(square.searchOrderDiagnostics()).toEqual({
+      dropped: 0,
+      requests: [
+        {
+          cursor: null,
+          filters: {
+            customerIds: [],
+            endAt: "2026-11-02T04:59:59.999Z",
+            locationIds: ["LQK1QAMZG63BM"],
+            startAt: "2026-11-01T04:00:00.000Z",
+            states: ["COMPLETED"],
+          },
+          result: {
+            matchedCount: 3,
+            nextCursor: "2",
+            returnedCount: 2,
+            status: "accepted",
+          },
+        },
+        {
+          cursor: "2",
+          filters: {
+            customerIds: [],
+            endAt: "2026-11-02T04:59:59.999Z",
+            locationIds: ["LQK1QAMZG63BM"],
+            startAt: "2026-11-01T04:00:00.000Z",
+            states: ["COMPLETED"],
+          },
+          result: {
+            matchedCount: 3,
+            nextCursor: null,
+            returnedCount: 1,
+            status: "accepted",
+          },
+        },
+      ],
+    });
+    expect(JSON.stringify(square.searchOrderDiagnostics())).not.toContain(
+      "Bearer"
+    );
+    expect(JSON.stringify(square.searchOrderDiagnostics())).not.toContain(
+      "AUTHORIZATION_CANARY"
+    );
+    expect(JSON.stringify(square.searchOrderDiagnostics())).not.toContain(
+      "ORD_"
+    );
+  });
+
+  it("caps synthetic SearchOrders diagnostics", async () => {
+    await Promise.all(
+      Array.from({ length: 21 }, () =>
+        post("/v2/orders/search", {
+          location_ids: ["LQK1QAMZG63BM"],
+          return_entries: false,
+        })
+      )
+    );
+
+    const diagnostics = square.searchOrderDiagnostics();
+    expect(diagnostics.requests).toHaveLength(20);
+    expect(diagnostics.dropped).toBe(1);
   });
 
   it("honors a smaller requested order limit but caps large requests at the fixture page size", async () => {
