@@ -1,4 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 vi.stubEnv("WORKFLOW_RESUME_TIMING", "on");
 
@@ -8,20 +11,68 @@ const { default: agentRunsInstrumentation } =
 const REQUEST_CONTEXT = Symbol.for("@vercel/request-context");
 const SYNTHETIC_SECRET = "SYNTHETIC_SECRET_SENTINEL";
 
-interface ExportedSpan {
-  attributes?: { key: string; value: unknown }[];
-  events?: { name?: string; attributes?: unknown }[];
-  links?: { attributes?: { key: string; value: unknown }[] }[];
-  name?: string;
-  status?: { message?: string };
-}
-
 interface ReportedSpans {
   resourceSpans: {
     resource?: { attributes?: { key: string; value: unknown }[] };
-    scopeSpans?: { spans?: ExportedSpan[] }[];
+    scopeSpans?: {
+      spans?: {
+        attributes?: { key: string; value: unknown }[];
+        events?: { name?: string; attributes?: unknown }[];
+        links?: { attributes?: { key: string; value: unknown }[] }[];
+        name?: string;
+        status?: { code?: number; message?: string };
+      }[];
+    }[];
   }[];
 }
+
+const exportedSpanSchema = z
+  .object({
+    attributes: z
+      .array(z.object({ key: z.string(), value: z.unknown() }))
+      .optional(),
+    events: z
+      .array(
+        z.object({
+          attributes: z.unknown().optional(),
+          name: z.string().optional(),
+        })
+      )
+      .optional(),
+    links: z
+      .array(
+        z.object({
+          attributes: z
+            .array(z.object({ key: z.string(), value: z.unknown() }))
+            .optional(),
+        })
+      )
+      .optional(),
+    name: z.string().optional(),
+    status: z
+      .object({ code: z.number().optional(), message: z.string().optional() })
+      .optional(),
+  })
+  .loose();
+
+const reportedSpansSchema = z.array(
+  z.object({
+    resourceSpans: z.array(
+      z.object({
+        resource: z
+          .object({
+            attributes: z
+              .array(z.object({ key: z.string(), value: z.unknown() }))
+              .optional(),
+          })
+          .optional(),
+        scopeSpans: z
+          .array(z.object({ spans: z.array(exportedSpanSchema).optional() }))
+          .optional(),
+      })
+    ),
+  })
+);
 
 type RequestContextGlobal = typeof globalThis & {
   [REQUEST_CONTEXT]?: {
@@ -31,7 +82,7 @@ type RequestContextGlobal = typeof globalThis & {
 
 function syntheticSpan() {
   return {
-    name: "workflow.resume",
+    name: "step.execute turnStep",
     spanContext: () => ({
       traceId: "11111111111111111111111111111111",
       spanId: "2222222222222222",
@@ -98,6 +149,92 @@ afterEach(() => {
 });
 
 describe("Agent Runs instrumentation", () => {
+  it("exports only named generated Workflow spans through the registered pipeline", () => {
+    const output = execFileSync(
+      join(process.cwd(), "node_modules/.bin/tsx"),
+      [
+        join(
+          process.cwd(),
+          "tests/unit/eve-agent-runs-generated-export.fixture.ts"
+        ),
+      ],
+      { encoding: "utf8" }
+    );
+    const exported = reportedSpansSchema.parse(JSON.parse(output));
+    const serialized = JSON.stringify(exported);
+    const spans = exported.flatMap((batch) =>
+      batch.resourceSpans.flatMap(
+        (resourceSpan) =>
+          resourceSpan.scopeSpans?.flatMap(
+            (scopeSpan) => scopeSpan.spans ?? []
+          ) ?? []
+      )
+    );
+
+    expect(spans.map((span) => span.name)).toContain("step.execute turnStep");
+    expect(spans.map((span) => span.name)).not.toContain(
+      `workflow.${SYNTHETIC_SECRET}`
+    );
+    expect(spans.map((span) => span.name)).not.toContain(
+      `workflow.run ${SYNTHETIC_SECRET}`
+    );
+    expect(spans.map((span) => span.name)).not.toContain(
+      `step.execute ${SYNTHETIC_SECRET}`
+    );
+    expect(serialized).not.toContain(SYNTHETIC_SECRET);
+    const turnStep = spans.find(
+      (span) => span.name === "step.execute turnStep"
+    );
+    const turnStepAttributes = Object.fromEntries(
+      (turnStep?.attributes ?? []).map((attribute) => [
+        attribute.key,
+        attribute.value,
+      ])
+    );
+
+    expect(turnStepAttributes).toMatchObject({
+      "workflow.resume.phase.producer_prep_ms": { intValue: 11 },
+      "workflow.resume.phase.queue_delivery_ms": { intValue: 23 },
+      "workflow.resume.phase.replay_ms": { intValue: 41 },
+      "workflow.resume.phase.resume_setup_ms": { intValue: 31 },
+      "workflow.resume.phase.step_claim_ms": { intValue: 67 },
+      "workflow.resume.phase.step_dispatch_ms": { intValue: 53 },
+      "workflow.resume.phase.step_prepare_ms": { intValue: 79 },
+      "workflow.resume.total_ms": { intValue: 3593 },
+      "workflow.resume.trigger": { stringValue: "hook" },
+    });
+    expect(turnStep?.events).toEqual([
+      expect.objectContaining({
+        attributes: [],
+        name: "workflow.hook_received.create.start",
+      }),
+    ]);
+    expect(turnStep?.links?.[0]?.attributes).toEqual([
+      {
+        key: "eve.link.type",
+        value: { stringValue: "workflow.delivery" },
+      },
+    ]);
+    expect(turnStep?.status).toEqual({ code: 2 });
+    expect(
+      exported.flatMap((batch) =>
+        batch.resourceSpans.flatMap(
+          (resourceSpan) =>
+            resourceSpan.resource?.attributes?.map(
+              (attribute) => attribute.key
+            ) ?? []
+        )
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        "cloud.provider",
+        "deployment.environment.name",
+        "process.runtime.name",
+        "service.name",
+      ])
+    );
+  });
+
   it("exports timing and delivery/model metadata while dropping synthetic content", async () => {
     let received: ReportedSpans | undefined;
     // SAFETY: this test owns the synthetic Vercel request-context slot.
@@ -164,7 +301,7 @@ describe("Agent Runs instrumentation", () => {
       "workflow.resume.total_ms",
       "workflow.resume.trigger",
     ]);
-    expect(exportedSpan?.name).toBe("workflow.resume");
+    expect(exportedSpan?.name).toBe("step.execute turnStep");
     expect(exportedSpan?.events).toHaveLength(1);
     expect(exportedSpan?.events?.[0]?.name).toBe("step.completed");
     expect(exportedSpan?.events?.[0]?.attributes).toEqual([]);

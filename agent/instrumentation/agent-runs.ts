@@ -67,7 +67,39 @@ const ALLOWED_ATTRIBUTES = new Set([
   "step.ttfs_ms",
 ]);
 
+// These are the fixed resume-path names emitted by Eve 0.49.0's compiled
+// Workflow runtime. Its phase measurements are attached to the outer
+// `step.execute ${stepName}` span. The runtime derives the visible suffix from
+// a step identifier, so exporting a prefix or a general pattern would create a
+// content-export surface. Keep only the three framework-owned step identifiers
+// registered by the bundled agent runtime.
+const ALLOWED_SPAN_NAMES = new Set([
+  "agent.channel.delivery",
+  "ai.eve.turn",
+  "workflow.bundle.compile",
+  "workflow.bundle.evaluate",
+  "workflow.execute",
+  "workflow.hook_received.create.start",
+  "workflow.input.hydrate",
+  "workflow.precondition_reinvocations",
+  "workflow.precondition_restarts",
+  "workflow.replay.execute",
+  "workflow.replay.load",
+  "workflow.route.flow",
+  "workflow.route.get_world",
+  "workflow.route.get_world_handlers",
+  "workflow.route.init",
+  "workflow.run_started.create.start",
+  "workflow.vm.create_context",
+  "step.execute dispatchTurnStep",
+  "step.execute settleCancelledTurnStep",
+  "step.execute turnStep",
+]);
+
 const metadataOnlyPolicy: SpanExportPolicy = {
+  span({ name }) {
+    return ALLOWED_SPAN_NAMES.has(name);
+  },
   attribute({ key }) {
     return ALLOWED_ATTRIBUTES.has(key)
       ? { action: "keep" }

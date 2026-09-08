@@ -890,14 +890,15 @@
               resume, replay, queue, route, model, and delivery metadata to
               Vercel Agent Runs; model/tool content, tokens, credentials, and
               bodies are redacted from span attributes, events, and status
-              messages. Eve's built-in policy does not rewrite span names,
-              resource attributes, or link attributes; the synthetic boundary
-              test covers those surfaces and treats them as framework-owned
-              structural metadata. Keep this diagnostic limited to designated
-              synthetic runs until those surfaces have been reviewed for any
-              dynamic sensitive values. The off branch removes the seeded Agent
-              Runs destination and leaves the existing evlog and Linq runtime
-              context unchanged.
+              messages. The exporter accepts fixed Eve resume span names plus
+              the three bundled, framework-owned Agent step names; it does not
+              accept dynamic workflow or step suffixes. Resource and link
+              attributes remain framework-owned structural metadata; the
+              synthetic boundary test covers those surfaces. Keep this
+              diagnostic limited to designated synthetic runs until those
+              surfaces have been reviewed for any dynamic sensitive values. The
+              off branch removes the seeded Agent Runs destination and leaves
+              the existing evlog and Linq runtime context unchanged.
               <code>agent/instrumentation/agent-runs.ts</code>
               <code>agent/instrumentation/otel.ts</code>
               <code>agent/instrumentation/runtime-context.ts</code>
