@@ -6,6 +6,7 @@ import {
   wrapInteractiveDeliveryGuard,
 } from "@/agent/lib/delivery-guard";
 import { finalDeliveryStatus } from "@/agent/lib/message-delivery";
+import { wrapLinqModelDurationProbe } from "@/agent/lib/linq/timing";
 import { scheduledRunIdentity } from "@/agent/lib/schedules/identity";
 import { isScheduledAgentRunLeaseActive } from "@/db/services/scheduled-agent-run-leases";
 import { getGatewayModel } from "@/db/services/settings";
@@ -45,7 +46,11 @@ export default defineAgent({
         if (isContractFixtureEnabled()) {
           return {
             model: wrapInteractiveDeliveryGuard(
-              contractFixtureModel,
+              wrapLinqModelDurationProbe(contractFixtureModel, {
+                auth: caller,
+                sessionId: ctx.session.id,
+                turnId,
+              }),
               toolChoice
             ),
             modelContextWindowTokens: 128_000,
@@ -53,7 +58,10 @@ export default defineAgent({
         }
         return {
           model: wrapInteractiveDeliveryGuard(
-            gateway(await getGatewayModel(scopeFromPrincipal(caller))),
+            wrapLinqModelDurationProbe(
+              gateway(await getGatewayModel(scopeFromPrincipal(caller))),
+              { auth: caller, sessionId: ctx.session.id, turnId }
+            ),
             toolChoice
           ),
         };

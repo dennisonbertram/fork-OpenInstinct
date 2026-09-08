@@ -879,10 +879,14 @@
             <td>
               evlog, redacted, message bodies omitted. With the off-by-default
               exact-workspace Linq latency diagnostic enabled, its final turn
-              record contains stage durations only: application admission,
-              handoff, model preparation, and provider acceptance. It does not
-              change message handling.
-              <code>agent/hooks/evlog.ts</code>
+              record contains numeric stage durations and fixed outcomes:
+              admission, handoff, model preparation, selected-model stream
+              start, first consumed chunk, consumed-stream lifetime, and
+              provider acceptance. Stream lifetime includes consumer
+              backpressure and is not pure inference time. It does not change
+              message handling or retain model content, identifiers, or errors.
+              The model-stream probe is implemented locally but has no hosted
+              capture yet. <code>agent/hooks/evlog.ts</code>
             </td>
           </tr>
           <tr>
@@ -897,9 +901,10 @@
               constant event name. It does not read IDs, resource/link/event or
               status attributes, messages, tools, models, or token data. This
               flag is process-wide and cannot restrict logging to one synthetic
-              session. While enabled it disables the seeded Vercel Agent Runs
-              destination; existing evlog and Linq runtime context are
-              unchanged. Hosted behavior has not been observed.
+              session. Two hosted September 8 records measured 670 ms and 1,026
+              ms, but have no conversation identifier and cannot be joined to a
+              Linq turn. Agent Runs is disabled in this revision; existing evlog
+              and Linq runtime context are unchanged.
               <code>agent/instrumentation/agent-runs.ts</code>
               <code>agent/instrumentation/otel.ts</code>
               <code>agent/instrumentation/workflow-resume-timing.ts</code>

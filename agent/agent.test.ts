@@ -1,22 +1,57 @@
 import type { DynamicResolveContext } from "eve";
-import { streamText } from "ai";
+import { streamText, type LanguageModel } from "ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { contractFixtureModel } from "@/evals/contract/fixture-model";
+import type { LinqLatencyStages } from "@/agent/lib/linq/timing";
 import type { finalDeliveryStatus } from "@/agent/lib/message-delivery";
 import type { getGatewayModel } from "@/db/services/settings";
 import type { isScheduledAgentRunLeaseActive } from "@/db/services/scheduled-agent-run-leases";
 
-const services = vi.hoisted(() => ({
+interface EvlogContext {
+  linqLatency?: LinqLatencyStages;
+}
+
+interface TestServices {
+  contractFixtureEnabled: boolean;
+  deliveryStatus: ReturnType<typeof vi.fn<typeof finalDeliveryStatus>>;
+  evlogContext: EvlogContext;
+  gateway: ReturnType<typeof vi.fn<(modelId: string) => LanguageModel>>;
+  getModel: ReturnType<typeof vi.fn<typeof getGatewayModel>>;
+  isActive: ReturnType<typeof vi.fn<typeof isScheduledAgentRunLeaseActive>>;
+}
+
+const services = vi.hoisted<TestServices>(() => ({
   getModel: vi.fn<typeof getGatewayModel>(),
   isActive: vi.fn<typeof isScheduledAgentRunLeaseActive>(),
   deliveryStatus: vi.fn<typeof finalDeliveryStatus>(),
+  gateway: vi.fn<(modelId: string) => LanguageModel>(),
+  contractFixtureEnabled: true,
+  evlogContext: {},
 }));
 
 vi.mock("eve", () => ({
   defineAgent: <T>(definition: T) => definition,
   defineDynamic: <T>(definition: T) => definition,
 }));
-vi.mock("@/env", () => ({ isContractFixtureEnabled: () => true }));
+vi.mock("@/env", () => ({
+  env: {
+    LINQ_LATENCY_MODE: "on",
+    LINQ_LATENCY_WORKSPACE_ID: "workspace-test",
+  },
+  isContractFixtureEnabled: () => services.contractFixtureEnabled,
+}));
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal()),
+  gateway: services.gateway,
+}));
+vi.mock("evlog/eve", () => ({
+  useLogger: () => ({
+    getContext: () => ({ eve: services.evlogContext }),
+    set: (value: { eve: EvlogContext }) => {
+      services.evlogContext = { ...services.evlogContext, ...value.eve };
+    },
+  }),
+}));
 vi.mock("@/db/services/settings", () => ({
   getGatewayModel: services.getModel,
 }));
@@ -33,6 +68,9 @@ describe("interactive model delivery resolution", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     services.deliveryStatus.mockReturnValue(undefined);
+    services.contractFixtureEnabled = true;
+    services.gateway.mockReset();
+    services.evlogContext = {};
   });
 
   it("turns the silent Linq fixture's automatic choice into the AI SDK required-tool object", async () => {
@@ -125,11 +163,46 @@ describe("interactive model delivery resolution", () => {
       expect(receivedToolChoice).toEqual({ type: "auto" });
     }
   );
+  it("records scoped gateway model stream timing after a consumed stream", async () => {
+    services.contractFixtureEnabled = false;
+    services.getModel.mockResolvedValue("openai/gpt-5.6-luna-fast");
+    services.gateway.mockReturnValue(contractFixtureModel);
+
+    const selection = await resolveStepModel("channel:linq", "linq-message", {
+      workspaceId: "workspace-test",
+      linqAdmissionTiming: JSON.stringify({
+        admissionStartedAtMs: 1,
+        phoneLookupMs: 1,
+        scopeVerificationMs: 1,
+        scopeVerifiedAtMs: 2,
+      }),
+    });
+    const result = streamText({
+      messages: [{ content: "silent", role: "user" }],
+      model: selection.model,
+      tools: {},
+    });
+    await result.consumeStream();
+
+    const stages = services.evlogContext.linqLatency;
+    expect(stages?.firstModelProviderAttemptStarted).toBe(true);
+    expect(stages?.firstModelProviderDoStreamReturnMs).toEqual(
+      expect.any(Number)
+    );
+    expect(stages?.firstModelProviderTimeToFirstConsumedChunkMs).toEqual(
+      expect.any(Number)
+    );
+    expect(stages?.firstModelProviderConsumedStreamLifetimeMs).toEqual(
+      expect.any(Number)
+    );
+    expect(stages?.firstModelProviderStreamCompleted).toBe(true);
+  });
 });
 
 async function resolveStepModel(
   channelKind: DynamicResolveContext["channel"]["kind"],
-  authenticator = "test"
+  authenticator = "test",
+  attributes: Record<string, string> = {}
 ): Promise<
   Awaited<
     ReturnType<NonNullable<(typeof agent.default.model.events)["step.started"]>>
@@ -145,7 +218,7 @@ async function resolveStepModel(
       session: {
         auth: {
           current: {
-            attributes: {},
+            attributes,
             authenticator,
             principalId: "user-1",
             principalType: "user",
