@@ -14,6 +14,7 @@ import { z } from "zod";
 
 const CUSTOMERS_PAGE_SIZE = 2;
 const ORDERS_PAGE_SIZE = 2;
+const SEARCH_ORDERS_DIAGNOSTIC_LIMIT = 20;
 const rfc3339TimestampSchema = z.iso.datetime({ offset: true });
 
 interface Money {
@@ -95,6 +96,31 @@ const fixtureSchema = z.object({
 export type Fixture = z.infer<typeof fixtureSchema>;
 export type FixtureItem = z.infer<typeof fixtureItemSchema>;
 export type FixtureOrder = z.infer<typeof fixtureOrderSchema>;
+interface SearchOrdersDiagnostic {
+  readonly cursor: string | null;
+  readonly filters: {
+    readonly customerIds: readonly string[];
+    readonly endAt: string | null;
+    readonly locationIds: readonly string[];
+    readonly startAt: string | null;
+    readonly states: readonly string[];
+  };
+  readonly result: {
+    readonly matchedCount: number | null;
+    readonly nextCursor: string | null;
+    readonly returnedCount: number;
+    readonly status: "accepted" | "rejected";
+  };
+}
+
+export interface FakeSquareServer {
+  readonly url: string;
+  close(): Promise<void>;
+  searchOrderDiagnostics(): {
+    readonly dropped: number;
+    readonly requests: readonly SearchOrdersDiagnostic[];
+  };
+}
 type FixtureCustomer = Fixture["customers"][number];
 type FixturePayment = Fixture["payments"][number];
 type FixtureInvoice = Fixture["invoices"][number];
@@ -539,6 +565,7 @@ function handleBatchRetrieveInventoryCounts(
 function handleSearchOrders(
   fixture: Fixture,
   body: z.infer<typeof searchOrdersBodySchema>,
+  recordDiagnostic: (diagnostic: SearchOrdersDiagnostic) => void,
   res: ServerResponse
 ) {
   const customerIds = body.query?.filter?.customer_filter?.customer_ids;
@@ -548,7 +575,24 @@ function handleSearchOrders(
     ? timestamp(createdAt.start_at)
     : undefined;
   const endAt = createdAt?.end_at ? timestamp(createdAt.end_at) : undefined;
+  const filters = {
+    customerIds: customerIds ?? [],
+    endAt: createdAt?.end_at ?? null,
+    locationIds: body.location_ids ?? [],
+    startAt: createdAt?.start_at ?? null,
+    states: states ?? [],
+  };
   if (startAt !== undefined && endAt !== undefined && startAt > endAt) {
+    recordDiagnostic({
+      cursor: body.cursor ?? null,
+      filters,
+      result: {
+        matchedCount: null,
+        nextCursor: null,
+        returnedCount: 0,
+        status: "rejected",
+      },
+    });
     invalidRequest(
       res,
       "created_at.start_at must not be after created_at.end_at."
@@ -575,6 +619,16 @@ function handleSearchOrders(
   }
   const start = body.cursor ? Number(body.cursor) : 0;
   if (start >= matches.length && body.cursor) {
+    recordDiagnostic({
+      cursor: body.cursor,
+      filters,
+      result: {
+        matchedCount: matches.length,
+        nextCursor: null,
+        returnedCount: 0,
+        status: "rejected",
+      },
+    });
     invalidRequest(res, "cursor is outside the result set for this query.");
     return;
   }
@@ -582,8 +636,19 @@ function handleSearchOrders(
   const page = matches.slice(start, start + pageSize);
   const result = { orders: page.map((o) => orderObject(fixture, o)) };
   const nextStart = start + page.length;
-  if (nextStart < matches.length) {
-    sendJson(res, 200, { ...result, cursor: String(nextStart) });
+  const nextCursor = nextStart < matches.length ? String(nextStart) : null;
+  recordDiagnostic({
+    cursor: body.cursor ?? null,
+    filters,
+    result: {
+      matchedCount: matches.length,
+      nextCursor,
+      returnedCount: page.length,
+      status: "accepted",
+    },
+  });
+  if (nextCursor) {
+    sendJson(res, 200, { ...result, cursor: nextCursor });
     return;
   }
   sendJson(res, 200, result);
@@ -651,6 +716,7 @@ function forbiddenWrite(res: ServerResponse) {
 
 async function route(
   fixture: Fixture,
+  recordSearchOrdersDiagnostic: (diagnostic: SearchOrdersDiagnostic) => void,
   req: IncomingMessage,
   res: ServerResponse
 ) {
@@ -738,6 +804,7 @@ async function route(
     handleSearchOrders(
       fixture,
       await readJsonBody(req, searchOrdersBodySchema),
+      recordSearchOrdersDiagnostic,
       res
     );
     return;
@@ -760,24 +827,35 @@ async function route(
 
 export async function startFakeSquare(
   options: { port?: number } = {}
-): Promise<{ url: string; close(): Promise<void> }> {
+): Promise<FakeSquareServer> {
   const fixture = loadFixture();
+  const searchOrderDiagnostics: SearchOrdersDiagnostic[] = [];
+  let droppedSearchOrderDiagnostics = 0;
+  const recordSearchOrdersDiagnostic = (diagnostic: SearchOrdersDiagnostic) => {
+    if (searchOrderDiagnostics.length >= SEARCH_ORDERS_DIAGNOSTIC_LIMIT) {
+      droppedSearchOrderDiagnostics += 1;
+      return;
+    }
+    searchOrderDiagnostics.push(diagnostic);
+  };
 
   const server = createServer((req, res) => {
-    route(fixture, req, res).catch((cause: unknown) => {
-      if (cause instanceof z.ZodError) {
-        invalidRequest(
+    route(fixture, recordSearchOrdersDiagnostic, req, res).catch(
+      (cause: unknown) => {
+        if (cause instanceof z.ZodError) {
+          invalidRequest(
+            res,
+            cause.issues[0]?.message ?? "Invalid request body."
+          );
+          return;
+        }
+        sendJson(
           res,
-          cause.issues[0]?.message ?? "Invalid request body."
+          500,
+          errorEnvelope("API_ERROR", "INTERNAL_SERVER_ERROR", String(cause))
         );
-        return;
       }
-      sendJson(
-        res,
-        500,
-        errorEnvelope("API_ERROR", "INTERNAL_SERVER_ERROR", String(cause))
-      );
-    });
+    );
   });
 
   await new Promise<void>((resolve) =>
@@ -804,6 +882,10 @@ export async function startFakeSquare(
           }
         });
       }),
+    searchOrderDiagnostics: () => ({
+      dropped: droppedSearchOrderDiagnostics,
+      requests: [...searchOrderDiagnostics],
+    }),
   };
 }
 

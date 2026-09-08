@@ -1,0 +1,21 @@
+{
+  "inspection": "Workflow CLI 5.0.0-beta.47, matching the installed Workflow core generation; targeted designated synthetic step retry events only. Existing CLI project authorization was used. Inputs, outputs, credentials, and conversation contents were not printed or persisted.",
+  "cliCompatibility": "CLI 4.8.5 retrieved lifecycle timestamps but left the error as encrypted bytes even with --decrypt. Workflow 5.0.0-beta.48 could not install because its referenced @workflow/sveltekit version was unpublished; beta.47 installed and decoded the targeted errors.",
+  "errors": [
+    {
+      "case": "A",
+      "channel": "linq",
+      "at": "2026-09-06T14:11:33.603Z",
+      "name": "Error",
+      "message": "Dynamic tool callback rebind did not restore: react_to_message, send_message, calendar-check-availability, calendar-create-event, calendar-list-events, contacts-search, gmail-connect, gmail-read-thread, gmail-search, gmail-send, gmail-update, schedules-answer, schedules-create, schedules-list, schedules-update, request_vault_import, request_vault_setup. The tool may have been renamed or removed."
+    },
+    {
+      "case": "E",
+      "channel": "web",
+      "at": "2026-09-06T14:24:39.164Z",
+      "name": "Error",
+      "message": "Dynamic tool callback rebind did not restore: calendar-check-availability, calendar-create-event, calendar-list-events, contacts-search, gmail-connect, gmail-read-thread, gmail-search, gmail-send, gmail-update, schedules-answer, schedules-create, schedules-list, schedules-update, request_vault_import, request_vault_setup. The tool may have been renamed or removed."
+    }
+  ],
+  "conclusion": "These specific retries are caused by failed dynamic tool callback restoration. Both turns subsequently delivered correct answers. The underlying restoration defect and the separate parent replay delay remain to be fixed; no speedup is established."
+}

@@ -428,7 +428,7 @@
         </text>
         <text x="862" y="226" font-size="12" class="mono">step.started</text>
         <text x="862" y="242" font-size="12">
-          DB model; local contract fixture in evals
+          Eve/Linq: require a tool before delivery
         </text>
         <text x="862" y="264" font-size="12" class="mono">step.completed</text>
         <text x="862" y="280" font-size="12">
@@ -823,14 +823,19 @@
             <td>turn.started</td>
             <td>
               checkBudget on model tokens; a blown budget fails the turn before
-              the model runs
+              the model runs. Messaging also clears a legacy turn-scoped
+              registration here before its current step-scoped delivery tools
+              resolve.
             </td>
           </tr>
           <tr>
             <td>step.started</td>
             <td>
               check auth and lease, then pick the workspace gateway model;
-              model-free contract evals select their local fixture.
+              model-free contract evals select their local fixture. On an
+              ordinary Eve or Linq turn with no delivery attempt yet, require
+              one model tool call; pending, unconfirmed, and completed attempts
+              keep the model's normal tool choice.
               <code>agent/agent.ts</code>
             </td>
           </tr>
@@ -872,8 +877,32 @@
           <tr>
             <td>every event</td>
             <td>
-              evlog, redacted, message bodies omitted.
+              evlog, redacted, message bodies omitted. With the off-by-default
+              exact-workspace Linq latency diagnostic enabled, its final turn
+              record contains stage durations only: application admission,
+              handoff, model preparation, and provider acceptance. It does not
+              change message handling.
               <code>agent/hooks/evlog.ts</code>
+            </td>
+          </tr>
+          <tr>
+            <td>Workflow resume spans</td>
+            <td>
+              Disabled unless <code>WORKFLOW_RESUME_TIMING=on</code>. The
+              provider-directory instrumentation writes one metadata-only
+              operational JSON record for each qualifying
+              <code>step.execute turnStep</code> span. It accepts exactly eight
+              nonnegative finite resume durations and the framework's
+              <code>hook</code> trigger, then logs only those fields and a
+              constant event name. It does not read IDs, resource/link/event or
+              status attributes, messages, tools, models, or token data. This
+              flag is process-wide and cannot restrict logging to one synthetic
+              session. While enabled it disables the seeded Vercel Agent Runs
+              destination; existing evlog and Linq runtime context are
+              unchanged. Hosted behavior has not been observed.
+              <code>agent/instrumentation/agent-runs.ts</code>
+              <code>agent/instrumentation/otel.ts</code>
+              <code>agent/instrumentation/workflow-resume-timing.ts</code>
             </td>
           </tr>
         </tbody>
@@ -933,13 +962,15 @@
           channel files, same instructions, tools, and scope derivation. Only
           the delivery step differs. A message marked <code>final: true</code>
           closes messaging for that turn; Linq first waits for provider
-          acceptance and treats a failed send as unconfirmed. Later sends after
-          confirmed completion are rejected and the next step omits messaging
-          tools. Web chat keeps its session observer open while waiting and
-          retires delivered or cancelled worker observers; worker approvals
-          appear in the normal conversation without requiring the developer
-          trace. Parent completion receipts also settle the task sidebar,
-          without polling or opening another child stream.
+          acceptance and treats a failed send as unconfirmed. A successful
+          <code>react_to_message</code> add follows the same turn-scoped
+          completion path: Linq waits for provider acceptance and Eve completes
+          immediately. Later sends after confirmed completion are rejected and
+          the next step omits messaging tools. Web chat keeps its session
+          observer open while waiting and retires delivered or cancelled worker
+          observers; worker approvals appear in the normal conversation without
+          requiring the developer trace. Parent completion receipts also settle
+          the task sidebar, without polling or opening another child stream.
         </li>
       </ul>
     </div>

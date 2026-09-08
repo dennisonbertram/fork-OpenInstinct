@@ -18,6 +18,8 @@ import { sendMessageInputSchema } from "../lib/send-message";
 
 export default defineDynamic({
   events: {
+    // Clears registrations persisted before this resolver became step-scoped.
+    "turn.started": () => null,
     "step.started": (event, context) => {
       const parsed = stepEventSchema.safeParse(event);
       const turnId = parsed.success ? parsed.data.data.turnId : undefined;
@@ -86,6 +88,13 @@ function resolveMessaging(
       : addReactionToMessageOutputSchema,
     execute(reaction, toolContext) {
       assertDeliveryOpen(toolContext.session.turn.id);
+      if (reaction.operation === "add") {
+        beginFinalDelivery(
+          toolContext.session.turn.id,
+          toolContext.callId,
+          isLinq
+        );
+      }
       return reaction;
     },
     toModelOutput() {
@@ -98,7 +107,7 @@ function resolveMessaging(
   const sendOnly = { send_message };
   const interactive = { react_to_message, send_message };
 
-  return resolveModeValue(context, {
+  return resolveModeValue<typeof interactive | typeof sendOnly>(context, {
     interactive,
     "scheduled-report": sendOnly,
   });

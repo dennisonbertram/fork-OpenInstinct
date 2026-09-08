@@ -45,6 +45,12 @@ import {
 } from "@/db/services/channel-conversations";
 import { recordConnectionInstallation } from "@/db/services/connection-installations";
 import { findVerifiedUserByPhoneNumber } from "@/db/services/phone-identities";
+import {
+  readLinqAdmissionTiming,
+  recordLinqLatencyStage,
+  withLinqAdmissionTiming,
+  type LinqAdmissionTiming,
+} from "@/agent/lib/linq/timing";
 
 const verifiedPhoneUserSchema = z.object({
   id: z.string().min(1),
@@ -217,28 +223,38 @@ export const linqChannelConfig = {
     async "action.result"(event, context, session) {
       const reaction = reactToMessageToolResultSchema.safeParse(event.result);
       if (event.status === "completed" && reaction.success) {
-        if (!context.thread) {
-          throw new Error(
-            "react_to_message requires an active Linq conversation thread."
-          );
-        }
-        const messageId = context.thread.toJSON().currentMessage?.id;
-        if (!messageId) {
-          throw new Error("react_to_message requires a current Linq message.");
-        }
-        const adapter = context.bot.getAdapter("linq");
-        if (reaction.data.output.operation === "remove") {
-          await adapter.removeReaction(
-            context.thread.id,
-            messageId,
-            reaction.data.output.type
-          );
-        } else {
-          await adapter.addReaction(
-            context.thread.id,
-            messageId,
-            reaction.data.output.type
-          );
+        let accepted = false;
+        try {
+          if (!context.thread) {
+            throw new Error(
+              "react_to_message requires an active Linq conversation thread."
+            );
+          }
+          const messageId = context.thread.toJSON().currentMessage?.id;
+          if (!messageId) {
+            throw new Error(
+              "react_to_message requires a current Linq message."
+            );
+          }
+          const adapter = context.bot.getAdapter("linq");
+          if (reaction.data.output.operation === "remove") {
+            await adapter.removeReaction(
+              context.thread.id,
+              messageId,
+              reaction.data.output.type
+            );
+          } else {
+            await adapter.addReaction(
+              context.thread.id,
+              messageId,
+              reaction.data.output.type
+            );
+            accepted = true;
+          }
+        } finally {
+          if (reaction.data.output.operation === "add") {
+            settleFinalDelivery(event.result.callId, accepted);
+          }
         }
         await finalizeScheduledReportDelivery(session);
         return;
@@ -258,18 +274,63 @@ export const linqChannelConfig = {
           const idempotencyKey = report
             ? `scheduled-report:${report.runId}:${String(report.sequence)}`
             : undefined;
+          const timing = readLinqAdmissionTiming(session.session.auth.current);
           // Both branches discard the posted message so `postLinqReply` never
           // hands an adapter-shaped value back to its caller.
           const post = idempotencyKey
             ? async (content: AdapterPostableMessage) => {
+                const providerPostStartedAtMs = Date.now();
+                if (timing) {
+                  recordLinqLatencyStage(
+                    session,
+                    {
+                      admissionToProviderPostStartMs:
+                        providerPostStartedAtMs - timing.admissionStartedAtMs,
+                    },
+                    "admissionToProviderPostStartMs"
+                  );
+                }
                 await context.bot
                   .getAdapter("linq")
                   .postMessage(thread.id, content, { idempotencyKey });
                 accepted = true;
+                if (timing) {
+                  recordLinqLatencyStage(
+                    session,
+                    {
+                      admissionToProviderAcceptedMs:
+                        Date.now() - timing.admissionStartedAtMs,
+                      providerPostAccepted: true,
+                    },
+                    "admissionToProviderAcceptedMs"
+                  );
+                }
               }
             : async (content: AdapterPostableMessage) => {
+                const providerPostStartedAtMs = Date.now();
+                if (timing) {
+                  recordLinqLatencyStage(
+                    session,
+                    {
+                      admissionToProviderPostStartMs:
+                        providerPostStartedAtMs - timing.admissionStartedAtMs,
+                    },
+                    "admissionToProviderPostStartMs"
+                  );
+                }
                 await thread.post(content);
                 accepted = true;
+                if (timing) {
+                  recordLinqLatencyStage(
+                    session,
+                    {
+                      admissionToProviderAcceptedMs:
+                        Date.now() - timing.admissionStartedAtMs,
+                      providerPostAccepted: true,
+                    },
+                    "admissionToProviderAcceptedMs"
+                  );
+                }
               };
 
           if (message.data.output.kind === "link") {
@@ -282,6 +343,17 @@ export const linqChannelConfig = {
             }
             const apiKey = await credentials.apiKey();
             const client = new LinqAPIV3({ apiKey });
+            const providerPostStartedAtMs = Date.now();
+            if (timing) {
+              recordLinqLatencyStage(
+                session,
+                {
+                  admissionToProviderPostStartMs:
+                    providerPostStartedAtMs - timing.admissionStartedAtMs,
+                },
+                "admissionToProviderPostStartMs"
+              );
+            }
             await client.chats.messages.send(
               chatId,
               {
@@ -292,6 +364,17 @@ export const linqChannelConfig = {
               idempotencyKey ? { idempotencyKey } : undefined
             );
             accepted = true;
+            if (timing) {
+              recordLinqLatencyStage(
+                session,
+                {
+                  admissionToProviderAcceptedMs:
+                    Date.now() - timing.admissionStartedAtMs,
+                  providerPostAccepted: true,
+                },
+                "admissionToProviderAcceptedMs"
+              );
+            }
             await finalizeScheduledReportDelivery(session);
             return;
           }
@@ -408,14 +491,17 @@ export const linqChannelConfig = {
   async onMessage(context, message): Promise<OpenInstinctLinqInboundResult> {
     if (message.author.isBot) return null;
 
+    const admissionStartedAtMs = Date.now();
     const auth = defaultLinqAuth(message);
     const authorUserName = z.string().safeParse(message.author.userName);
     const phoneNumber = authorUserName.success
       ? normalizeAuthPhoneNumber(authorUserName.data)
       : undefined;
+    const phoneLookupStartedAtMs = Date.now();
     const verifiedUserId = phoneNumber
       ? await findVerifiedAuthUserIdByPhoneNumber(phoneNumber)
       : undefined;
+    const phoneLookupMs = Date.now() - phoneLookupStartedAtMs;
     if (!verifiedUserId || !phoneNumber) {
       // Phone possession is the only sign-in factor, so a handle that is not
       // linked to a verified user is unauthenticated: never mint a principal
@@ -427,10 +513,25 @@ export const linqChannelConfig = {
     }
     const principalId = `better-auth:${verifiedUserId}`;
     const scope = accessScopeForUser(principalId);
+    const scopeVerificationStartedAtMs = Date.now();
     const verifiedScope = await verifyScopeAccess(scope);
+    const scopeVerificationMs = Date.now() - scopeVerificationStartedAtMs;
     if (!verifiedScope) return null;
+    const timing: LinqAdmissionTiming | undefined =
+      env.LINQ_LATENCY_MODE === "on" &&
+      env.LINQ_LATENCY_WORKSPACE_ID === verifiedScope.workspaceId
+        ? {
+            admissionStartedAtMs,
+            phoneLookupMs,
+            scopeVerificationMs,
+            scopeVerifiedAtMs: Date.now(),
+          }
+        : undefined;
 
+    const identityLookupStartedAtMs = Date.now();
     const identity = await findVerifiedUserByPhoneNumber(phoneNumber);
+    if (timing)
+      timing.identityLookupMs = Date.now() - identityLookupStartedAtMs;
     if (identity?.userId !== verifiedUserId) return null;
 
     const provider = "linq";
@@ -439,6 +540,7 @@ export const linqChannelConfig = {
     const providerConversationId = context.thread.id;
     if (!providerAccountId || !providerLineId) return null;
 
+    const bindingResolveStartedAtMs = Date.now();
     let binding = await resolveConversationBinding({
       provider,
       providerAccountId,
@@ -456,18 +558,23 @@ export const linqChannelConfig = {
       });
       bindingCreated = binding !== undefined;
     }
+    if (timing)
+      timing.bindingResolveMs = Date.now() - bindingResolveStartedAtMs;
     if (!binding || binding.workspaceId !== verifiedScope.workspaceId) {
       return null;
     }
     const messageId = z.string().min(1).safeParse(message.id);
     if (!messageId.success) return null;
+    const inboundClaimStartedAtMs = Date.now();
     const claimed = await claimConversationInboundMessage({
       bindingId: binding.id,
       messageId: messageId.data,
       workspaceId: verifiedScope.workspaceId,
     });
+    if (timing) timing.inboundClaimMs = Date.now() - inboundClaimStartedAtMs;
     if (!claimed) return null;
     if (bindingCreated) {
+      const connectionInstallationStartedAtMs = Date.now();
       try {
         await recordConnectionInstallation(verifiedScope, {
           authorizationSubject: providerLineId,
@@ -476,28 +583,40 @@ export const linqChannelConfig = {
         });
       } catch {
         console.warn("[linq] connection installation recording failed");
+      } finally {
+        if (timing) {
+          timing.connectionInstallationMs =
+            Date.now() - connectionInstallationStartedAtMs;
+        }
       }
     }
 
+    const pendingInputResolveStartedAtMs = Date.now();
     const pendingInputResponse = await resolvePendingInputResponses({
       message,
       threadId: providerConversationId,
       workspaceId: verifiedScope.workspaceId,
     });
+    if (timing) {
+      timing.pendingInputResolveMs =
+        Date.now() - pendingInputResolveStartedAtMs;
+    }
+
+    const resultAuth = {
+      ...auth,
+      attributes: {
+        ...auth.attributes,
+        conversationChannel: "linq",
+        conversationId: context.thread.id,
+        linqThreadId: context.thread.id,
+        phoneNumber,
+        workspaceId: verifiedScope.workspaceId,
+      },
+      principalId,
+    };
 
     return {
-      auth: {
-        ...auth,
-        attributes: {
-          ...auth.attributes,
-          conversationChannel: "linq",
-          conversationId: context.thread.id,
-          linqThreadId: context.thread.id,
-          phoneNumber,
-          workspaceId: verifiedScope.workspaceId,
-        },
-        principalId,
-      },
+      auth: timing ? withLinqAdmissionTiming(resultAuth, timing) : resultAuth,
       ...pendingInputResponse,
     };
   },
@@ -545,16 +664,30 @@ async function dispatchLinqMessage(
   const result = await linqChannelConfig.onMessage({ thread }, message);
   if (!result) return;
 
+  let auth = result.auth;
+  const timing = readLinqAdmissionTiming(auth);
+  const markReadStartedAtMs = Date.now();
+  let markReadSucceeded = false;
   try {
     await bridge.bot.getAdapter("linq").markRead(thread.id, message.id);
+    markReadSucceeded = true;
   } catch {
     // Marking read is cosmetic and must not prevent the user turn.
+  }
+
+  if (timing && auth) {
+    auth = withLinqAdmissionTiming(auth, {
+      ...timing,
+      markReadMs: Date.now() - markReadStartedAtMs,
+      markReadSucceeded,
+      bridgeSendStartedAtMs: Date.now(),
+    });
   }
 
   if (result.inputResponses) {
     await bridge.send(
       { inputResponses: result.inputResponses },
-      { auth: result.auth, thread, title: result.title }
+      { auth, thread, title: result.title }
     );
     if (result.inputResponseStateKey) {
       try {
@@ -573,7 +706,7 @@ async function dispatchLinqMessage(
   } else if (content.trim().length === 0) return;
   await bridge.send(
     { context: [...(result.context ?? [])], message: content },
-    { auth: result.auth, thread, title: result.title }
+    { auth, thread, title: result.title }
   );
 }
 

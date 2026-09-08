@@ -1,0 +1,21 @@
+{
+  "sourceSha": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+  "deploymentId": "dpl_D1eUMmZsLY737t7daavHrrkp4Lv8",
+  "prompt": "Synthetic latency investigation check: reply exactly Web baseline confirmed.",
+  "sentAtMs": 1788702728919,
+  "visibleReplyObserved": false,
+  "visibleFailureObserved": true,
+  "visibleFailure": "Jory couldn’t finish this request Please try sending your message again.",
+  "runtime": {
+    "timestamp": "2026-09-06T13:52:15.439Z",
+    "status": 200,
+    "durationMs": 1700,
+    "modelCalls": 1,
+    "inputTokens": 14395,
+    "outputTokens": 8,
+    "responseChars": 23,
+    "finishReason": "stop",
+    "toolCallsRecorded": false
+  },
+  "note": "A new authenticated web conversation on unchanged production displayed a failure. The backend recorded a completed model call without tool calls. Response contents were not inspected. This is a failed delivery baseline, not a successful reply latency sample. The failure UI was inspected after waiting for the expected reply; its first appearance was not timed."
+}

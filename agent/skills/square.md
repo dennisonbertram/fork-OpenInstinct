@@ -1,5 +1,5 @@
 ---
-description: Load only when the user asks about Square or their point of sale (sales, orders, customers, catalog, inventory, invoices, payments, refunds) or asks to change Square data. Do not load for other topics.
+description: Load when the user asks about Square or their point of sale (sales, orders, customers, catalog, inventory, invoices, payments, refunds), asks about business receivables or outstanding customer balances, or asks to change Square data, even without naming Square. Do not load for personal debts, IOUs, or other topics.
 ---
 
 # Square seller data

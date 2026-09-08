@@ -36,6 +36,30 @@ describe("environment", () => {
     expect(isWorkspaceScopeEnforcementEnabled()).toBe(true);
   });
 
+  it("keeps Workflow resume timing off by default", async () => {
+    const { env, isWorkflowResumeTimingEnabled } = await import("@/env");
+
+    expect(env.WORKFLOW_RESUME_TIMING).toBe("off");
+    expect(isWorkflowResumeTimingEnabled()).toBe(false);
+  });
+
+  it("accepts an explicit Workflow resume timing opt-in", async () => {
+    vi.stubEnv("WORKFLOW_RESUME_TIMING", "on");
+
+    const { env, isWorkflowResumeTimingEnabled } = await import("@/env");
+
+    expect(env.WORKFLOW_RESUME_TIMING).toBe("on");
+    expect(isWorkflowResumeTimingEnabled()).toBe(true);
+  });
+
+  it("rejects an invalid Workflow resume timing value", async () => {
+    vi.stubEnv("WORKFLOW_RESUME_TIMING", "enabled");
+
+    await expect(import("@/env")).rejects.toThrow(
+      "Invalid environment variables"
+    );
+  });
+
   it("keeps developer features off in production", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("VERCEL_ENV", "production");

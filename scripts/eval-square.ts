@@ -36,10 +36,27 @@ const rawArguments = process.argv.slice(2);
 const withDatabase =
   rawArguments.includes("--with-database") ||
   environment.EVAL_SQUARE_DATABASE === "compose";
-// pnpm forwards a bare "--" separator; eve would treat it as an eval id.
-const forwardedArguments = rawArguments.filter(
-  (arg) => arg !== "--with-database" && arg !== "--"
-);
+let selectedCase: string | undefined;
+const forwardedArguments: string[] = [];
+for (let index = 0; index < rawArguments.length; index += 1) {
+  const argument = rawArguments[index];
+  if (argument === undefined) continue;
+  if (argument === "--with-database" || argument === "--") continue;
+  if (argument !== "--case") {
+    forwardedArguments.push(argument);
+    continue;
+  }
+
+  const caseId = rawArguments[index + 1];
+  if (!caseId || caseId.startsWith("-")) {
+    throw new Error("--case requires one discovered Square eval id.");
+  }
+  if (selectedCase) {
+    throw new Error("--case may be provided only once.");
+  }
+  selectedCase = caseId;
+  index += 1;
+}
 
 let activeChild: ChildProcess | undefined;
 let shutdownSignal: NodeJS.Signals | undefined;
@@ -133,6 +150,24 @@ async function runForOutput(command: string, args: string[]) {
   }
 }
 
+async function verifySelectedCase(caseId: string) {
+  const output = await runForOutput("pnpm", [
+    "exec",
+    "eve",
+    "eval",
+    "square",
+    "--list",
+  ]);
+  const discovered = [...output.matchAll(/^(\S+)\s+\[square\]/gmu)].flatMap(
+    ([, id]) => (id ? [id] : [])
+  );
+  if (!discovered.includes(caseId)) {
+    throw new Error(
+      `Unknown Square eval case ${JSON.stringify(caseId)}. Run pnpm eval:square -- --list to list valid ids.`
+    );
+  }
+}
+
 // ponytail: duplicates scripts/dev.ts's Compose-up/migrate sequence rather
 // than extracting a shared helper — dev.ts's version is entangled with its
 // own long-running "dev server" signal-forwarding loop, so sharing it would
@@ -181,9 +216,16 @@ async function runEval() {
   console.error(`fake Square at ${fake.url}`);
 
   try {
+    if (selectedCase) await verifySelectedCase(selectedCase);
     const child = spawn(
       "pnpm",
-      ["exec", "eve", "eval", "square", ...forwardedArguments],
+      [
+        "exec",
+        "eve",
+        "eval",
+        ...(selectedCase ? [selectedCase] : ["square"]),
+        ...forwardedArguments,
+      ],
       {
         cwd: repositoryRoot,
         detached: process.platform !== "win32",
@@ -200,6 +242,13 @@ async function runEval() {
 
     const code = await childExitCode(child);
     activeChild = undefined;
+    if (code !== 0 && shutdownSignal === undefined) {
+      console.error(
+        `fake Square SearchOrders diagnostics: ${JSON.stringify(
+          fake.searchOrderDiagnostics()
+        )}`
+      );
+    }
     process.exitCode = code ?? 1;
   } finally {
     await fake.close();

@@ -2,10 +2,12 @@ import type { LinqSendOptions } from "@linqapp/chat-sdk-adapter";
 import type { LinqAPIV3 } from "@linqapp/sdk";
 import type { AdapterPostableMessage } from "chat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type * as Blob from "@vercel/blob";
 import type * as EnvModule from "@/env";
 import type * as UsageService from "@/db/services/usage";
 import type { recordUsageEvent } from "@/db/services/usage";
+import { reactToMessageOutputSchema } from "@/agent/lib/react-to-message";
 import { sendMessageOutputSchema } from "@/agent/lib/send-message";
 import type { AccessScope } from "@/lib/access-scope";
 import type {
@@ -20,6 +22,20 @@ const deliveryStateFixture = vi.hoisted(() => {
   const resets: (() => void)[] = [];
   return { resets };
 });
+
+const dynamicToolSetSchema = z.record(
+  z.string(),
+  z
+    .object({
+      description: z.string(),
+      execute: z
+        .function()
+        .input([z.unknown(), z.unknown()])
+        .output(z.unknown()),
+      inputSchema: z.unknown(),
+    })
+    .loose()
+);
 vi.mock("eve/context", () => ({
   defineState: <T>(_name: string, initial: () => T) => {
     let value = initial();
@@ -314,6 +330,91 @@ describe("Linq message delivery", () => {
       expect(output).not.toHaveProperty("final");
     }
   );
+
+  it.each([false, true])(
+    "closes a reaction-only reply only after Linq accepts it (failure=%s)",
+    async (failed) => {
+      const resolverContext = {
+        channel: { kind: "channel:linq" },
+        session: { id: "root", auth: { current: null, initiator: null } },
+        messages: [],
+      };
+      const event = { data: { turnId: "turn-1" } };
+      const tools = dynamicToolSetSchema.parse(
+        await messaging.events["step.started"]?.(event, resolverContext)
+      );
+      const reactionTool = tools.react_to_message;
+      if (!reactionTool) {
+        throw new Error("Missing reaction tool");
+      }
+      const base = toolContextFor({
+        sessionId: "root",
+        callId: "call-react-to-message",
+      });
+      const output = reactToMessageOutputSchema.parse(
+        await reactionTool.execute(
+          { operation: "add", type: "heart" },
+          {
+            ...base,
+            session: {
+              ...base.session,
+              turn: { id: "turn-1", sequence: 0 },
+            },
+          }
+        )
+      );
+      const { addReaction, context } = handlerContext();
+      if (failed)
+        addReaction.mockRejectedValueOnce(
+          new Error("Provider rejected the reaction")
+        );
+      const rejected = await handleActionResult(
+        reactToMessageResult(output),
+        context,
+        sessionContext()
+      ).then(
+        () => false,
+        () => true
+      );
+      expect(rejected).toBe(failed);
+      const nextTools = await messaging.events["step.started"]?.(
+        event,
+        resolverContext
+      );
+      expect(nextTools === null).toBe(!failed);
+    }
+  );
+
+  it("completes an Eve reaction without leaving delivery pending", async () => {
+    const resolverContext = {
+      channel: { kind: "channel:eve" },
+      session: { id: "root", auth: { current: null, initiator: null } },
+      messages: [],
+    };
+    const event = { data: { turnId: "turn-1" } };
+    const tools = dynamicToolSetSchema.parse(
+      await messaging.events["step.started"]?.(event, resolverContext)
+    );
+    const reactionTool = tools.react_to_message;
+    if (!reactionTool) {
+      throw new Error("Missing Eve reaction tool");
+    }
+    const base = toolContextFor({
+      sessionId: "root",
+      callId: "call-react-to-message",
+    });
+    await reactionTool.execute(
+      { operation: "add", type: "heart" },
+      {
+        ...base,
+        session: { ...base.session, turn: { id: "turn-1", sequence: 0 } },
+      }
+    );
+
+    expect(
+      await messaging.events["step.started"]?.(event, resolverContext)
+    ).toBeNull();
+  });
 
   defineMessagingProviderContract("Linq", () => ({
     async addReaction() {

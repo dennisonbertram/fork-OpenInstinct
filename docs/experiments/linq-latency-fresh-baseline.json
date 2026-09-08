@@ -1,0 +1,36 @@
+{
+  "samples": [
+    {
+      "sampleIndex": 1,
+      "clientSentAtMs": 1788712168629,
+      "lastAbsentAtMs": 1788712193053,
+      "visibleAtMs": 1788712193971,
+      "parentHookReceivedAtMs": 1788712170531,
+      "parentHookCreatedAtMs": 1788712177572,
+      "parentTurnStepStartedAtMs": 1788712177786,
+      "parentDispatchTurnStepStartedAtMs": 1788712178754,
+      "childRunCreatedEventAtMs": 1788712181434,
+      "childRunRecordCreatedAtMs": 1788712181596,
+      "childRunStartedAtMs": 1788712184877,
+      "childFirstTurnStepStartedAtMs": 1788712185989,
+      "childStepRetryingAtMs": 1788712186474,
+      "childRetryTurnStepStartedAtMs": 1788712187829,
+      "childFirstTurnStepCompletedAtMs": 1788712193372
+    },
+    {
+      "sampleIndex": 2,
+      "clientSentAtMs": 1788712229626,
+      "lastAbsentAtMs": 1788712241232,
+      "visibleAtMs": 1788712242059,
+      "parentHookReceivedAtMs": 1788712230669,
+      "parentHookCreatedAtMs": 1788712233952,
+      "parentTurnStepStartedAtMs": 1788712234251,
+      "parentDispatchTurnStepStartedAtMs": 1788712234856,
+      "childRunCreatedEventAtMs": 1788712235472,
+      "childRunRecordCreatedAtMs": 1788712235663,
+      "childRunStartedAtMs": 1788712235670,
+      "childFirstTurnStepStartedAtMs": 1788712236598,
+      "childFirstTurnStepCompletedAtMs": 1788712241270
+    }
+  ]
+}

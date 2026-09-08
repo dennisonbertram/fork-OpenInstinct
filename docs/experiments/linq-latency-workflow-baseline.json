@@ -1,0 +1,398 @@
+{
+  "probeSourceSha": "30427ebe2eeaec975a8c2652bd8fb2122a3e32b4",
+  "webControlSourceSha": "d09f4e9a5308ac82657f13c1b3c8cbc617fcea38",
+  "inspection": "workflow CLI4.8.5 read-only lifecycle metadata; no decryption",
+  "parentEvents": [
+    {
+      "type": "hook_disposed",
+      "at": "2026-09-06T14:13:32.926Z"
+    },
+    {
+      "type": "hook_received",
+      "at": "2026-09-06T14:13:29.851Z"
+    },
+    {
+      "type": "step_completed",
+      "at": "2026-09-06T14:13:20.445Z"
+    },
+    {
+      "type": "step_started",
+      "at": "2026-09-06T14:13:19.681Z"
+    },
+    {
+      "type": "step_created",
+      "at": "2026-09-06T14:13:19.681Z"
+    },
+    {
+      "type": "hook_created",
+      "at": "2026-09-06T14:13:19.577Z"
+    },
+    {
+      "type": "step_completed",
+      "at": "2026-09-06T14:13:19.357Z"
+    },
+    {
+      "type": "step_started",
+      "at": "2026-09-06T14:13:19.128Z"
+    },
+    {
+      "type": "step_created",
+      "at": "2026-09-06T14:13:19.128Z"
+    },
+    {
+      "type": "hook_created",
+      "at": "2026-09-06T14:13:18.953Z"
+    },
+    {
+      "type": "hook_received",
+      "at": "2026-09-06T14:13:15.926Z"
+    },
+    {
+      "type": "hook_disposed",
+      "at": "2026-09-06T14:12:41.554Z"
+    },
+    {
+      "type": "hook_received",
+      "at": "2026-09-06T14:12:38.227Z"
+    },
+    {
+      "type": "step_completed",
+      "at": "2026-09-06T14:12:26.692Z"
+    },
+    {
+      "type": "step_started",
+      "at": "2026-09-06T14:12:25.975Z"
+    },
+    {
+      "type": "step_created",
+      "at": "2026-09-06T14:12:25.975Z"
+    },
+    {
+      "type": "hook_created",
+      "at": "2026-09-06T14:12:25.873Z"
+    },
+    {
+      "type": "step_completed",
+      "at": "2026-09-06T14:12:25.687Z"
+    },
+    {
+      "type": "step_started",
+      "at": "2026-09-06T14:12:25.331Z"
+    },
+    {
+      "type": "step_created",
+      "at": "2026-09-06T14:12:25.331Z"
+    },
+    {
+      "type": "hook_created",
+      "at": "2026-09-06T14:12:25.140Z"
+    },
+    {
+      "type": "hook_received",
+      "at": "2026-09-06T14:12:21.399Z"
+    },
+    {
+      "type": "hook_disposed",
+      "at": "2026-09-06T14:11:46.999Z"
+    },
+    {
+      "type": "hook_received",
+      "at": "2026-09-06T14:11:44.038Z"
+    },
+    {
+      "type": "step_completed",
+      "at": "2026-09-06T14:11:32.056Z"
+    },
+    {
+      "type": "step_started",
+      "at": "2026-09-06T14:11:30.652Z"
+    },
+    {
+      "type": "step_created",
+      "at": "2026-09-06T14:11:30.652Z"
+    },
+    {
+      "type": "hook_created",
+      "at": "2026-09-06T14:11:30.494Z"
+    },
+    {
+      "type": "step_completed",
+      "at": "2026-09-06T14:11:30.327Z"
+    },
+    {
+      "type": "step_started",
+      "at": "2026-09-06T14:11:30.014Z"
+    },
+    {
+      "type": "step_created",
+      "at": "2026-09-06T14:11:30.014Z"
+    },
+    {
+      "type": "hook_created",
+      "at": "2026-09-06T14:11:29.833Z"
+    }
+  ],
+  "parentSteps": [
+    {
+      "stepName": "step//eve@0.49.0//dispatchTurnStep",
+      "createdAt": "2026-09-06T14:13:19.760Z",
+      "startedAt": "2026-09-06T14:13:19.760Z",
+      "completedAt": "2026-09-06T14:13:20.467Z",
+      "status": "completed",
+      "attempt": 1
+    },
+    {
+      "stepName": "step//eve@0.49.0//turnStep",
+      "createdAt": "2026-09-06T14:13:19.213Z",
+      "startedAt": "2026-09-06T14:13:19.212Z",
+      "completedAt": "2026-09-06T14:13:19.505Z",
+      "status": "completed",
+      "attempt": 1
+    },
+    {
+      "stepName": "step//eve@0.49.0//dispatchTurnStep",
+      "createdAt": "2026-09-06T14:12:26.078Z",
+      "startedAt": "2026-09-06T14:12:26.077Z",
+      "completedAt": "2026-09-06T14:12:26.725Z",
+      "status": "completed",
+      "attempt": 1
+    },
+    {
+      "stepName": "step//eve@0.49.0//turnStep",
+      "createdAt": "2026-09-06T14:12:25.424Z",
+      "startedAt": "2026-09-06T14:12:25.424Z",
+      "completedAt": "2026-09-06T14:12:25.777Z",
+      "status": "completed",
+      "attempt": 1
+    },
+    {
+      "stepName": "step//eve@0.49.0//dispatchTurnStep",
+      "createdAt": "2026-09-06T14:11:30.884Z",
+      "startedAt": "2026-09-06T14:11:30.884Z",
+      "completedAt": "2026-09-06T14:11:32.076Z",
+      "status": "completed",
+      "attempt": 1
+    },
+    {
+      "stepName": "step//eve@0.49.0//turnStep",
+      "createdAt": "2026-09-06T14:11:30.097Z",
+      "startedAt": "2026-09-06T14:11:30.096Z",
+      "completedAt": "2026-09-06T14:11:30.419Z",
+      "status": "completed",
+      "attempt": 1
+    }
+  ],
+  "childSteps": [
+    {
+      "case": "A",
+      "steps": [
+        {
+          "stepName": "step//eve@0.49.0//turnStep",
+          "createdAt": "2026-09-06T14:11:33.223Z",
+          "startedAt": "2026-09-06T14:11:33.223Z",
+          "completedAt": "2026-09-06T14:11:39.291Z",
+          "status": "completed",
+          "attempt": 2
+        },
+        {
+          "stepName": "step//eve@0.49.0//turnStep",
+          "createdAt": "2026-09-06T14:11:39.754Z",
+          "startedAt": "2026-09-06T14:11:39.754Z",
+          "completedAt": "2026-09-06T14:11:43.516Z",
+          "status": "completed",
+          "attempt": 1
+        },
+        {
+          "stepName": "step//eve@0.49.0//sendTurnControlStep",
+          "createdAt": "2026-09-06T14:11:43.885Z",
+          "startedAt": "2026-09-06T14:11:43.885Z",
+          "completedAt": "2026-09-06T14:11:44.276Z",
+          "status": "completed",
+          "attempt": 1
+        }
+      ]
+    },
+    {
+      "case": "B",
+      "steps": [
+        {
+          "stepName": "step//eve@0.49.0//turnStep",
+          "createdAt": "2026-09-06T14:12:28.104Z",
+          "startedAt": "2026-09-06T14:12:28.104Z",
+          "completedAt": "2026-09-06T14:12:33.100Z",
+          "status": "completed",
+          "attempt": 1
+        },
+        {
+          "stepName": "step//eve@0.49.0//turnStep",
+          "createdAt": "2026-09-06T14:12:33.409Z",
+          "startedAt": "2026-09-06T14:12:33.408Z",
+          "completedAt": "2026-09-06T14:12:37.698Z",
+          "status": "completed",
+          "attempt": 1
+        },
+        {
+          "stepName": "step//eve@0.49.0//sendTurnControlStep",
+          "createdAt": "2026-09-06T14:12:38.064Z",
+          "startedAt": "2026-09-06T14:12:38.064Z",
+          "completedAt": "2026-09-06T14:12:38.482Z",
+          "status": "completed",
+          "attempt": 1
+        }
+      ]
+    },
+    {
+      "case": "C",
+      "steps": [
+        {
+          "stepName": "step//eve@0.49.0//turnStep",
+          "createdAt": "2026-09-06T14:13:21.702Z",
+          "startedAt": "2026-09-06T14:13:21.702Z",
+          "completedAt": "2026-09-06T14:13:25.851Z",
+          "status": "completed",
+          "attempt": 1
+        },
+        {
+          "stepName": "step//eve@0.49.0//turnStep",
+          "createdAt": "2026-09-06T14:13:26.184Z",
+          "startedAt": "2026-09-06T14:13:26.184Z",
+          "completedAt": "2026-09-06T14:13:29.375Z",
+          "status": "completed",
+          "attempt": 1
+        },
+        {
+          "stepName": "step//eve@0.49.0//sendTurnControlStep",
+          "createdAt": "2026-09-06T14:13:29.677Z",
+          "startedAt": "2026-09-06T14:13:29.677Z",
+          "completedAt": "2026-09-06T14:13:30.064Z",
+          "status": "completed",
+          "attempt": 1
+        }
+      ]
+    }
+  ],
+  "webControlEvents": [
+    {
+      "type": "step_completed",
+      "at": "2026-09-06T14:24:44.489Z"
+    },
+    {
+      "type": "attr_set",
+      "at": "2026-09-06T14:24:44.399Z"
+    },
+    {
+      "type": "step_started",
+      "at": "2026-09-06T14:24:42.904Z"
+    },
+    {
+      "type": "step_created",
+      "at": "2026-09-06T14:24:42.904Z"
+    },
+    {
+      "type": "step_completed",
+      "at": "2026-09-06T14:24:42.593Z"
+    },
+    {
+      "type": "attr_set",
+      "at": "2026-09-06T14:24:42.509Z"
+    },
+    {
+      "type": "step_started",
+      "at": "2026-09-06T14:24:40.642Z"
+    },
+    {
+      "type": "step_retrying",
+      "at": "2026-09-06T14:24:39.164Z"
+    },
+    {
+      "type": "step_started",
+      "at": "2026-09-06T14:24:38.808Z"
+    },
+    {
+      "type": "step_created",
+      "at": "2026-09-06T14:24:38.808Z"
+    },
+    {
+      "type": "hook_created",
+      "at": "2026-09-06T14:24:38.714Z"
+    },
+    {
+      "type": "hook_received",
+      "at": "2026-09-06T14:24:35.689Z"
+    },
+    {
+      "type": "step_completed",
+      "at": "2026-09-06T14:22:58.497Z"
+    },
+    {
+      "type": "attr_set",
+      "at": "2026-09-06T14:22:58.379Z"
+    },
+    {
+      "type": "step_started",
+      "at": "2026-09-06T14:22:56.747Z"
+    },
+    {
+      "type": "step_created",
+      "at": "2026-09-06T14:22:56.747Z"
+    },
+    {
+      "type": "step_completed",
+      "at": "2026-09-06T14:22:56.480Z"
+    },
+    {
+      "type": "attr_set",
+      "at": "2026-09-06T14:22:56.361Z"
+    },
+    {
+      "type": "step_started",
+      "at": "2026-09-06T14:22:54.224Z"
+    },
+    {
+      "type": "step_retrying",
+      "at": "2026-09-06T14:22:52.778Z"
+    },
+    {
+      "type": "step_started",
+      "at": "2026-09-06T14:22:52.412Z"
+    },
+    {
+      "type": "step_created",
+      "at": "2026-09-06T14:22:52.412Z"
+    },
+    {
+      "type": "hook_created",
+      "at": "2026-09-06T14:22:52.320Z"
+    },
+    {
+      "type": "hook_received",
+      "at": "2026-09-06T14:22:49.193Z"
+    }
+  ],
+  "webVisibleControls": [
+    {
+      "case": "D",
+      "prompt": "Synthetic framework timing control D: use send_message to reply with exactly Control confirmed.",
+      "sentAt": 1788704568315,
+      "lastAbsentAt": 1788704576306,
+      "observedAt": 1788704576664,
+      "response": "Control confirmed.",
+      "correct": true
+    },
+    {
+      "case": "E",
+      "prompt": "Synthetic framework timing control E: use send_message to reply with exactly Warm control confirmed.",
+      "sentAt": 1788704674811,
+      "lastAbsentAt": 1788704683451,
+      "observedAt": 1788704683806,
+      "response": "Warm control confirmed.",
+      "correct": true
+    }
+  ],
+  "limits": [
+    "Web controls test the framework only, not Linq transport.",
+    "Short same-deployment session differs in history length from the existing Linq session.",
+    "Both web controls retried their first turn step; encrypted error contents were not decrypted, so the cause remains unknown.",
+    "No performance improvement has been tested."
+  ]
+}
