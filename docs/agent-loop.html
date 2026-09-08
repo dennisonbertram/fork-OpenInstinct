@@ -886,22 +886,20 @@
             <td>Workflow resume spans</td>
             <td>
               Disabled unless <code>WORKFLOW_RESUME_TIMING=on</code>. The
-              provider-directory instrumentation sends only allowlisted Workflow
-              resume, replay, queue, route, model, and delivery metadata to
-              Vercel Agent Runs; model/tool content, tokens, credentials, and
-              bodies are redacted from span attributes, events, and status
-              messages. The exporter accepts fixed Eve resume span names plus
-              the three bundled, framework-owned Agent step names; it does not
-              accept dynamic workflow or step suffixes. Resource and link
-              attributes remain framework-owned structural metadata; the
-              synthetic boundary test covers those surfaces. Keep this
-              diagnostic limited to designated synthetic runs until those
-              surfaces have been reviewed for any dynamic sensitive values. The
-              off branch removes the seeded Agent Runs destination and leaves
-              the existing evlog and Linq runtime context unchanged.
+              provider-directory instrumentation writes one metadata-only
+              operational JSON record for each qualifying
+              <code>step.execute turnStep</code> span. It accepts exactly eight
+              nonnegative finite resume durations and the framework's
+              <code>hook</code> trigger, then logs only those fields and a
+              constant event name. It does not read IDs, resource/link/event or
+              status attributes, messages, tools, models, or token data. This
+              flag is process-wide and cannot restrict logging to one synthetic
+              session. While enabled it disables the seeded Vercel Agent Runs
+              destination; existing evlog and Linq runtime context are
+              unchanged. Hosted behavior has not been observed.
               <code>agent/instrumentation/agent-runs.ts</code>
               <code>agent/instrumentation/otel.ts</code>
-              <code>agent/instrumentation/runtime-context.ts</code>
+              <code>agent/instrumentation/workflow-resume-timing.ts</code>
             </td>
           </tr>
         </tbody>

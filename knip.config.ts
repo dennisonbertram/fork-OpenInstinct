@@ -20,8 +20,8 @@ export default {
         "evals/square/setup-access.ts",
         // Playwright discovers e2e specs and the auth setup via testMatch, not imports.
         "tests/e2e/**/*.ts",
-        // Invoked in a fresh process by the Agent Runs export boundary test.
-        "tests/unit/eve-agent-runs-generated-export.fixture.ts",
+        // Invoked in a fresh process by the Workflow resume timing boundary test.
+        "tests/unit/workflow-resume-timing.fixture.ts",
         "taze.config.ts",
       ],
       project: ["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"],

@@ -63,7 +63,7 @@ describe("Agent Runs instrumentation registry", () => {
     expect(collectOtelPipeline([]).declared).toBe(false);
   });
 
-  it("replaces the seeded provider with the configured processor when on", async () => {
+  it("replaces the seeded provider with the local timing processor when on", async () => {
     vi.resetModules();
     stubRequiredEnvironment();
     vi.stubEnv("VERCEL_ENV", "production");
@@ -90,6 +90,13 @@ describe("Agent Runs instrumentation registry", () => {
       agentName: "synthetic",
       slot: "otel",
       value: authoredOtel,
+    });
+    const { default: authoredTiming } =
+      await import("@/agent/instrumentation/workflow-resume-timing");
+    await providers.registerInstrumentationProvider({
+      agentName: "synthetic",
+      slot: "workflow-resume-timing",
+      value: authoredTiming,
     });
 
     const registered = providers.getInstrumentationProviders();
