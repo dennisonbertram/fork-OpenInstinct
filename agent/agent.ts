@@ -1,4 +1,11 @@
+import { gateway } from "ai";
 import { defineAgent, defineDynamic } from "eve";
+import { z } from "zod";
+import {
+  deliveryToolChoiceForInteractiveTurn,
+  wrapInteractiveDeliveryGuard,
+} from "@/agent/lib/delivery-guard";
+import { finalDeliveryStatus } from "@/agent/lib/message-delivery";
 import { scheduledRunIdentity } from "@/agent/lib/schedules/identity";
 import { isScheduledAgentRunLeaseActive } from "@/db/services/scheduled-agent-run-leases";
 import { getGatewayModel } from "@/db/services/settings";
@@ -13,7 +20,7 @@ export default defineAgent({
   },
   model: defineDynamic({
     events: {
-      "step.started": async (_event, ctx) => {
+      "step.started": async (event, ctx) => {
         const scheduledRun = scheduledRunIdentity(ctx.session.auth);
         if (
           scheduledRun &&
@@ -26,13 +33,30 @@ export default defineAgent({
         }
         const caller = ctx.session.auth.current ?? ctx.session.auth.initiator;
         if (!caller) throw new Error("An authenticated user is required.");
+        const turnId = stepEventSchema.safeParse(event).data?.data.turnId;
+        const toolChoice = deliveryToolChoiceForInteractiveTurn({
+          channelKind: ctx.channel.kind,
+          deliveryStatus: finalDeliveryStatus(turnId),
+          mode:
+            caller.authenticator === "scheduled-result"
+              ? "scheduled-report"
+              : undefined,
+        });
         if (isContractFixtureEnabled()) {
           return {
-            model: contractFixtureModel,
+            model: wrapInteractiveDeliveryGuard(
+              contractFixtureModel,
+              toolChoice
+            ),
             modelContextWindowTokens: 128_000,
           };
         }
-        return getGatewayModel(scopeFromPrincipal(caller));
+        return {
+          model: wrapInteractiveDeliveryGuard(
+            gateway(await getGatewayModel(scopeFromPrincipal(caller))),
+            toolChoice
+          ),
+        };
       },
     },
   }),
@@ -41,3 +65,5 @@ export default defineAgent({
     thresholdPercent: 0.7,
   },
 });
+
+const stepEventSchema = z.object({ data: z.object({ turnId: z.string() }) });

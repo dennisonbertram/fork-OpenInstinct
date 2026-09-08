@@ -428,7 +428,7 @@
         </text>
         <text x="862" y="226" font-size="12" class="mono">step.started</text>
         <text x="862" y="242" font-size="12">
-          DB model; local contract fixture in evals
+          Eve/Linq: require a tool before delivery
         </text>
         <text x="862" y="264" font-size="12" class="mono">step.completed</text>
         <text x="862" y="280" font-size="12">
@@ -832,7 +832,10 @@
             <td>step.started</td>
             <td>
               check auth and lease, then pick the workspace gateway model;
-              model-free contract evals select their local fixture.
+              model-free contract evals select their local fixture. On an
+              ordinary Eve or Linq turn with no delivery attempt yet, require
+              one model tool call; pending, unconfirmed, and completed attempts
+              keep the model's normal tool choice.
               <code>agent/agent.ts</code>
             </td>
           </tr>
@@ -959,13 +962,15 @@
           channel files, same instructions, tools, and scope derivation. Only
           the delivery step differs. A message marked <code>final: true</code>
           closes messaging for that turn; Linq first waits for provider
-          acceptance and treats a failed send as unconfirmed. Later sends after
-          confirmed completion are rejected and the next step omits messaging
-          tools. Web chat keeps its session observer open while waiting and
-          retires delivered or cancelled worker observers; worker approvals
-          appear in the normal conversation without requiring the developer
-          trace. Parent completion receipts also settle the task sidebar,
-          without polling or opening another child stream.
+          acceptance and treats a failed send as unconfirmed. A successful
+          <code>react_to_message</code> add follows the same turn-scoped
+          completion path: Linq waits for provider acceptance and Eve completes
+          immediately. Later sends after confirmed completion are rejected and
+          the next step omits messaging tools. Web chat keeps its session
+          observer open while waiting and retires delivered or cancelled worker
+          observers; worker approvals appear in the normal conversation without
+          requiring the developer trace. Parent completion receipts also settle
+          the task sidebar, without polling or opening another child stream.
         </li>
       </ul>
     </div>

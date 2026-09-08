@@ -88,6 +88,13 @@ function resolveMessaging(
       : addReactionToMessageOutputSchema,
     execute(reaction, toolContext) {
       assertDeliveryOpen(toolContext.session.turn.id);
+      if (reaction.operation === "add") {
+        beginFinalDelivery(
+          toolContext.session.turn.id,
+          toolContext.callId,
+          isLinq
+        );
+      }
       return reaction;
     },
     toModelOutput() {
@@ -100,7 +107,7 @@ function resolveMessaging(
   const sendOnly = { send_message };
   const interactive = { react_to_message, send_message };
 
-  return resolveModeValue(context, {
+  return resolveModeValue<typeof interactive | typeof sendOnly>(context, {
     interactive,
     "scheduled-report": sendOnly,
   });

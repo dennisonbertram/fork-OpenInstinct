@@ -223,28 +223,38 @@ export const linqChannelConfig = {
     async "action.result"(event, context, session) {
       const reaction = reactToMessageToolResultSchema.safeParse(event.result);
       if (event.status === "completed" && reaction.success) {
-        if (!context.thread) {
-          throw new Error(
-            "react_to_message requires an active Linq conversation thread."
-          );
-        }
-        const messageId = context.thread.toJSON().currentMessage?.id;
-        if (!messageId) {
-          throw new Error("react_to_message requires a current Linq message.");
-        }
-        const adapter = context.bot.getAdapter("linq");
-        if (reaction.data.output.operation === "remove") {
-          await adapter.removeReaction(
-            context.thread.id,
-            messageId,
-            reaction.data.output.type
-          );
-        } else {
-          await adapter.addReaction(
-            context.thread.id,
-            messageId,
-            reaction.data.output.type
-          );
+        let accepted = false;
+        try {
+          if (!context.thread) {
+            throw new Error(
+              "react_to_message requires an active Linq conversation thread."
+            );
+          }
+          const messageId = context.thread.toJSON().currentMessage?.id;
+          if (!messageId) {
+            throw new Error(
+              "react_to_message requires a current Linq message."
+            );
+          }
+          const adapter = context.bot.getAdapter("linq");
+          if (reaction.data.output.operation === "remove") {
+            await adapter.removeReaction(
+              context.thread.id,
+              messageId,
+              reaction.data.output.type
+            );
+          } else {
+            await adapter.addReaction(
+              context.thread.id,
+              messageId,
+              reaction.data.output.type
+            );
+            accepted = true;
+          }
+        } finally {
+          if (reaction.data.output.operation === "add") {
+            settleFinalDelivery(event.result.callId, accepted);
+          }
         }
         await finalizeScheduledReportDelivery(session);
         return;
