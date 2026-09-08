@@ -154,3 +154,44 @@ and hook/suspension commit path. Source inspection ruled out a normal fixed
 three-second debounce. Current timestamps do not distinguish event-list I/O,
 payload preparation, VM startup, replay, or commit costs. No speedup has been
 demonstrated, and the full 10x objective remains open.
+
+## Fresh production controls
+
+Two further synthetic messages used the restored production deployment
+`dpl_D1eUMmZsLY737t7daavHrrkp4Lv8` at source revision
+`d09f4e9a5308ac82657f13c1b3c8cbc617fcea38`, in the existing Linq session.
+This control pair was recorded on September 6, 2026.
+They arrived in local bounds of 24,424–25,342 ms and 11,606–12,433 ms. The first
+reached the parent inbox 1,902 ms after local send, then took 7,041 ms from
+inbox receipt to the next parent hook; the second corresponding intervals were
+1,043 ms and 3,283 ms. Both then used a parent `turnStep`,
+`dispatchTurnStep`, and child turn workflow.
+
+For the first control, parent turn start to dispatch start was 968 ms, dispatch
+start to the child `run_created` event 2,680 ms, that event to child start
+3,443 ms, and child start to its first step 1,112 ms. It emitted
+`step_retrying`, then restarted that step 1,355 ms later. The second control's
+corresponding intervals were
+605 ms, 616 ms, 198 ms, and 928 ms, with no `step_retrying` event in its
+metadata. These are two controls, not a distribution or a speed claim. The
+numeric-only timestamp artifact is `linq-latency-fresh-baseline.json`; it
+contains no prompt, answer, session id, request id, tool input, output, or
+workflow payload. Its `childRunCreatedEventAtMs` is the lifecycle event time;
+`childRunRecordCreatedAtMs` is separately recorded from the Workflow run API.
+
+## September 8 diagnostic evidence
+
+The first native single-case Square attempt used the linked OIDC credential and
+failed before the first model step with an AI Gateway authentication error and
+zero tokens. The linked `VERCEL_OIDC_TOKEN` was expired when checked in memory.
+After the credential was refreshed, the single `square/square/0002` case passed;
+the sanitized result is `square-sales-diagnostic.json`.
+That result does not establish that the earlier full-suite failure is fixed.
+
+The diagnostic request used a `closed_at` filter, but the fake Square schema has
+no `closed_at` filter. This run therefore does not establish production
+`closed_at` filtering behavior.
+
+The numeric resume-timing logger is implemented and passes local checks, but no
+hosted timing evidence has been captured from it. The current 10x objective
+remains unproven.

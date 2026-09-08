@@ -1,0 +1,41 @@
+{
+  "caseId": "square/square/0002",
+  "verdict": "passed",
+  "toolCounts": {
+    "load_skill": 1,
+    "connection_search": 2,
+    "send_message": 2,
+    "square__ListLocations": 1,
+    "square__SearchOrders": 5
+  },
+  "filters": {
+    "synthetic": true,
+    "states": ["COMPLETED"],
+    "createdAt": null,
+    "closedAt": "used; unsupported by fake schema",
+    "limit": 1000,
+    "returnEntries": false,
+    "cursorSequence": [null, "2", "4", "6", "8"]
+  },
+  "assertions": [
+    { "name": "succeeded", "passed": true, "severity": "gate" },
+    {
+      "name": "eventsSatisfy(search tool called)",
+      "passed": true,
+      "severity": "gate"
+    },
+    {
+      "name": "eventsSatisfy(no mutating tool call)",
+      "passed": true,
+      "severity": "gate"
+    },
+    {
+      "name": "satisfies(agent delivered text)",
+      "passed": true,
+      "severity": "gate"
+    },
+    { "name": "includes($55.75)", "passed": true, "severity": "gate" },
+    { "name": "satisfies(shape ok)", "passed": true, "severity": "gate" },
+    { "name": "judge.autoevals.closedQA", "passed": true, "severity": "soft" }
+  ]
+}
