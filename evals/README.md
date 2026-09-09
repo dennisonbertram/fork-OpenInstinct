@@ -52,6 +52,19 @@ executing case, and memory cases remove their canaries.
 Judge-backed cases use the judge model in `evals.config.ts`. Full
 event streams and assertion details are written to `.eve/evals/`.
 
+Run the model-free contract gate, including its isolated mounted agent, with:
+
+```sh
+pnpm eval:contract
+```
+
+While iterating on the mounted final-delivery contract, run only that family
+through the same service-owning supervisor:
+
+```sh
+pnpm eval:contract -- --mount-only --timeout 30000
+```
+
 Run the browser benchmark separately because it uses Kernel, real websites,
 and a longer completion loop:
 

@@ -10,6 +10,7 @@ import { verifyScopeAccess } from "@/db/services/scope";
 import { accessScopeForUser, type AccessScope } from "@/lib/access-scope";
 import { getAuthSession } from "@/auth/session";
 import { sendMessageToolResultSchema } from "@/agent/lib/send-message";
+import { requestFinalDeliveryCompletion } from "@/agent/lib/message-delivery";
 import {
   finalizeScheduledReportDelivery,
   releaseScheduledReportDelivery,
@@ -73,7 +74,15 @@ export default eveChannel({
         event.status === "completed" &&
         sendMessageToolResultSchema.safeParse(event.result).success
       ) {
+        const report = scheduledReportFromSession(session);
         await finalizeScheduledReportDelivery(session);
+        if (!report) {
+          requestFinalDeliveryCompletion(
+            event.result.callId,
+            event.turnId,
+            event.stepIndex
+          );
+        }
       }
     },
     async "message.completed"(event, _channel, session) {

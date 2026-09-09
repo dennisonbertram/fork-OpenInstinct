@@ -148,6 +148,33 @@ describe("contract fixture model", () => {
     });
   });
 
+  it("makes one final-normal delivery, then returns its normal marker", () => {
+    expect(contractFixtureResponse(request("final-normal"))).toEqual({
+      toolCalls: [
+        {
+          input: {
+            final: true,
+            kind: "message",
+            text: "fixture final normal",
+          },
+          name: "send_message",
+        },
+      ],
+    });
+    expect(
+      contractFixtureResponse(
+        request("final-normal", [
+          {
+            id: "contract-turn-1-0-0",
+            isError: false,
+            name: "send_message",
+            output: { kind: "message", text: "fixture final normal" },
+          },
+        ])
+      )
+    ).toEqual({ text: "DELIVERY_COMPLETE" });
+  });
+
   it("keeps the guarded wait command pending until its stream is cancelled", async () => {
     const result = await contractFixtureModel.doStream({
       prompt: [

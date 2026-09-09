@@ -1,4 +1,4 @@
-import { defineState } from "eve/context";
+import { defineState, requestTurnCompletion } from "eve/context";
 
 const finalDelivery = defineState<{
   callId: string;
@@ -30,4 +30,19 @@ export function settleFinalDelivery(callId: string, accepted: boolean) {
       ? { ...delivery, status: accepted ? "completed" : "unconfirmed" }
       : delivery
   );
+}
+
+export function requestFinalDeliveryCompletion(
+  callId: string,
+  turnId: string,
+  stepIndex: number
+) {
+  const delivery = finalDelivery.get();
+  if (
+    delivery?.callId === callId &&
+    delivery.status === "completed" &&
+    delivery.turnId === turnId
+  ) {
+    requestTurnCompletion({ callId, stepIndex });
+  }
 }

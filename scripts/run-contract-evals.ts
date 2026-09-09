@@ -1,7 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startDemoMcp } from "../evals/contract/fixtures/demo-mcp/server.ts";
+import { startContractDeliveryProvider } from "../evals/contract/fixtures/delivery-provider/server.ts";
 import { startFakeSquare } from "../evals/square/fake/server.ts";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -25,12 +28,24 @@ const composeArguments = (...args: string[]) => [
 
 // oxlint-disable-next-line eslint/no-restricted-properties -- the supervisor forwards ordinary process configuration after explicitly removing model credentials
 const inheritedEnvironment = { ...process.env };
+const deliverySnapshotPath =
+  inheritedEnvironment.CONTRACT_DELIVERY_PROVIDER_SNAPSHOT_PATH ??
+  join(
+    mountHarnessRoot,
+    ".eve",
+    "evals",
+    "contract-delivery-provider-snapshot.json"
+  );
+delete inheritedEnvironment.CONTRACT_DELIVERY_PROVIDER_SNAPSHOT_PATH;
 delete inheritedEnvironment.AI_GATEWAY_API_KEY;
 delete inheritedEnvironment.VERCEL_OIDC_TOKEN;
 delete inheritedEnvironment.VERCEL_ENV;
 
 let activeChild: ChildProcess | undefined;
 let activeDemo: Awaited<ReturnType<typeof startDemoMcp>> | undefined;
+let activeDeliveryProvider:
+  | Awaited<ReturnType<typeof startContractDeliveryProvider>>
+  | undefined;
 let activeFake: Awaited<ReturnType<typeof startFakeSquare>> | undefined;
 let composeAttempted = false;
 let interrupted = false;
@@ -48,7 +63,11 @@ await runContractEvals();
 
 async function runContractEvals() {
   try {
-    const evalArguments = validateEvalArguments(process.argv.slice(2));
+    const rawArguments = process.argv.slice(2);
+    const mountOnly = rawArguments.includes("--mount-only");
+    const evalArguments = validateEvalArguments(
+      rawArguments.filter((argument) => argument !== "--mount-only")
+    );
     composeAttempted = true;
     if (
       !(await requireSuccess(
@@ -69,12 +88,14 @@ async function runContractEvals() {
     const databaseUrl = `postgresql://postgres:postgres@127.0.0.1:${port}/open_instinct`;
     activeFake = await startFakeSquare({ port: 0 });
     activeDemo = await startDemoMcp({ token: contractMcpToken });
+    activeDeliveryProvider = await startContractDeliveryProvider({ port: 0 });
     const environment: NodeJS.ProcessEnv = {
       ...inheritedEnvironment,
       BETTER_AUTH_SECRET: "contract-eval-local-auth-secret-placeholder",
       BETTER_AUTH_URL: "http://127.0.0.1:9",
       CONTRACT_MCP_URL: activeDemo.url,
       CONTRACT_MCP_TOKEN: contractMcpToken,
+      CONTRACT_DELIVERY_PROVIDER_URL: activeDeliveryProvider.url,
       DATABASE_URL: databaseUrl,
       DATABASE_URL_UNPOOLED: databaseUrl,
       EVAL_CONTRACT_FIXTURE: "1",
@@ -108,26 +129,28 @@ async function runContractEvals() {
     ) {
       return;
     }
-    const coreExitCode = await run(
-      "pnpm",
-      [
-        "exec",
-        "eve",
-        "eval",
-        "contract",
-        "--strict",
-        "--tag",
-        "contract",
-        "--max-concurrency",
-        "1",
-        "--skip-report",
-        ...evalArguments,
-      ],
-      environment
-    );
-    if (coreExitCode !== 0 || interrupted) {
-      if (!interrupted) process.exitCode = coreExitCode ?? 1;
-      return;
+    if (!mountOnly) {
+      const coreExitCode = await run(
+        "pnpm",
+        [
+          "exec",
+          "eve",
+          "eval",
+          "contract",
+          "--strict",
+          "--tag",
+          "contract",
+          "--max-concurrency",
+          "1",
+          "--skip-report",
+          ...evalArguments,
+        ],
+        environment
+      );
+      if (coreExitCode !== 0 || interrupted) {
+        if (!interrupted) process.exitCode = coreExitCode ?? 1;
+        return;
+      }
     }
     const mountExitCode = await run(
       "pnpm",
@@ -135,6 +158,7 @@ async function runContractEvals() {
         "exec",
         "eve",
         "eval",
+        ...(mountOnly ? ["linq-final-delivery"] : []),
         "--strict",
         "--tag",
         "contract-mount",
@@ -148,6 +172,22 @@ async function runContractEvals() {
     );
     process.exitCode = process.exitCode ?? mountExitCode ?? 1;
   } finally {
+    if (activeDeliveryProvider) {
+      try {
+        await mkdir(dirname(deliverySnapshotPath), { recursive: true });
+        await writeFile(
+          deliverySnapshotPath,
+          `${JSON.stringify(activeDeliveryProvider.snapshot(), null, 2)}\n`
+        );
+      } catch {
+        console.error(
+          "Could not write the contract delivery provider snapshot."
+        );
+        process.exitCode = 1;
+      }
+    }
+    await activeDeliveryProvider?.close();
+    activeDeliveryProvider = undefined;
     await activeDemo?.close();
     activeDemo = undefined;
     await activeFake?.close();

@@ -1,5 +1,6 @@
 import {
   finalDeliveryStatus,
+  requestFinalDeliveryCompletion,
   settleFinalDelivery,
 } from "@/agent/lib/message-delivery";
 import { connectLinqCredentials } from "@vercel/connect/eve";
@@ -227,6 +228,7 @@ export const linqChannelConfig = {
       const reaction = reactToMessageToolResultSchema.safeParse(event.result);
       if (event.status === "completed" && reaction.success) {
         let accepted = false;
+        const report = scheduledReportFromSession(session);
         try {
           if (!context.thread) {
             throw new Error(
@@ -260,12 +262,20 @@ export const linqChannelConfig = {
           }
         }
         await finalizeScheduledReportDelivery(session);
+        if (!report && accepted && reaction.data.output.operation === "add") {
+          requestFinalDeliveryCompletion(
+            event.result.callId,
+            event.turnId,
+            event.stepIndex
+          );
+        }
         return;
       }
 
       const message = sendMessageToolResultSchema.safeParse(event.result);
       if (event.status === "completed" && message.success) {
         let accepted = false;
+        let completed = false;
         try {
           const { thread } = context;
           if (!thread) {
@@ -379,6 +389,7 @@ export const linqChannelConfig = {
               );
             }
             await finalizeScheduledReportDelivery(session);
+            completed = true;
             return;
           }
 
@@ -391,6 +402,7 @@ export const linqChannelConfig = {
               await post({ attachments, raw: "" });
             }
             await finalizeScheduledReportDelivery(session);
+            completed = true;
             return;
           }
 
@@ -416,6 +428,7 @@ export const linqChannelConfig = {
             // Provider-auth-only replies lack a workspace: not budgeted or ledgered.
             await postLinqReply(post, outgoing);
             await finalizeScheduledReportDelivery(session);
+            completed = true;
             return;
           }
 
@@ -458,8 +471,16 @@ export const linqChannelConfig = {
             throw error;
           }
           await finalizeScheduledReportDelivery(session);
+          completed = true;
         } finally {
           settleFinalDelivery(event.result.callId, accepted);
+          if (completed && accepted && !scheduledReportFromSession(session)) {
+            requestFinalDeliveryCompletion(
+              event.result.callId,
+              event.turnId,
+              event.stepIndex
+            );
+          }
         }
       }
     },

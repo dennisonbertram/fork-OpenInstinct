@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const patchUrl = new URL("../../patches/eve@0.49.0.patch", import.meta.url);
 
 describe("Eve patch boundary", () => {
-  it("contains only the registered Linq, route-auth, stream cancellation, and callback-rebind hunks", async () => {
+  it("contains only the registered compatibility and final-delivery completion hunks", async () => {
     const patch = await readFile(patchUrl, "utf8");
     const paths = [...patch.matchAll(/^diff --git a\/(\S+) b\/(\S+)$/gmu)];
 
@@ -25,11 +25,25 @@ describe("Eve patch boundary", () => {
         "dist/src/compiled/chat/index.d.ts",
         "dist/src/compiled/chat/index.d.ts",
       ],
-      ["dist/src/eve-channel/index.js", "dist/src/eve-channel/index.js"],
       [
         "dist/src/context/dynamic-tool-lifecycle.js",
         "dist/src/context/dynamic-tool-lifecycle.js",
       ],
+      [
+        "dist/src/context/turn-completion.d.ts",
+        "dist/src/context/turn-completion.d.ts",
+      ],
+      [
+        "dist/src/context/turn-completion.js",
+        "dist/src/context/turn-completion.js",
+      ],
+      ["dist/src/eve-channel/index.js", "dist/src/eve-channel/index.js"],
+      ["dist/src/harness/tool-loop.js", "dist/src/harness/tool-loop.js"],
+      [
+        "dist/src/public/context/index.d.ts",
+        "dist/src/public/context/index.d.ts",
+      ],
+      ["dist/src/public/context/index.js", "dist/src/public/context/index.js"],
     ]);
     expect(patch).toContain(
       'export { createLinqAdapter } from "@linqapp/chat-sdk-adapter"'
@@ -42,6 +56,8 @@ describe("Eve patch boundary", () => {
     expect(patch).toContain("withRouteAuth(handleTaskInputResponseRequest)");
     expect(patch).toContain('export * from "chat"');
     expect(patch).toContain("u.has(e.resolverSlug)");
+    expect(patch).toContain("requestTurnCompletion");
+    expect(patch).toContain("consumeTurnCompletionRequest");
     expect(patch).not.toContain("diff --git a/package.json");
   });
 });
