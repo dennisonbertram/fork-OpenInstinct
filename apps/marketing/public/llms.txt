@@ -1,0 +1,26 @@
+# Jory
+
+> Jory is an AI manager for deskless businesses. Owners and managers teach
+> Jory how their business should run, and Jory turns that into text-based
+> training, cited procedure answers, quick checks, signed proof, and manager
+> follow-up for their teams — over iMessage, with no app to install. Jory is
+> free to use.
+
+Jory is used by texting it. There is currently no public developer API,
+OpenAPI specification, MCP server, or OAuth endpoint; integrations run
+through Jory's own audited capability gateway.
+
+## Pages
+
+- [Home](https://heyjory.com/): What Jory does — train your staff once, prove it every shift
+- [Features](https://heyjory.com/features): Capabilities for high-turnover teams
+- [How it works](https://heyjory.com/how-it-works): Teach, train, prove
+- [Pricing](https://heyjory.com/pricing): Free to use
+- [Security](https://heyjory.com/security): Tenant isolation, permissions, and audit architecture
+- [About](https://heyjory.com/about): The team behind Jory
+- [Why we're building Jory](https://heyjory.com/why): An inside look at why we're building Jory
+- [Terms of Service](https://heyjory.com/terms): Terms, including how conversation data is used
+
+## Contact
+
+- Email: hello@jory.ai

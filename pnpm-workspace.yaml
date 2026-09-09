@@ -1,5 +1,6 @@
 packages:
   - "."
+  - "apps/*"
   - "evals/contract/fixtures/demo-extension"
   - "evals/contract/mount-harness"
 

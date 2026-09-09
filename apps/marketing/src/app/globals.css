@@ -1,0 +1,647 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ==========================================================================
+   JORY DESIGN SYSTEM — mirrored from colors_and_type.css
+   Single source of truth: src/lib/design-tokens.ts for TS consumers
+   ========================================================================== */
+
+@theme {
+  /* COLORS — Brand */
+  --color-bg: #faf7f0;
+  --color-ink: #071b36;
+  --color-ink-2: #16233b;
+  --color-muted: #e6e6e6;
+  --color-muted-ink: #5a6a82;
+
+  /* JORY wordmark per-letter colors */
+  --color-jory-j: #4434e8;
+  --color-jory-o: #f7b313;
+  --color-jory-r: #7467e8;
+  --color-jory-y: #ff5a32;
+
+  /* Accent */
+  --color-mustard: #d4a72c;
+  --color-skin: #f4a261;
+
+  /* CTA */
+  --color-cta: #061a33;
+  --color-cta-hover: #0f2a4d;
+
+  /* Soft tints */
+  --color-soft-purple: #ede8ff;
+  --color-soft-yellow: #fff1cf;
+  --color-soft-green: #e9f8e8;
+  --color-soft-red: #ffe7df;
+
+  /* Chat bubbles */
+  --color-bubble-user: #f1f5f9;
+  --color-bubble-jory: #e0e7ff;
+
+  /* Single-accent system */
+  --color-accent-indigo: #4f46e5;
+  --color-accent-orange: #f97316;
+  --color-accent-green: #22c55e;
+
+  /* TYPE — Scale */
+  --font-size-display: 96px;
+  --font-size-hero: 240px;
+  --font-size-h1: 56px;
+  --font-size-h2: 36px;
+  --font-size-h3: 24px;
+  --font-size-body-lg: 20px;
+  --font-size-body: 16px;
+  --font-size-caption: 14px;
+  --font-size-micro: 12px;
+
+  /* SPACING */
+  --spacing-s1: 4px;
+  --spacing-s2: 8px;
+  --spacing-s3: 12px;
+  --spacing-s4: 16px;
+  --spacing-s5: 24px;
+  --spacing-s6: 32px;
+  --spacing-s7: 48px;
+  --spacing-s8: 64px;
+  --spacing-s9: 96px;
+  --spacing-s10: 128px;
+  --spacing-container: 1200px;
+  --spacing-gutter: 24px;
+
+  /* RADII */
+  --radius-input: 12px;
+  --radius-card: 16px;
+  --radius-bubble: 18px;
+  --radius-pill: 999px;
+
+  /* SHADOWS */
+  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.04);
+  --shadow-card-hover: 0 6px 20px rgba(0, 0, 0, 0.06);
+  --shadow-float: 0 12px 40px rgba(7, 27, 54, 0.1);
+
+  /* MOTION */
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 280ms;
+  --ease-jory: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* ==========================================================================
+   BASE / RESET
+   ========================================================================== */
+
+html,
+body {
+  width: 100%;
+  min-width: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family:
+    var(--font-inter-tight),
+    "Inter Tight",
+    "Inter",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
+}
+
+/* Wrapped in @layer base (rather than left unlayered) so it doesn't win
+   over Tailwind's `@layer utilities` classes -- unlayered CSS always beats
+   layered CSS regardless of selector specificity, so a bare `* { margin: 0 }`
+   here was silently clobbering every Tailwind margin/padding utility
+   (m-*, ml-auto, px-*, etc.) app-wide. */
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* Layered so runtime style layers (e.g. the scroll-world engine's @layer sw,
+   declared later and therefore higher-priority) can win over this reset.
+   Unlayered, it silently overrode .sw-btn--primary's white label color. */
+@layer base {
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+.landing-page {
+  width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+@media (max-width: 1180px) {
+  .landing-nav {
+    grid-template-columns: auto auto !important;
+    grid-template-rows: auto auto !important;
+    column-gap: 20px !important;
+    row-gap: 12px !important;
+    padding: 14px 28px !important;
+    max-width: 100% !important;
+    height: auto !important;
+    position: relative !important;
+    z-index: 5 !important;
+  }
+
+  /* Below the desktop layout the mascot stays pinned OVER the wordmark,
+     centered, scaled so the top of his head sits just under the tops of the
+     O and R; his desk pose extends below the baseline into space the stage's
+     bottom margin reserves so he never covers the headline. */
+  .landing-hero-character {
+    position: absolute !important;
+    top: 3% !important;
+    bottom: auto !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    height: 130% !important;
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    z-index: 3 !important;
+  }
+
+  .landing-wordmark-stage {
+    margin-bottom: 11vw !important;
+  }
+
+  .landing-nav-links {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-self: stretch !important;
+    width: 100% !important;
+    gap: 8px !important;
+    overflow: visible !important;
+    padding: 2px 0 4px !important;
+    font-size: 14px !important;
+  }
+
+  .landing-nav-links a {
+    flex: 0 0 auto !important;
+    border: 1px solid rgba(13, 26, 47, 0.08) !important;
+    border-radius: 999px !important;
+    background: rgba(255, 255, 255, 0.58) !important;
+    padding: 8px 11px !important;
+  }
+
+  .landing-section {
+    max-width: 100% !important;
+    padding-left: 28px !important;
+    padding-right: 28px !important;
+  }
+
+  .landing-hero-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 32px !important;
+    align-items: start !important;
+  }
+
+  .landing-hero-spacer {
+    display: none !important;
+  }
+
+  .landing-hero-title span {
+    white-space: normal !important;
+  }
+
+  .landing-hero-feature-list {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .landing-feature-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    max-width: 640px !important;
+    margin: 0 auto !important;
+  }
+
+  .landing-feature-preview {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .landing-cta-panel {
+    height: auto !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    padding: 36px !important;
+    gap: 28px !important;
+  }
+
+  .landing-use-cases-panel {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .landing-cta-phone-wrap {
+    height: 265px !important;
+    order: 3;
+  }
+
+  .landing-cta-phone {
+    width: min(100%, 369px) !important;
+  }
+
+  .marketing-card-grid,
+  .pricing-tier-grid,
+  .security-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .how-step-card {
+    grid-template-columns: 64px minmax(0, 1fr) !important;
+    gap: 24px !important;
+    align-items: start !important;
+  }
+
+  .how-step-chat {
+    grid-column: 2 !important;
+    width: 100% !important;
+  }
+
+  .about-story-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 32px !important;
+  }
+
+  .marketing-split-cta,
+  .marketing-contact-card {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .why-system-grid,
+  .why-costs-grid,
+  .why-standards-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .why-system-wide {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .why-system-wide img {
+    justify-self: end;
+  }
+
+  .why-hero-panel {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    padding: 28px 24px 0 !important;
+  }
+
+  .why-hero-character {
+    width: min(70vw, 320px) !important;
+    align-self: flex-end !important;
+  }
+
+  .why-hero-desk {
+    height: calc(min(70vw, 320px) * 0.1856) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .landing-nav {
+    height: auto !important;
+    padding: 12px 18px !important;
+  }
+
+  .landing-nav-cta {
+    height: 46px !important;
+    padding: 12px 14px !important;
+    font-size: 16px !important;
+    border-radius: 14px !important;
+  }
+
+  .landing-nav-links {
+    gap: 7px !important;
+    font-size: 13px !important;
+  }
+
+  .landing-nav-links a {
+    padding: 7px 10px !important;
+  }
+
+  .landing-section {
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+  }
+
+  .landing-wordmark-stage {
+    padding-top: 12px !important;
+    margin-bottom: 13vw !important;
+  }
+
+  .landing-hero-grid {
+    margin-top: 0 !important;
+    padding-bottom: 28px !important;
+  }
+
+  .landing-hero-title {
+    font-size: 38px !important;
+    line-height: 1.05 !important;
+    gap: 6px !important;
+  }
+
+  .landing-hero-copy {
+    font-size: 16px !important;
+  }
+
+  .landing-hero-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .landing-hero-actions button,
+  .landing-hero-actions a {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .landing-hero-benefits-section {
+    margin-top: 56px !important;
+    padding-bottom: 42px !important;
+  }
+
+  .landing-hero-feature-list {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .landing-feature-cards {
+    padding-top: 36px !important;
+    padding-bottom: 42px !important;
+  }
+
+  .landing-use-cases {
+    padding-top: 0 !important;
+    padding-bottom: 42px !important;
+  }
+
+  .landing-feature-heading {
+    font-size: 34px !important;
+  }
+
+  .landing-use-cases-heading {
+    font-size: 32px !important;
+  }
+
+  .landing-feature-subcopy {
+    font-size: 16px !important;
+  }
+
+  .landing-feature-subcopy br {
+    display: none !important;
+  }
+
+  .landing-feature-preview {
+    height: 236px !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    padding-left: 18px !important;
+  }
+
+  .landing-feature-character {
+    width: 220px !important;
+    height: 236px !important;
+    right: -36px !important;
+  }
+
+  .landing-cta-panel {
+    border-radius: 18px !important;
+    padding: 28px 18px 0 !important;
+  }
+
+  .landing-use-cases-panel {
+    border-radius: 18px !important;
+    padding: 22px 18px !important;
+    gap: 22px !important;
+  }
+
+  .landing-use-case-tabs button {
+    flex: 1 1 calc(50% - 8px) !important;
+  }
+
+  .marketing-card-grid,
+  .pricing-tier-grid,
+  .security-card-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .marketing-card,
+  .pricing-tier-card,
+  .security-card,
+  .about-story-grid,
+  .marketing-dark-panel,
+  .marketing-split-cta,
+  .marketing-contact-card {
+    border-radius: 18px !important;
+    padding: 28px 18px !important;
+  }
+
+  .security-card {
+    flex-direction: column !important;
+    gap: 18px !important;
+  }
+
+  .how-step-card {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 18px !important;
+    padding: 28px 18px !important;
+  }
+
+  .how-step-chat {
+    grid-column: auto !important;
+  }
+
+  .pricing-price-row {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+  }
+
+  .marketing-split-cta button,
+  .marketing-contact-card button {
+    width: 100% !important;
+    justify-content: center !important;
+    white-space: normal !important;
+  }
+
+  .landing-cta-heading {
+    font-size: 36px !important;
+    line-height: 1.05 !important;
+  }
+
+  .landing-cta-copy,
+  .landing-cta-side-copy {
+    font-size: 17px !important;
+  }
+
+  .landing-cta-copy br {
+    display: none !important;
+  }
+
+  .landing-cta-phone {
+    border-width: 7px !important;
+    border-radius: 32px 32px 0 0 !important;
+    padding: 18px 20px 0 !important;
+  }
+
+  .landing-footer {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 14px !important;
+    padding-top: 20px !important;
+  }
+
+  .why-section {
+    padding-top: 36px !important;
+    padding-bottom: 36px !important;
+  }
+
+  .why-points-row {
+    grid-template-columns: 44px 1fr !important;
+    gap: 14px !important;
+  }
+
+  .why-teaser > div {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    text-align: left !important;
+  }
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}

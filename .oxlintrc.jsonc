@@ -22,7 +22,7 @@
     "suspicious": "error",
     "perf": "error"
   },
-  "ignorePatterns": ["tools/oxlint/anti-slop/**"],
+  "ignorePatterns": ["tools/oxlint/anti-slop/**", "apps/marketing/**"],
   "jsPlugins": [
     "./tools/oxlint/anti-slop/index.ts",
     "./tools/oxlint/next/index.ts",

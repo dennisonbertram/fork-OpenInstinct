@@ -43,7 +43,9 @@ Square POS skill pack. These are authored scenarios, not runnable coverage or
 measured behavior; they extend the existing eval direction without changing
 runtime instructions.
 
-- The application is a single Next.js 16 application with an Eve 0.49 agent.
+- The repository contains the primary Next.js 16 application, the standalone
+  Jory marketing Next.js app in `apps/marketing/`, and an Eve 0.49 agent. Run
+  `pnpm --filter @jory/marketing dev` for the marketing site.
 - Vercel is the supported deployment target. Neon, Kernel, private Vercel Blob,
   Vercel Workflow/AI Gateway, and Vercel Connect are part of the current path.
 - The database and service layer are workspace-scoped, but the product is not

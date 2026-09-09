@@ -1,6 +1,7 @@
 # OpenInstinct fork
 
-This repository owns one Next.js app and an Eve agent under `agent/`.
+This repository owns the primary Next.js app, the standalone Jory marketing app
+under `apps/marketing/`, and an Eve agent under `agent/`.
 The workspace manager is `/`; agent chat is `/chat`.
 Read [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md) for topology, ownership, storage,
 and the change recipe relevant to your task. Follow links only as needed.

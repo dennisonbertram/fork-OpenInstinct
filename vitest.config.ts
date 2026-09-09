@@ -60,6 +60,7 @@ export default defineConfig({
             "tests/integration/**",
             // Playwright owns the e2e tier; vitest must not collect its specs.
             "tests/e2e/**",
+            "apps/marketing/**",
           ],
         },
       },
