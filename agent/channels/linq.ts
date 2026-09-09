@@ -1,4 +1,7 @@
-import { settleFinalDelivery } from "@/agent/lib/message-delivery";
+import {
+  finalDeliveryStatus,
+  settleFinalDelivery,
+} from "@/agent/lib/message-delivery";
 import { connectLinqCredentials } from "@vercel/connect/eve";
 import { createPostgresState } from "@chat-adapter/state-pg";
 import { createLinqAdapter } from "@linqapp/chat-sdk-adapter";
@@ -483,6 +486,7 @@ export const linqChannelConfig = {
       await releaseScheduledReportDelivery(session, event.message);
 
       if (scheduledReportFromSession(session) || !context.thread) return;
+      if (finalDeliveryStatus(event.turnId) === "completed") return;
       await context.thread.post({
         raw: "I couldn’t complete that request because of a service error. Please try again later.",
       });

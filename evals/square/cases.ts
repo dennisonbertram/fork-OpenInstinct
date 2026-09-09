@@ -40,6 +40,8 @@ export interface SquareCase {
     readonly measure: string;
     readonly period: string;
   };
+  /** Customer-order cases with a paginated SearchOrders fixture must drain it. */
+  readonly requiresSearchOrderCursorDrain?: boolean;
 }
 
 interface CustomerName {
@@ -131,6 +133,7 @@ export const squareCases: readonly SquareCase[] = [
     expectTools: [
       ["square__SearchOrders", "square__ListPayments"],
       ["square__ListPaymentRefunds"],
+      ["square-date-range"],
     ],
     facts: () => ["$50.50"],
     forbidTools: writeToolPattern,
@@ -221,6 +224,7 @@ export const squareCases: readonly SquareCase[] = [
     id: "ada-disambiguation",
     layout: "normal",
     prompt: "What did Ada buy?",
+    requiresSearchOrderCursorDrain: true,
     tone: "names the one matching customer in full (Ada Lovelace) instead of asking which Ada; answers in one or two sentences",
   },
   {

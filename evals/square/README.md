@@ -40,11 +40,13 @@ orders, completed refunds inside and outside the selected period, and boundary o
 transitions.
 
 For the selected `SearchOrders` paths it supports `location_ids`,
-`state_filter.states`, `date_time_filter.created_at`, and cursor pagination
-with a deterministic two-record page by default or after a larger requested
-limit (a client may receive fewer results than its limit). SearchOrders time
-ranges are inclusive; local-day cases use the final millisecond before the next
-day.
+`state_filter.states`, `date_time_filter.created_at` and `closed_at`, the
+matching `CREATED_AT` or `CLOSED_AT` sort fields and order, and cursor
+pagination with a deterministic two-record page by default or after a larger
+requested limit (a client may receive fewer results than its limit).
+SearchOrders time ranges are inclusive; local-day cases use the final
+millisecond before the next day. Cursor requests must repeat the original
+location and query scope, as Square requires.
 `ListPayments` and `ListPaymentRefunds` support `location_id`, `begin_time`,
 and `end_time` for the selected cases, comparing numeric `created_at` instants.
 Unsupported Square filters and endpoints are not evidence of provider fidelity.

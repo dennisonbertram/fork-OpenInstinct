@@ -19,6 +19,62 @@ function calledToolNames(events: readonly MessageStreamEvent[]): string[] {
   );
 }
 
+const searchOrdersActionSchema = z.object({
+  body: z.object({
+    location_ids: z.array(z.string()).optional(),
+  }),
+});
+type DeliveredMessageTexts = readonly string[];
+
+function searchOrderLocationScopes(
+  events: readonly MessageStreamEvent[]
+): readonly (readonly string[] | undefined)[] {
+  return events.flatMap((event) =>
+    event.type === "actions.requested"
+      ? event.data.actions.flatMap((action) => {
+          if (
+            action.kind !== "tool-call" ||
+            action.toolName !== "square__SearchOrders"
+          )
+            return [];
+          const parsed = searchOrdersActionSchema.safeParse(action.input);
+          return parsed.success ? [parsed.data.body.location_ids] : [undefined];
+        })
+      : []
+  );
+}
+
+const searchOrdersInputSchema = z.object({
+  body: z.object({
+    cursor: z.string().optional(),
+  }),
+});
+
+const searchOrdersOutputSchema = z.object({
+  cursor: z.string().optional(),
+  body: z.object({ cursor: z.string().optional() }).optional(),
+});
+
+function cursorInOutput(value: EveEvalToolCall["output"]): string | undefined {
+  const parsed = searchOrdersOutputSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  return parsed.data.cursor ?? parsed.data.body?.cursor;
+}
+
+function searchOrdersDrainCursor(calls: readonly EveEvalToolCall[]): boolean {
+  const searchCalls = calls.filter(
+    (call) => call.name === "square__SearchOrders"
+  );
+  return searchCalls.every((call, index) => {
+    const nextCursor = cursorInOutput(call.output);
+    if (!nextCursor) return true;
+    return searchCalls.slice(index + 1).some((nextCall) => {
+      const parsed = searchOrdersInputSchema.safeParse(nextCall.input);
+      return parsed.success && parsed.data.body.cursor === nextCursor;
+    });
+  });
+}
+
 /**
  * The agent answers through `send_message` (one call = one iMessage bubble)
  * and ends its turn with the `DELIVERY_COMPLETE` marker, so grade the
@@ -65,6 +121,45 @@ export default squareCases.map((squareCase) =>
       const deliveries = turn.toolCalls.filter(
         (call) => call.name === "send_message"
       );
+      const deliveredMessages = deliveries.flatMap((call) => {
+        const parsed = sendMessageInputSchema.safeParse(call.input);
+        return parsed.success &&
+          parsed.data.kind === "message" &&
+          parsed.data.text
+          ? [parsed.data.text]
+          : [];
+      });
+      t.check(
+        deliveredMessages,
+        satisfies(
+          (messages: DeliveredMessageTexts) =>
+            new Set(messages).size === messages.length,
+          "does not repeat identical delivered message text"
+        )
+      );
+      if (squareCase.sales) {
+        const locationId = /\(([^()]+)\)$/u.exec(
+          squareCase.sales.location
+        )?.[1];
+        if (locationId) {
+          t.eventsSatisfy(
+            "every SearchOrders page retains the selected location",
+            (events) =>
+              searchOrderLocationScopes(events).every(
+                (locations) => locations?.includes(locationId) ?? false
+              )
+          );
+        }
+      }
+      if (squareCase.requiresSearchOrderCursorDrain) {
+        t.check(
+          turn.toolCalls,
+          satisfies(
+            searchOrdersDrainCursor,
+            "continues every SearchOrders cursor until exhausted"
+          )
+        );
+      }
       // A Tapback (react_to_message) is a complete iMessage reply on its own,
       // for example a heart in answer to "Thanks!".
       const reactions = turn.toolCalls.flatMap((call) => {

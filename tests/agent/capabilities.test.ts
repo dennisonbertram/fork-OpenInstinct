@@ -7,9 +7,18 @@ import contacts from "@/agent/tools/contacts";
 import gmail from "@/agent/tools/gmail";
 import messaging from "@/agent/tools/messaging";
 import schedules from "@/agent/tools/schedules";
+import squareDateRangeTools from "@/agent/tools/square-date-range";
 import vault from "@/agent/tools/vault";
 
-const groupedTools = [calendar, contacts, gmail, messaging, schedules, vault];
+const groupedTools = [
+  calendar,
+  contacts,
+  gmail,
+  messaging,
+  schedules,
+  squareDateRangeTools,
+  vault,
+];
 
 describe("authored mode capability matrix", () => {
   it.each(["linq-message", "scheduled-worker"])(
@@ -48,6 +57,7 @@ describe("authored mode capability matrix", () => {
       "schedules-list",
       "schedules-update",
       "send_message",
+      "square-date-range",
     ]);
   });
 
@@ -59,6 +69,7 @@ describe("authored mode capability matrix", () => {
       "contacts-search",
       "gmail-read-thread",
       "gmail-search",
+      "square-date-range",
     ]);
   });
 

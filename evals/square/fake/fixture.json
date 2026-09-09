@@ -130,7 +130,8 @@
       "state": "COMPLETED",
       "quantity": 2,
       "itemIndexes": [1, 2],
-      "createdAt": "2026-11-01T06:30:00Z"
+      "createdAt": "2026-11-01T06:30:00Z",
+      "closedAt": "2026-11-01T06:45:00Z"
     },
     {
       "id": "ORD_2",
