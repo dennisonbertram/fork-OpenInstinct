@@ -34,6 +34,15 @@ export default {
       entry: ["agent/**/*.ts", "evals/**/*.ts"],
       project: ["agent/**/*.ts", "env.ts", "evals/**/*.ts"],
     },
+    "apps/marketing": {
+      entry: [
+        "src/app/**/page.tsx",
+        "src/app/**/route.ts",
+        "src/app/{robots,sitemap}.ts",
+        "e2e/**/*.ts",
+      ],
+      project: ["src/**/*.{ts,tsx}", "e2e/**/*.ts"],
+    },
   },
   ignoreDependencies: [
     // Type owners referenced by the Eve declaration patch, which Knip does not parse.
@@ -46,6 +55,14 @@ export default {
     "oxlint-tailwindcss",
     // Invoked as a CLI.
     "vercel",
+    "class-variance-authority",
+    "cmdk",
+    "lucide-react",
+    "motion",
+    "nanoid",
+    "pino",
+    "tw-animate-css",
+    "@testing-library/user-event",
   ],
   ignoreIssues: {
     // The workspace agent service is consumed dynamically in its PGlite
@@ -70,5 +87,10 @@ export default {
     // a reusable component surface wider than this minimal chat consumes.
     "src/components/ai-elements/**/*.tsx": ["exports", "files", "types"],
     "src/components/ui/**/*.tsx": ["exports", "files", "types"],
+    "apps/marketing/src/components/ui/**/*.tsx": ["exports", "files", "types"],
+    "apps/marketing/src/lib/{cn,design-tokens,logger}.ts": ["files", "exports"],
+    "apps/marketing/src/lib/site.ts": ["exports"],
+    "apps/marketing/src/components/landing/use-signup-request.ts": ["types"],
+    "apps/marketing/public/scroll-world/scrub-engine.js": ["files"],
   },
 } satisfies KnipConfig;

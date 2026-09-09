@@ -26,13 +26,16 @@ describe("Vitest project configuration", () => {
     );
     expect(config).toContain("include: [defaultTestInclude]");
     expect(config).toMatch(
-      /exclude:\s+\[\s+"\*\*\/node_modules\/\*\*",\s+"\*\*\/.next\/\*\*",\s+"\*\*\/.claude\/\*\*",\s+"tests\/integration\/\*\*",\s+(?:\/\/[^\n]*\s+)?"tests\/e2e\/\*\*",\s+\]/u
+      /exclude:\s+\[\s+"\*\*\/node_modules\/\*\*",\s+"\*\*\/.next\/\*\*",\s+"\*\*\/.claude\/\*\*",\s+"tests\/integration\/\*\*",\s+(?:\/\/[^\n]*\s+)?"tests\/e2e\/\*\*",\s+"apps\/marketing\/\*\*",\s+\]/u
     );
     expect(config).toContain('include: ["tests/integration/**"]');
     expect(testFiles).not.toHaveLength(0);
     for (const path of testFiles) {
       // Colocated tests are unit tests; Playwright owns tests/e2e exclusively.
-      const expectedMatches = path.startsWith("tests/e2e/") ? 0 : 1;
+      const expectedMatches =
+        path.startsWith("tests/e2e/") || path.startsWith("apps/marketing/")
+          ? 0
+          : 1;
       const matchingProjects = [
         matchesUnitProject(path),
         path.startsWith("tests/integration/"),
@@ -61,6 +64,7 @@ function matchesUnitProject(path: string) {
   return (
     testFilePattern.test(path) &&
     !path.startsWith("tests/integration/") &&
-    !path.startsWith("tests/e2e/")
+    !path.startsWith("tests/e2e/") &&
+    !path.startsWith("apps/marketing/")
   );
 }

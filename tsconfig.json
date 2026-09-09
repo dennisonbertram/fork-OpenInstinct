@@ -33,5 +33,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "evals/browser/dashboard"]
+  "exclude": ["node_modules", "evals/browser/dashboard", "apps/marketing"]
 }
