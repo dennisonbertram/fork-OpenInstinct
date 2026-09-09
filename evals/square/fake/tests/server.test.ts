@@ -21,7 +21,13 @@ const customersResponseSchema = z.object({
   cursor: z.string().optional(),
 });
 const ordersResponseSchema = z.object({
-  orders: z.array(z.object({ id: z.string(), total_money: moneySchema })),
+  orders: z.array(
+    z.object({
+      closed_at: z.string().optional(),
+      id: z.string(),
+      total_money: moneySchema,
+    })
+  ),
   cursor: z.string().optional(),
 });
 const countsResponseSchema = z.object({
@@ -130,6 +136,70 @@ describe("fake Square server", () => {
     expect(body.orders).toHaveLength(1);
     const [order] = body.orders;
     expect(order?.total_money).toEqual({ amount: 875, currency: "USD" });
+  });
+
+  it("filters and returns orders by the CLOSED_AT timestamp used for sorting", async () => {
+    const res = await post("/v2/orders/search", {
+      limit: 1000,
+      location_ids: ["LQK1QAMZG63BM"],
+      query: {
+        filter: {
+          date_time_filter: {
+            closed_at: {
+              start_at: "2026-11-01T06:40:00Z",
+              end_at: "2026-11-01T06:50:00Z",
+            },
+          },
+          state_filter: { states: ["COMPLETED"] },
+        },
+        sort: { sort_field: "CLOSED_AT", sort_order: "ASC" },
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res, ordersResponseSchema);
+
+    expect(body.orders).toHaveLength(1);
+    expect(body.orders[0]).toMatchObject({
+      closed_at: "2026-11-01T06:45:00Z",
+      id: "ORD_1",
+    });
+  });
+
+  it("rejects SearchOrders without location_ids", async () => {
+    const res = await post("/v2/orders/search", {
+      query: { filter: { state_filter: { states: ["COMPLETED"] } } },
+    });
+
+    expect(res.status).toBe(400);
+    const body = await json(res, errorsResponseSchema);
+    expect(body.errors[0]).toMatchObject({
+      category: "INVALID_REQUEST_ERROR",
+      code: "BAD_REQUEST",
+    });
+  });
+
+  it("rejects a date filter whose timestamp does not match sort_field", async () => {
+    const res = await post("/v2/orders/search", {
+      location_ids: ["LQK1QAMZG63BM"],
+      query: {
+        filter: {
+          date_time_filter: {
+            closed_at: {
+              start_at: "2026-11-01T06:40:00Z",
+              end_at: "2026-11-01T06:50:00Z",
+            },
+          },
+        },
+        sort: { sort_field: "CREATED_AT", sort_order: "ASC" },
+      },
+    });
+
+    expect(res.status).toBe(400);
+    const body = await json(res, errorsResponseSchema);
+    expect(body.errors[0]).toMatchObject({
+      category: "INVALID_REQUEST_ERROR",
+      code: "BAD_REQUEST",
+    });
   });
 
   it("SearchOrders without query filters returns the default bounded primary-location page", async () => {

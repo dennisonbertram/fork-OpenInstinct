@@ -39,6 +39,7 @@ const fixtureOrderSchema = z.object({
   quantity: z.number(),
   itemIndexes: z.tuple([z.number(), z.number()]),
   createdAt: z.string(),
+  closedAt: z.string().optional(),
 });
 
 const fixtureLocationSchema = z.object({
@@ -172,8 +173,20 @@ const searchOrdersBodySchema = z.object({
                   end_at: rfc3339TimestampSchema.optional(),
                 })
                 .optional(),
+              closed_at: z
+                .object({
+                  start_at: rfc3339TimestampSchema.optional(),
+                  end_at: rfc3339TimestampSchema.optional(),
+                })
+                .optional(),
             })
             .optional(),
+        })
+        .optional(),
+      sort: z
+        .object({
+          sort_field: z.enum(["CREATED_AT", "CLOSED_AT"]),
+          sort_order: z.enum(["ASC", "DESC"]).optional(),
         })
         .optional(),
     })
@@ -359,7 +372,7 @@ function orderObject(fixture: Fixture, order: FixtureOrder) {
   const lineItems = order.itemIndexes.map((index) =>
     orderLineItem(fixture, itemAt(fixture, index), order.quantity)
   );
-  return {
+  const result = {
     id: order.id,
     location_id: order.locationId,
     customer_id: order.customerId,
@@ -369,6 +382,8 @@ function orderObject(fixture: Fixture, order: FixtureOrder) {
     created_at: order.createdAt,
     updated_at: order.createdAt,
   };
+  if (order.state === "OPEN") return result;
+  return { ...result, closed_at: order.closedAt ?? order.createdAt };
 }
 
 function paymentObject(fixture: Fixture, payment: FixturePayment) {
@@ -570,16 +585,38 @@ function handleSearchOrders(
 ) {
   const customerIds = body.query?.filter?.customer_filter?.customer_ids;
   const states = body.query?.filter?.state_filter?.states;
-  const createdAt = body.query?.filter?.date_time_filter?.created_at;
-  const startAt = createdAt?.start_at
-    ? timestamp(createdAt.start_at)
+  const dateTimeFilter = body.query?.filter?.date_time_filter;
+  const createdAt = dateTimeFilter?.created_at;
+  const closedAt = dateTimeFilter?.closed_at;
+  const sortField = body.query?.sort?.sort_field ?? "CREATED_AT";
+  const sortOrder = body.query?.sort?.sort_order ?? "DESC";
+  const locationIds = body.location_ids;
+  if (!locationIds || locationIds.length === 0) {
+    invalidRequest(res, "location_ids must contain at least one location ID.");
+    return;
+  }
+  const filteredTimestamp = createdAt
+    ? "CREATED_AT"
+    : closedAt
+      ? "CLOSED_AT"
+      : undefined;
+  if (filteredTimestamp && filteredTimestamp !== sortField) {
+    invalidRequest(
+      res,
+      `date_time_filter must use ${sortField.toLowerCase()} when sort_field is ${sortField}.`
+    );
+    return;
+  }
+  const dateFilter = sortField === "CLOSED_AT" ? closedAt : createdAt;
+  const startAt = dateFilter?.start_at
+    ? timestamp(dateFilter.start_at)
     : undefined;
-  const endAt = createdAt?.end_at ? timestamp(createdAt.end_at) : undefined;
+  const endAt = dateFilter?.end_at ? timestamp(dateFilter.end_at) : undefined;
   const filters = {
     customerIds: customerIds ?? [],
-    endAt: createdAt?.end_at ?? null,
-    locationIds: body.location_ids ?? [],
-    startAt: createdAt?.start_at ?? null,
+    endAt: dateFilter?.end_at ?? null,
+    locationIds,
+    startAt: dateFilter?.start_at ?? null,
     states: states ?? [],
   };
   if (startAt !== undefined && endAt !== undefined && startAt > endAt) {
@@ -595,27 +632,45 @@ function handleSearchOrders(
     });
     invalidRequest(
       res,
-      "created_at.start_at must not be after created_at.end_at."
+      `${sortField.toLowerCase()}.start_at must not be after ${sortField.toLowerCase()}.end_at.`
     );
     return;
   }
   let matches = fixture.orders;
-  if (body.location_ids && body.location_ids.length > 0) {
-    matches = matches.filter((o) => body.location_ids?.includes(o.locationId));
-  }
+  matches = matches.filter((o) => locationIds.includes(o.locationId));
   if (customerIds && customerIds.length > 0) {
     matches = matches.filter((o) => customerIds.includes(o.customerId));
   }
   if (states && states.length > 0) {
     matches = matches.filter((o) => states.includes(o.state));
   }
-  if (startAt !== undefined) {
-    matches = matches.filter((o) => timestamp(o.createdAt) >= startAt);
-  }
+  const orderTimestamp = (order: FixtureOrder) =>
+    sortField === "CLOSED_AT"
+      ? order.closedAt
+        ? timestamp(order.closedAt)
+        : order.state === "OPEN"
+          ? undefined
+          : timestamp(order.createdAt)
+      : timestamp(order.createdAt);
+  if (startAt !== undefined)
+    matches = matches.filter((o) => {
+      const value = orderTimestamp(o);
+      return value !== undefined && value >= startAt;
+    });
   if (endAt !== undefined) {
     // Square SearchOrders ranges are inclusive at both ends. Eval local-day
     // requests therefore end at the final representable millisecond.
-    matches = matches.filter((o) => timestamp(o.createdAt) <= endAt);
+    matches = matches.filter((o) => {
+      const value = orderTimestamp(o);
+      return value !== undefined && value <= endAt;
+    });
+  }
+  if (body.query?.sort) {
+    matches = matches.toSorted((left, right) => {
+      const leftValue = orderTimestamp(left) ?? Number.POSITIVE_INFINITY;
+      const rightValue = orderTimestamp(right) ?? Number.POSITIVE_INFINITY;
+      return (leftValue - rightValue) * (sortOrder === "ASC" ? 1 : -1);
+    });
   }
   const start = body.cursor ? Number(body.cursor) : 0;
   if (start >= matches.length && body.cursor) {

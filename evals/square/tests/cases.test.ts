@@ -75,6 +75,7 @@ describe("squareCases", () => {
     expect(salesCase?.expectTools).toEqual([
       ["square__SearchOrders", "square__ListPayments"],
       ["square__ListPaymentRefunds"],
+      ["square-date-range"],
     ]);
   });
 

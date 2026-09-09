@@ -659,6 +659,57 @@ describe("Linq message delivery", () => {
     });
   });
 
+  it("does not post a failure notice after final delivery completes", async () => {
+    const { context, post } = handlerContext();
+    const resolverContext = {
+      channel: { kind: "channel:linq" },
+      session: { id: "root", auth: { current: null, initiator: null } },
+      messages: [],
+    };
+    const tools = await messaging.events["step.started"]?.(
+      { data: { turnId: "turn-1" } },
+      resolverContext
+    );
+    if (!tools) throw new Error("Missing messaging tools");
+    const base = toolContextFor({
+      sessionId: "root",
+      callId: "call-send-message",
+    });
+    const output = sendMessageOutputSchema.parse(
+      await tools.send_message.execute(
+        { kind: "message", text: "The order is ready.", final: true },
+        {
+          ...base,
+          session: { ...base.session, turn: { id: "turn-1", sequence: 0 } },
+        }
+      )
+    );
+
+    await handleActionResult(
+      sendMessageResult(output),
+      context,
+      sessionContext()
+    );
+    expect(post).toHaveBeenCalledExactlyOnceWith({
+      raw: "The order is ready.",
+    });
+
+    await handleTurnFailed(
+      {
+        code: "model_call_failed",
+        message: "Gateway stream timeout",
+        sequence: 0,
+        turnId: "turn-1",
+      },
+      context,
+      sessionContext()
+    );
+
+    expect(post).toHaveBeenCalledExactlyOnceWith({
+      raw: "The order is ready.",
+    });
+  });
+
   it("releases a scheduled failure without posting an unsolicited notice", async () => {
     const { context, post } = handlerContext();
     const event = {
