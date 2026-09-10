@@ -17,6 +17,9 @@ const capture = vi.hoisted(() => ({
   markRead: vi.fn(),
   mediaSend: vi.fn(),
   post: vi.fn(),
+  checkBudget: vi.fn(),
+  recordUsageEvent: vi.fn(),
+  BudgetExceededError: class BudgetExceededError extends Error {},
   resolveBinding: vi.fn(),
   resolveVerifiedBinding: vi.fn(),
   releaseLock: vi.fn(),
@@ -88,7 +91,10 @@ vi.mock("@/auth", () => ({
     $context: { adapter: { findOne: capture.findOne } },
   }),
 }));
-vi.mock("@/db/services/scope", () => ({ verifyScopeAccess: capture.verifier }));
+vi.mock("@/db/services/scope", () => ({
+  WorkspaceNotOperableError: class WorkspaceNotOperableError extends Error {},
+  verifyScopeAccess: capture.verifier,
+}));
 vi.mock("@/db/services/phone-identities", () => ({
   findVerifiedUserByPhoneNumber: capture.findIdentity,
 }));
@@ -99,6 +105,11 @@ vi.mock("@/db/services/channel-conversations", () => ({
 }));
 vi.mock("@/agent/lib/principal-scope", () => ({
   scopeFromPrincipal: () => ({ workspaceId }),
+}));
+vi.mock("@/db/services/usage", () => ({
+  BudgetExceededError: capture.BudgetExceededError,
+  checkBudget: capture.checkBudget,
+  recordUsageEvent: capture.recordUsageEvent,
 }));
 
 const { dispatchSendblueMessage } = await import("@/agent/channels/sendblue");
@@ -120,6 +131,25 @@ const thread = {
   post: capture.post,
   toJSON: () => ({ currentMessage: { id: "inbound-message" } }),
 } as unknown as Thread;
+
+interface StoredPendingInput {
+  readonly requests: readonly {
+    readonly allowFreeform?: boolean;
+    readonly kind?: string;
+    readonly options?: readonly {
+      readonly id: string;
+      readonly label: string;
+    }[];
+    readonly prompt: string;
+    readonly requestId: string;
+  }[];
+  readonly responses?: readonly {
+    readonly optionId?: string;
+    readonly requestId: string;
+    readonly text?: string;
+  }[];
+  readonly workspaceId: string;
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -153,6 +183,8 @@ beforeEach(() => {
   capture.setState.mockResolvedValue(undefined);
   capture.deleteState.mockResolvedValue(undefined);
   capture.getState.mockResolvedValue(null);
+  capture.checkBudget.mockResolvedValue(undefined);
+  capture.recordUsageEvent.mockResolvedValue(undefined);
 });
 
 describe("SendBlue channel", () => {
@@ -162,6 +194,38 @@ describe("SendBlue channel", () => {
     expect(capture.send).toHaveBeenCalledWith(
       "hello",
       expect.objectContaining({ thread })
+    );
+  });
+
+  it("allows bridge.send to await input.requested while dispatch holds the inbound lease", async () => {
+    let held = false;
+    capture.acquireLock.mockImplementation(async () => {
+      if (held) return null;
+      held = true;
+      return {
+        expiresAt: Date.now() + 30_000,
+        threadId: thread.id,
+        token: "lock-1",
+      };
+    });
+    capture.releaseLock.mockImplementation(async () => {
+      held = false;
+    });
+    capture.send.mockImplementationOnce(async () => {
+      await getSendblueEvent("input.requested")(
+        inputRequest(),
+        { thread },
+        sessionContext()
+      );
+    });
+
+    await expect(
+      dispatchSendblueMessage(thread, inbound())
+    ).resolves.toBeUndefined();
+    expect(capture.setState).toHaveBeenCalledWith(
+      `pending-input:${thread.id}`,
+      expect.any(Object),
+      expect.any(Number)
     );
   });
 
@@ -184,6 +248,36 @@ describe("SendBlue channel", () => {
       dispatchSendblueMessage(thread, inbound({ text: "cancel" }))
     ).rejects.toThrow("Eve unavailable");
     expect(capture.deleteState).not.toHaveBeenCalled();
+  });
+
+  it("does not delete a fresh prompt emitted before Eve acknowledges the prior response", async () => {
+    let stored: StoredPendingInput | null = pending();
+    capture.getState.mockImplementation(async () => stored);
+    capture.setState.mockImplementation(async (_key, value) => {
+      stored = value;
+    });
+    capture.send.mockImplementation(async () => {
+      await getSendblueEvent("input.requested")(
+        inputRequest({ requestId: "request-2" }),
+        { thread },
+        sessionContext()
+      );
+    });
+
+    await dispatchSendblueMessage(thread, inbound({ text: "yes" }));
+
+    expect(capture.deleteState).not.toHaveBeenCalled();
+    expect(stored).toEqual(
+      expect.objectContaining({
+        requests: [expect.objectContaining({ requestId: "request-2" })],
+      })
+    );
+
+    await dispatchSendblueMessage(thread, inbound({ text: "yes" }));
+    expect(capture.send).toHaveBeenLastCalledWith(
+      { inputResponses: [{ optionId: "approve", requestId: "request-2" }] },
+      expect.any(Object)
+    );
   });
 
   it("maps cancellation to the same pending Eve request", async () => {
@@ -240,6 +334,49 @@ describe("SendBlue channel", () => {
     expect(capture.post.mock.calls[0]?.[0].raw).not.toContain(
       "provider-internal-write"
     );
+  });
+
+  it("does not make an approval eligible when its first prompt lacks a provider handle", async () => {
+    let stored: StoredPendingInput | null = null;
+    capture.setState.mockImplementation(async (_key, value) => {
+      stored = value;
+    });
+    capture.getState.mockImplementation(async () => stored);
+    capture.post.mockResolvedValueOnce({ id: "" });
+
+    await expect(
+      getSendblueEvent("input.requested")(
+        inputRequest(),
+        { thread },
+        sessionContext()
+      )
+    ).rejects.toThrow(/did not accept/iu);
+    expect(stored).toBeNull();
+
+    await dispatchSendblueMessage(thread, inbound({ text: "yes" }));
+    expect(capture.send).toHaveBeenCalledWith("yes", expect.any(Object));
+    expect(capture.send).not.toHaveBeenCalledWith(
+      expect.objectContaining({ inputResponses: expect.anything() }),
+      expect.anything()
+    );
+  });
+
+  it("does not make an approval eligible when its first prompt is rejected", async () => {
+    let stored: StoredPendingInput | null = null;
+    capture.setState.mockImplementation(async (_key, value) => {
+      stored = value;
+    });
+    capture.getState.mockImplementation(async () => stored);
+    capture.post.mockRejectedValueOnce(new Error("provider rejected"));
+
+    await expect(
+      getSendblueEvent("input.requested")(
+        inputRequest(),
+        { thread },
+        sessionContext()
+      )
+    ).rejects.toThrow("provider rejected");
+    expect(stored).toBeNull();
   });
 
   it("collects simultaneous requests in order before resuming Eve", async () => {
@@ -316,13 +453,11 @@ describe("SendBlue channel", () => {
     );
   });
 
-  it("retains every collected response when Eve rejects the final acknowledgement", async () => {
-    let stored: unknown;
-    capture.getState.mockResolvedValue({
-      ...pending(),
-      responses: [{ optionId: "approve", requestId: "request-1" }],
+  it("does not advance to a follow-up request when its prompt lacks a provider handle", async () => {
+    const initial: StoredPendingInput = {
+      responses: [],
       requests: [
-        pending().requests[0],
+        firstPendingRequest(),
         {
           allowFreeform: true,
           kind: "question",
@@ -330,9 +465,82 @@ describe("SendBlue channel", () => {
           requestId: "request-2",
         },
       ],
-    });
+      workspaceId,
+    };
+    let stored: StoredPendingInput = initial;
+    capture.getState.mockImplementation(async () => stored);
     capture.setState.mockImplementation(async (_key, value) => {
       stored = value;
+    });
+    capture.post.mockResolvedValueOnce({ id: "" });
+
+    await expect(
+      dispatchSendblueMessage(thread, inbound({ text: "yes" }))
+    ).rejects.toThrow(/did not accept/iu);
+    expect(stored).toEqual(initial);
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({ text: "the second answer" })
+    );
+    expect(capture.send).toHaveBeenCalledWith(
+      "the second answer",
+      expect.any(Object)
+    );
+    expect(capture.send).not.toHaveBeenCalledWith(
+      expect.objectContaining({ inputResponses: expect.anything() }),
+      expect.anything()
+    );
+  });
+
+  it("does not advance to a follow-up request when its prompt is rejected", async () => {
+    const initial: StoredPendingInput = {
+      responses: [],
+      requests: [
+        firstPendingRequest(),
+        {
+          allowFreeform: true,
+          kind: "question",
+          prompt: "What is the second answer?",
+          requestId: "request-2",
+        },
+      ],
+      workspaceId,
+    };
+    let stored: StoredPendingInput = initial;
+    capture.getState.mockImplementation(async () => stored);
+    capture.setState.mockImplementation(async (_key, value) => {
+      stored = value;
+    });
+    capture.post.mockRejectedValueOnce(new Error("provider rejected"));
+
+    await expect(
+      dispatchSendblueMessage(thread, inbound({ text: "yes" }))
+    ).rejects.toThrow("provider rejected");
+    expect(stored).toEqual(initial);
+  });
+
+  it("retains every collected response when Eve rejects the final acknowledgement", async () => {
+    const initial: StoredPendingInput = {
+      ...pending(),
+      responses: [{ optionId: "approve", requestId: "request-1" }],
+      requests: [
+        firstPendingRequest(),
+        {
+          allowFreeform: true,
+          kind: "question",
+          prompt: "What is the second answer?",
+          requestId: "request-2",
+        },
+      ],
+    };
+    let stored: StoredPendingInput | null = initial;
+    capture.getState.mockImplementation(async () => stored);
+    capture.setState.mockImplementation(async (_key, value) => {
+      stored = value;
+    });
+    capture.deleteState.mockImplementation(async () => {
+      stored = null;
     });
     capture.send.mockRejectedValueOnce(new Error("Eve unavailable"));
     await expect(
@@ -346,6 +554,16 @@ describe("SendBlue channel", () => {
           { requestId: "request-2", text: "second response" },
         ],
       })
+    );
+
+    await dispatchSendblueMessage(thread, inbound({ text: "retry" }));
+    expect(capture.deleteState).toHaveBeenCalledWith(
+      `pending-input:${thread.id}`
+    );
+    await dispatchSendblueMessage(thread, inbound({ text: "normal message" }));
+    expect(capture.send).toHaveBeenLastCalledWith(
+      "normal message",
+      expect.any(Object)
     );
   });
 
@@ -509,6 +727,107 @@ describe("SendBlue channel", () => {
     expect(capture.post).not.toHaveBeenCalled();
   });
 
+  it("checks before sending and records after acceptance for a SendBlue text action", async () => {
+    await getSendblueEvent("action.result")(
+      action(),
+      { thread },
+      sessionContext()
+    );
+    expect(capture.checkBudget).toHaveBeenCalledWith(
+      { workspaceId },
+      "provider_message"
+    );
+    expect(capture.recordUsageEvent).toHaveBeenCalledWith(
+      { workspaceId },
+      { kind: "provider_message", quantity: 1, unit: "messages" }
+    );
+  });
+
+  it("checks before sending and records after acceptance for each SendBlue media message", async () => {
+    let releaseFirstLedger: (() => void) | undefined;
+    const firstLedgerReleased = new Promise<void>((resolve) => {
+      releaseFirstLedger = resolve;
+    });
+    let firstLedgerStarted: () => void;
+    const firstLedgerStartedPromise = new Promise<void>((resolve) => {
+      firstLedgerStarted = resolve;
+    });
+    capture.recordUsageEvent.mockImplementationOnce(async () => {
+      firstLedgerStarted();
+      await firstLedgerReleased;
+    });
+    capture.checkBudget
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(
+        new capture.BudgetExceededError("Workspace usage limit reached.")
+      );
+
+    const delivery = getSendblueEvent("action.result")(
+      action({
+        output: {
+          attachments: [
+            { kind: "image", url: "https://media.example/first.png" },
+            { kind: "image", url: "https://media.example/second.png" },
+          ],
+          kind: "message",
+        },
+      }),
+      { thread },
+      sessionContext()
+    );
+    await firstLedgerStartedPromise;
+    expect(capture.checkBudget).toHaveBeenCalledTimes(1);
+    expect(capture.mediaSend).toHaveBeenCalledTimes(1);
+    if (!releaseFirstLedger)
+      throw new Error("First ledger write did not start.");
+    releaseFirstLedger();
+    await delivery;
+
+    expect(capture.checkBudget).toHaveBeenCalledTimes(2);
+    expect(capture.recordUsageEvent).toHaveBeenCalledTimes(2);
+    expect(capture.mediaSend).toHaveBeenCalledTimes(1);
+    expect(capture.post).toHaveBeenCalledWith({
+      raw: "Workspace usage limit reached.",
+    });
+    expect(capture.recordUsageEvent).toHaveBeenCalledWith(
+      { workspaceId },
+      { kind: "provider_message", quantity: 1, unit: "messages" }
+    );
+  });
+
+  it("budgets and records SendBlue prompts and failure messages", async () => {
+    await getSendblueEvent("input.requested")(
+      inputRequest(),
+      { thread },
+      sessionContext()
+    );
+    await getSendblueEvent("turn.failed")(
+      { turnId: "turn-2" },
+      { thread },
+      sessionContext()
+    );
+    expect(capture.checkBudget).toHaveBeenCalledTimes(2);
+    expect(capture.recordUsageEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends and records the budget denial instead of the requested provider message", async () => {
+    capture.checkBudget.mockRejectedValueOnce(
+      new capture.BudgetExceededError("Workspace usage limit reached.")
+    );
+    await getSendblueEvent("action.result")(
+      action(),
+      { thread },
+      sessionContext()
+    );
+    expect(capture.post).toHaveBeenCalledWith({
+      raw: "Workspace usage limit reached.",
+    });
+    expect(capture.recordUsageEvent).toHaveBeenCalledWith(
+      { workspaceId },
+      { kind: "provider_message", quantity: 1, unit: "messages" }
+    );
+  });
+
   it("accepts a native reaction without creating a text message", async () => {
     await getSendblueEvent("action.result")(
       {
@@ -617,6 +936,44 @@ function pending() {
       },
     ],
     workspaceId,
+  };
+}
+
+function firstPendingRequest() {
+  const [request] = pending().requests;
+  if (!request) throw new Error("Missing synthetic pending request.");
+  return request;
+}
+
+function inputRequest(overrides: Partial<{ readonly requestId: string }> = {}) {
+  return {
+    requests: [
+      {
+        allowFreeform: false,
+        kind: "tool-approval",
+        options: [
+          { id: "approve", label: "Approve" },
+          { id: "cancel", label: "Cancel" },
+        ],
+        prompt: "Approve provider-internal-write",
+        requestId: "request-1",
+        ...overrides,
+      },
+    ],
+  };
+}
+
+function sessionContext() {
+  return {
+    session: {
+      auth: {
+        current: {
+          attributes: { workspaceId },
+          principalId: "better-auth:alice",
+          principalType: "user",
+        },
+      },
+    },
   };
 }
 

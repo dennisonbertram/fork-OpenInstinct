@@ -10,11 +10,11 @@ import {
 } from "@/agent/lib/message-delivery";
 import { sendMessageToolResultSchema } from "@/agent/lib/send-message";
 import { reactToMessageToolResultSchema } from "@/agent/lib/react-to-message";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getAuth } from "@/auth";
 import { env } from "@/env";
-import { accessScopeForUser } from "@/lib/access-scope";
+import { accessScopeForUser, type AccessScope } from "@/lib/access-scope";
 import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
 import {
   createConversationBinding,
@@ -22,7 +22,15 @@ import {
   resolveVerifiedConversationBinding,
 } from "@/db/services/channel-conversations";
 import { findVerifiedUserByPhoneNumber } from "@/db/services/phone-identities";
-import { verifyScopeAccess } from "@/db/services/scope";
+import {
+  verifyScopeAccess,
+  WorkspaceNotOperableError,
+} from "@/db/services/scope";
+import {
+  BudgetExceededError,
+  checkBudget,
+  recordUsageEvent,
+} from "@/db/services/usage";
 import {
   hasSendblueWebhookSecret,
   validateSendblueInboundPayload,
@@ -46,6 +54,7 @@ const pendingInputLockTtlMs = 30_000;
 const pendingInputLockRetryMs = 250;
 const maxWebhookBytes = 65_536;
 const pendingSendblueInputSchema = z.object({
+  generation: z.string().min(1).default("legacy"),
   requests: z.array(
     z.object({
       allowFreeform: z.boolean().optional(),
@@ -96,10 +105,13 @@ interface SendblueInputResponse {
   readonly text?: string;
 }
 interface PendingInputResult {
+  readonly inputResponseStateGeneration?: string;
   readonly inputResponseStateKey?: string;
   readonly inputResponses?: readonly SendblueInputResponse[];
   readonly pendingInputLock?: Lock;
   readonly pendingInputPrompt?: string;
+  readonly pendingInputState?: z.output<typeof pendingSendblueInputSchema>;
+  readonly pendingInputStateKey?: string;
 }
 type SendblueThread = Thread;
 interface SendblueOnMessageResult extends PendingInputResult {
@@ -242,11 +254,18 @@ const bridge = chatSdkChannel({
       await state.connect();
       const [request] = event.requests;
       if (!request) return;
+      const posted = await postSendblueReply(
+        context.thread,
+        { raw: renderInputRequest(request) },
+        scope
+      );
+      if (!posted) return;
       await state.set(
         pendingInputKey(context.thread.id),
         {
           // SMS receives one request at a time. The remaining requests and
           // their accepted replies stay in the same scoped durable state.
+          generation: randomUUID(),
           requests: event.requests.map((pendingRequest) => ({
             allowFreeform: pendingRequest.allowFreeform,
             kind: pendingRequest.kind,
@@ -262,12 +281,10 @@ const bridge = chatSdkChannel({
         },
         pendingInputTtlMs
       );
-      await context.thread.post({
-        raw: renderInputRequest(request),
-      });
     },
-    async "action.result"(event, context) {
+    async "action.result"(event, context, session) {
       if (event.status !== "completed" || !context.thread) return;
+      const scope = scopeForSession(session);
       const reaction = reactToMessageToolResultSchema.safeParse(event.result);
       if (reaction.success) {
         if (reaction.data.output.operation !== "add") return;
@@ -299,19 +316,25 @@ const bridge = chatSdkChannel({
       let accepted = false;
       try {
         if (message.data.output.kind === "link") {
-          const posted = await context.thread.post({
-            raw: message.data.output.url,
-          });
-          if (!posted.id)
-            throw new Error("SendBlue did not accept the message.");
+          if (
+            !(await postSendblueReply(
+              context.thread,
+              { raw: message.data.output.url },
+              scope
+            ))
+          )
+            return;
         } else {
           const attachments = message.data.output.attachments ?? [];
           if (attachments.length === 0) {
-            const posted = await context.thread.post({
-              raw: message.data.output.text ?? "",
-            });
-            if (!posted.id)
-              throw new Error("SendBlue did not accept the message.");
+            if (
+              !(await postSendblueReply(
+                context.thread,
+                { raw: message.data.output.text ?? "" },
+                scope
+              ))
+            )
+              return;
           } else {
             const recipient = adapter.decodeThreadId(context.thread.id);
             const contactNumber = recipient.contactNumber;
@@ -326,18 +349,21 @@ const bridge = chatSdkChannel({
               .string()
               .catch("")
               .parse(message.data.output.text);
-            await Promise.all(
-              attachments.map(async (attachment, index) => {
-                const response = await adapter.getSdk().messages.send({
-                  content: index === 0 ? attachmentCaption : "",
-                  from_number: configured.fromNumber,
-                  media_url: attachment.url,
-                  number: contactNumber,
-                });
-                if (!response.message_handle)
-                  throw new Error("SendBlue did not accept the media message.");
-              })
-            );
+            /* oxlint-disable eslint/no-await-in-loop -- Each accepted media message must be ledgered before the next budget check. */
+            for (const [index, attachment] of attachments.entries()) {
+              if (!(await checkSendblueMessageBudget(context.thread, scope)))
+                return;
+              const response = await adapter.getSdk().messages.send({
+                content: index === 0 ? attachmentCaption : "",
+                from_number: configured.fromNumber,
+                media_url: attachment.url,
+                number: contactNumber,
+              });
+              if (!response.message_handle)
+                throw new Error("SendBlue did not accept the media message.");
+              await recordSendblueUsage(scope);
+            }
+            /* oxlint-enable eslint/no-await-in-loop */
           }
         }
         accepted = true;
@@ -358,12 +384,16 @@ const bridge = chatSdkChannel({
     async "message.completed"() {
       await Promise.resolve();
     },
-    async "turn.failed"(event, context) {
+    async "turn.failed"(event, context, session) {
       if (!context.thread || finalDeliveryStatus(event.turnId) !== undefined)
         return;
-      await context.thread.post({
-        raw: "I couldn’t complete that request because of a service error. Please try again later.",
-      });
+      await postSendblueReply(
+        context.thread,
+        {
+          raw: "I couldn’t complete that request because of a service error. Please try again later.",
+        },
+        scopeForSession(session)
+      );
     },
   },
   routes: { sendblue: "/eve/v1/sendblue" },
@@ -396,15 +426,34 @@ export async function dispatchSendblueMessage(
         throw new Error(
           "Lost the SendBlue conversation lock before acknowledgement."
         );
-      if (result.inputResponseStateKey)
-        await state.delete(result.inputResponseStateKey);
+      if (result.inputResponseStateKey) {
+        const pending = pendingSendblueInputSchema.safeParse(
+          await state.get(result.inputResponseStateKey)
+        );
+        if (
+          pending.success &&
+          pending.data.generation === result.inputResponseStateGeneration
+        )
+          await state.delete(result.inputResponseStateKey);
+      }
       return;
     }
     if (result.pendingInputPrompt) {
-      await thread.post({ raw: result.pendingInputPrompt });
+      const posted = await postSendblueReply(
+        thread,
+        { raw: result.pendingInputPrompt },
+        scopeFromPrincipal(result.auth)
+      );
+      if (!posted) return;
       if (lockRenewal?.lost())
         throw new Error(
           "Lost the SendBlue conversation lock before prompting."
+        );
+      if (result.pendingInputStateKey && result.pendingInputState)
+        await state.set(
+          result.pendingInputStateKey,
+          result.pendingInputState,
+          pendingInputTtlMs
         );
       return;
     }
@@ -522,7 +571,11 @@ async function resolvePendingInputResponses({
   );
   if (!request)
     return parsed.data.responses.length === parsed.data.requests.length
-      ? { inputResponses: parsed.data.responses, inputResponseStateKey: key }
+      ? {
+          inputResponses: parsed.data.responses,
+          inputResponseStateGeneration: parsed.data.generation,
+          inputResponseStateKey: key,
+        }
       : undefined;
   const normalized = normalizeInputReply(text);
   let option = request.options?.find(
@@ -542,16 +595,90 @@ async function resolvePendingInputResponses({
       : undefined;
   if (!response) return undefined;
   const responses = [...parsed.data.responses, response];
-  await state.set(key, { ...parsed.data, responses }, pendingInputTtlMs);
   const nextRequest = parsed.data.requests.find(
     (candidate) =>
       candidate.requestId !== request.requestId &&
       !answeredRequestIds.has(candidate.requestId)
   );
   if (nextRequest) {
-    return { pendingInputPrompt: renderInputRequest(nextRequest) };
+    return {
+      pendingInputPrompt: renderInputRequest(nextRequest),
+      pendingInputState: { ...parsed.data, responses },
+      pendingInputStateKey: key,
+    };
   }
-  return { inputResponses: responses, inputResponseStateKey: key };
+  await state.set(key, { ...parsed.data, responses }, pendingInputTtlMs);
+  return {
+    inputResponses: responses,
+    inputResponseStateGeneration: parsed.data.generation,
+    inputResponseStateKey: key,
+  };
+}
+
+async function postSendblueReply(
+  thread: SendblueThread,
+  outgoing: { readonly raw: string },
+  scope?: AccessScope
+) {
+  if (!(await checkSendblueMessageBudget(thread, scope))) return false;
+  const posted = await thread.post(outgoing);
+  if (!posted.id) throw new Error("SendBlue did not accept the message.");
+  await recordSendblueUsage(scope);
+  return true;
+}
+
+async function checkSendblueMessageBudget(
+  thread: SendblueThread,
+  scope?: AccessScope
+) {
+  if (!scope) return true;
+  try {
+    await checkBudget(scope, "provider_message");
+    return true;
+  } catch (error) {
+    if (
+      !(error instanceof BudgetExceededError) &&
+      !(error instanceof WorkspaceNotOperableError)
+    )
+      throw error;
+    const posted = await thread.post({ raw: error.message });
+    if (!posted.id)
+      throw new Error("SendBlue did not accept the message.", {
+        cause: error,
+      });
+    await recordSendblueUsage(scope);
+    return false;
+  }
+}
+
+async function recordSendblueUsage(scope?: AccessScope) {
+  if (!scope) return;
+  try {
+    await recordUsageEvent(scope, {
+      kind: "provider_message",
+      quantity: 1,
+      unit: "messages",
+    });
+  } catch {
+    console.warn("[usage] usage event recording failed");
+  }
+}
+
+function scopeForSession(
+  session:
+    | {
+        readonly session: {
+          readonly auth: {
+            readonly current: Parameters<typeof scopeFromPrincipal>[0] | null;
+            readonly initiator: Parameters<typeof scopeFromPrincipal>[0] | null;
+          };
+        };
+      }
+    | undefined
+) {
+  const caller =
+    session?.session.auth.current ?? session?.session.auth.initiator;
+  return caller ? scopeFromPrincipal(caller) : undefined;
 }
 
 function normalizeInputReply(text: string) {
