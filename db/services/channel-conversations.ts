@@ -5,6 +5,7 @@ import {
   agentManifestContentDigest,
   type AgentManifest,
 } from "@/lib/agent-manifest";
+import type { PlatformLineProvider } from "@/db/schema/platform";
 import {
   agentRevisions,
   agents,
@@ -45,7 +46,7 @@ function activeBindingConditions({
   providerConversationId,
   workspaceId,
 }: {
-  readonly provider: string;
+  readonly provider: PlatformLineProvider;
   readonly providerAccountId: string;
   readonly providerConversationId: string;
   readonly workspaceId?: string;
@@ -64,7 +65,7 @@ export async function resolveConversationBinding({
   providerAccountId,
   providerConversationId,
 }: {
-  readonly provider: string;
+  readonly provider: PlatformLineProvider;
   readonly providerAccountId: string;
   readonly providerConversationId: string;
 }) {
@@ -81,6 +82,69 @@ export async function resolveConversationBinding({
         providerAccountId,
         providerConversationId,
       })
+    )
+    .limit(1);
+  return binding;
+}
+
+export async function resolveVerifiedConversationBinding({
+  phoneIdentityId,
+  provider,
+  providerAccountId,
+  providerConversationId,
+  providerLineId,
+  workspaceId,
+}: {
+  readonly phoneIdentityId: string;
+  readonly provider: PlatformLineProvider;
+  readonly providerAccountId: string;
+  readonly providerConversationId: string;
+  readonly providerLineId: string;
+  readonly workspaceId: string;
+}) {
+  const [binding] = await db
+    .select(bindingSelection)
+    .from(channelConversations)
+    .innerJoin(
+      platformLines,
+      eq(platformLines.id, channelConversations.platformLineId)
+    )
+    .innerJoin(
+      agents,
+      and(
+        eq(agents.id, channelConversations.agentId),
+        eq(agents.workspaceId, channelConversations.workspaceId)
+      )
+    )
+    .innerJoin(
+      agentRevisions,
+      and(
+        eq(agentRevisions.id, channelConversations.pinnedRevisionId),
+        eq(agentRevisions.agentId, channelConversations.agentId),
+        eq(agentRevisions.workspaceId, channelConversations.workspaceId)
+      )
+    )
+    .innerJoin(
+      channelParticipants,
+      and(
+        eq(channelParticipants.conversationId, channelConversations.id),
+        eq(channelParticipants.phoneIdentityId, phoneIdentityId)
+      )
+    )
+    .where(
+      and(
+        activeBindingConditions({
+          provider,
+          providerAccountId,
+          providerConversationId,
+          workspaceId,
+        }),
+        eq(platformLines.provider, provider),
+        eq(platformLines.providerLineId, providerLineId),
+        eq(platformLines.status, "active"),
+        eq(agents.status, "active"),
+        eq(channelParticipants.status, "active")
+      )
     )
     .limit(1);
   return binding;
@@ -130,7 +194,7 @@ export async function createConversationBinding({
     readonly environment?: string;
     readonly providerLineId: string;
   };
-  readonly provider: "linq";
+  readonly provider: "linq" | "sendblue";
   readonly providerAccountId: string;
   readonly providerConversationId: string;
   readonly userId: string;
@@ -187,10 +251,14 @@ export async function createConversationBinding({
           environment: platformLine.environment,
           updatedAt: now,
         },
+        setWhere:
+          provider === "sendblue"
+            ? eq(platformLines.status, "active")
+            : undefined,
         target: [platformLines.provider, platformLines.providerLineId],
       });
     const [line] = await transaction
-      .select({ id: platformLines.id })
+      .select({ id: platformLines.id, status: platformLines.status })
       .from(platformLines)
       .where(
         and(
@@ -200,6 +268,7 @@ export async function createConversationBinding({
       )
       .limit(1);
     if (!line) throw new Error("Failed to resolve platform line.");
+    if (provider === "sendblue" && line.status !== "active") return undefined;
 
     await transaction
       .insert(channelConversations)

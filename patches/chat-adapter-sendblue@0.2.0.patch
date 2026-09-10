@@ -1,0 +1,88 @@
+diff --git a/dist/index.js b/dist/index.js
+index 3c8c8d8cff337f1520b79ca76d0e48422c746707..285098a291ecdb9493de550745b47ca0ce41d1fa 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -56,7 +56,8 @@ var SendblueAdapter = class {
+     this.logger = config.logger ?? new ConsoleLogger();
+     this.sdk = new SendblueAPI({
+       apiKey: config.apiKey,
+-      apiSecret: config.apiSecret
++      apiSecret: config.apiSecret,
++      maxRetries: 0
+     });
+   }
+   // ---------------------------------------------------------------------------
+@@ -125,14 +126,6 @@ var SendblueAdapter = class {
+     }
+     if ("message_handle" in body && typeof body.message_handle === "string") {
+       const payload = body;
+-      this.logger.info("Sendblue webhook message received", {
+-        is_outbound: payload.is_outbound,
+-        status: payload.status,
+-        hasContent: !!payload.content,
+-        hasMediaUrl: !!payload.media_url,
+-        mediaUrlPrefix: payload.media_url?.slice(0, 50),
+-        service: payload.service
+-      });
+       if (!this.isServiceAllowed(payload.service)) {
+         this.logger.debug("Sendblue webhook filtered by service", {
+           service: payload.service
+@@ -152,8 +145,6 @@ var SendblueAdapter = class {
+   async processInboundMessage(payload, options) {
+     if (!this.chat) return;
+     const threadId = this.threadIdFromPayload(payload);
+-    this.markRead(threadId).catch(() => {
+-    });
+     const factory = async () => {
+       return this.parseMessage(payload);
+     };
+@@ -201,4 +192,5 @@ var SendblueAdapter = class {
+   // ---------------------------------------------------------------------------
+   async postMessage(threadId, message) {
+     const decoded = this.decodeThreadId(threadId);
++    this.assertConfiguredLine(decoded);
+     const text = this.renderOutbound(message);
+@@ -234,4 +226,5 @@ var SendblueAdapter = class {
+   }
+   async sendMediaMessage(threadId, mediaUrl, content) {
+     const decoded = this.decodeThreadId(threadId);
++    this.assertConfiguredLine(decoded);
+     if (decoded.groupId) return;
+@@ -292,4 +285,5 @@ var SendblueAdapter = class {
+   // ---------------------------------------------------------------------------
+   async addReaction(threadId, messageId, emoji) {
+     const decoded = this.decodeThreadId(threadId);
++    this.assertConfiguredLine(decoded);
+     const emojiName = typeof emoji === "string" ? emoji : emoji.name;
+@@ -352,4 +346,5 @@ var SendblueAdapter = class {
+   // ---------------------------------------------------------------------------
+   async startTyping(threadId) {
+     const decoded = this.decodeThreadId(threadId);
++    this.assertConfiguredLine(decoded);
+     if (!decoded.contactNumber) {
+@@ -380,4 +375,5 @@ var SendblueAdapter = class {
+   // ---------------------------------------------------------------------------
+   async markRead(threadId) {
+     const decoded = this.decodeThreadId(threadId);
++    this.assertConfiguredLine(decoded);
+     if (!decoded.contactNumber) return;
+@@ -416,6 +412,9 @@ var SendblueAdapter = class {
+   // ---------------------------------------------------------------------------
+   renderOutbound(message) {
+     if (typeof message === "string") return toPlainText(message);
++    if ("raw" in message && typeof message.raw === "string") {
++      return toPlainText(message.raw);
++    }
+     if ("markdown" in message && typeof message.markdown === "string") {
+       return toPlainText(message.markdown);
+     }
+@@ -427,4 +426,9 @@ var SendblueAdapter = class {
+     }
+     return "";
+   }
++  assertConfiguredLine(decoded) {
++    if (decoded.fromNumber !== this.config.defaultFromNumber) {
++      throw new Error("Sendblue thread sender does not match the configured line.");
++    }
++  }
+   threadIdFromPayload(payload) {

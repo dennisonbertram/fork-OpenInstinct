@@ -28,6 +28,7 @@
     "ai": "^7.0.79",
     "better-auth": "1.7.2",
     "chat": "4.34.0",
+    "chat-adapter-sendblue": "0.2.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cmdk": "1.1.1",

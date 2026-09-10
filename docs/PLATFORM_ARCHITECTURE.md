@@ -89,9 +89,10 @@ Provider adapters must instantiate the shared test contract in
   exposing internal tool names; and
 - unsigned inbound requests fail closed.
 
-Linq instantiates it today. A future Sendblue adapter must pass the same suite
-before product routing can select it. Do not introduce a production provider
-abstraction until a second implementation makes the common shape concrete.
+Linq and SendBlue instantiate it today. Any future provider adapter must pass
+the same suite before product routing can select it. Do not introduce a
+production provider abstraction merely because multiple adapters share this
+test contract.
 
 ## Gym ladder
 

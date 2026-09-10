@@ -23,21 +23,26 @@ or runtime claims.
 
 ## Route map
 
-| Route                        | Owner                                          | Purpose                                         |
-| ---------------------------- | ---------------------------------------------- | ----------------------------------------------- |
-| `/`                          | `app/(authenticated)/(manager)/page.tsx`       | Workspace manager and connector status          |
-| `/chat`, `/chat/[sessionId]` | `app/(authenticated)/(manager)/chat/`          | Web chat and Eve session stream                 |
-| `/chats`                     | `app/(authenticated)/(manager)/chats/page.tsx` | Workspace chat list                             |
-| `/tasks`, `/runs/[groupId]`  | `app/(authenticated)/(tasks)/`                 | Browser task history and run details            |
-| `/vault`                     | `app/(authenticated)/(manager)/vault/`         | Vault metadata and secure setup/import UI       |
-| `/api/auth/[...all]`         | `app/api/auth/[...all]/route.ts`               | Better Auth API                                 |
-| `/api/trpc/[trpc]`           | `app/api/trpc/[trpc]/route.ts`                 | Authenticated application RPC                   |
-| `/eve/v1/*`                  | `agent/channels/`, Eve generated service       | Eve sessions, streams, health, and Linq webhook |
-| `/artifacts/[artifactId]`    | `app/artifacts/[artifactId]/route.ts`          | Scoped private browser image delivery           |
+| Route                        | Owner                                          | Purpose                                                           |
+| ---------------------------- | ---------------------------------------------- | ----------------------------------------------------------------- |
+| `/`                          | `app/(authenticated)/(manager)/page.tsx`       | Workspace manager and connector status                            |
+| `/chat`, `/chat/[sessionId]` | `app/(authenticated)/(manager)/chat/`          | Web chat and Eve session stream                                   |
+| `/chats`                     | `app/(authenticated)/(manager)/chats/page.tsx` | Workspace chat list                                               |
+| `/tasks`, `/runs/[groupId]`  | `app/(authenticated)/(tasks)/`                 | Browser task history and run details                              |
+| `/vault`                     | `app/(authenticated)/(manager)/vault/`         | Vault metadata and secure setup/import UI                         |
+| `/api/auth/[...all]`         | `app/api/auth/[...all]/route.ts`               | Better Auth API                                                   |
+| `/api/trpc/[trpc]`           | `app/api/trpc/[trpc]/route.ts`                 | Authenticated application RPC                                     |
+| `/eve/v1/*`                  | `agent/channels/`, Eve generated service       | Eve sessions, streams, health, Linq webhook, and SendBlue channel |
+| `/artifacts/[artifactId]`    | `app/artifacts/[artifactId]/route.ts`          | Scoped private browser image delivery                             |
 
 `proxy.ts` protects the web surface and authenticated Eve browser sessions.
 The Eve channel performs its own session ownership check; do not assume a
 Next redirect is an Eve authorization decision.
+
+The native SendBlue channel is `/eve/v1/sendblue`. It remains disabled by
+default, requires exact account and receiving-line checks, and admits only a
+verified phone identity with active membership and tenant binding. Keep its
+webhook and durable message-handle ownership in `agent/channels/`.
 
 ## Directory ownership and dependency direction
 
@@ -236,6 +241,7 @@ alone is insufficient. Do not claim production readiness from local tests.
 - `@workflow/world-vercel` and Vercel Connect are not portable-provider support.
 - Local phone code `000000` is a development bypass, not a Linq or SendBlue delivery test.
 - `PHONE_OTP_PROVIDER=sendblue` requires SendBlue credentials; the from number must be the registered SendBlue sending line and the recipient must be an eligible verified test contact. An accepted API response is not proof of delivery.
+- SendBlue admission claims each provider message handle before Eve dispatch. A dispatch failure after the claim is not automatically replayed; check provider acceptance before operator recovery.
 - The global configured Linq line is not a tenant model.
 - A workspace is the tenant; an agent, revision, line, participant, and user are
   distinct resources. Never collapse them into one ID because the MVP has one

@@ -475,11 +475,80 @@ The local `pnpm test:e2e` command runs both the default synthetic Playwright
 suite and the isolated SendBlue suite; neither exercises a live SendBlue
 account.
 
-A future conversational SendBlue webhook is out of scope for this slice. If one
-is added later, it must authenticate incoming events and reject or ignore any
+The native SendBlue webhook must authenticate incoming events and reject or ignore any
 whose server-validated receiving line or account does not match the configured
 Jory line before mark-read, identity binding, persistence, or Eve dispatch.
 Messages to other account numbers must not trigger Jory behavior.
+
+### Native SendBlue conversation channel
+
+The native Eve channel is available at `/eve/v1/sendblue` and is controlled by
+`SENDBLUE_CONVERSATIONS=on|off`, defaulting to `off`. It is enabled only when
+all channel configuration validates: opaque `SENDBLUE_ACCOUNT_ID` (the exact
+account identifier, which may be an email or company value), a dedicated
+per-endpoint `SENDBLUE_WEBHOOK_SECRET` (distinct from the API secret), and the
+existing SendBlue OTP values
+`SENDBLUE_API_KEY_ID`, `SENDBLUE_API_SECRET_KEY`, and `SENDBLUE_FROM_NUMBER`.
+When off, conversational processing is disabled and OTP remains independent.
+
+The channel admits only a verified Better Auth phone identity with active
+membership, bound tenant, active agent, and participant. It supports 1:1
+iMessage, SMS, and RCS. Before provider admission, server-side checks must
+match the exact SendBlue account and receiving line; missing, conflicting, or
+wrong lines, outbound events, and groups are dropped. There is no phone
+bootstrap or unverified workspace claim. Durable per-provider message-handle
+claims in existing Postgres state prevent A,B,A replay. The additive `0026`
+migration is required to admit `sendblue` in the committed `platform_lines`
+provider check. Admission claims the handle before Eve dispatch; a dispatch
+failure after the claim does not automatically replay the provider message.
+Check acceptance before operator recovery and do not promise guaranteed
+processing.
+
+For a reviewed operator setup, use bounded last-OTP metadata or a verified
+operator record only as the account-identity source, without logging its
+contents. Separately verify line state with `GET /api/v2/lines/state` and
+assigned-contact eligibility with `GET /api/v2/contacts/{phone_number}`. Deploy
+the reviewed SHA and verify an unsigned `POST /eve/v1/sendblue` returns `401`
+before adding a receive webhook. A `403` from Vercel protection is not proof of
+the route's own authentication.
+
+```json
+{
+  "type": "receive",
+  "webhooks": [
+    {
+      "url": "https://<production-host>/eve/v1/sendblue",
+      "secret": "<dedicated-webhook-secret>",
+      "sendblue_numbers": ["<designated-line>"]
+    }
+  ]
+}
+```
+
+Send this JSON with an authenticated operator or secure-stdin request to
+`POST https://api.sendblue.co/api/account/webhooks`; keep provider API key
+headers out of chat and command arguments. The documented line filter is
+[Sendblue webhook creation](https://docs.sendblue.com/api/resources/webhooks/methods/create).
+The webhook uses the `sb-signing-secret` header, not Verify HMAC. Append the
+subscriber without replacing existing project subscribers, and keep the
+server-side account and receiving-line guard. Store the three new channel
+variables (`SENDBLUE_CONVERSATIONS`, `SENDBLUE_ACCOUNT_ID`, and
+`SENDBLUE_WEBHOOK_SECRET`) as Sensitive with the exact `production` target;
+preserve all existing OTP and other environment variables.
+Accepted provider responses do not prove delivery. Verify one designated-user
+incoming message and same-number reply, then duplicate and wrong-line
+negatives, plus the webchat OTP regression. Disable the flag and redeploy, or
+remove only the owned webhook, to stop the channel.
+
+Automated checks cover the native text path and the adapter's media, reaction,
+and approval contracts. Live provider acceptance still requires the designated
+user's message, same-number reply, duplicate and wrong-line negatives, and a
+webchat OTP regression. Track only the adapter patch version in `EVE_PATCHES`.
+Scheduled reminders are not supported on SendBlue, so schedule tools remain
+hidden for this channel and webchat is the current path. Group chats,
+iPhone-specific behavior, and animation are outside this slice. Synthetic
+canonical route checks observed unsigned `401`, wrong-line `200`, malformed
+JSON `400`, and health `200`; no live phone delivery has been verified.
 
 ## Google Workspace connector
 

@@ -50,6 +50,9 @@ function resolveMessaging(
   context: DynamicResolveContext,
   turnId: string | undefined
 ) {
+  const isProviderChannel =
+    context.channel.kind === "channel:linq" ||
+    context.channel.kind === "channel:sendblue";
   const isLinq = context.channel.kind === "channel:linq";
   const send_message = defineTool({
     description:
@@ -64,7 +67,7 @@ function resolveMessaging(
         beginFinalDelivery(
           toolContext.session.turn.id,
           toolContext.callId,
-          isLinq
+          isProviderChannel
         );
       return message;
     },
@@ -73,7 +76,7 @@ function resolveMessaging(
         finalDeliveryStatus(turnId) === "completed"
           ? "Final message submitted. Delivery for this turn is complete. Finish the turn now with only DELIVERY_COMPLETE; do not call another tool or repeat the result."
           : finalDeliveryStatus(turnId) === "unconfirmed"
-            ? "Linq did not confirm delivery. Do not claim the message arrived or repeat it automatically; verify its status or obtain user direction before retrying."
+            ? "The messaging provider did not confirm delivery. Do not claim the message arrived or repeat it automatically; verify its status or obtain user direction before retrying."
             : "The message was submitted to the active channel; provider acceptance may still be pending. Do not send it again. Continue only if work or a distinct message remains; otherwise finish with DELIVERY_COMPLETE."
       );
     },
@@ -92,7 +95,7 @@ function resolveMessaging(
         beginFinalDelivery(
           toolContext.session.turn.id,
           toolContext.callId,
-          isLinq
+          isProviderChannel
         );
       }
       return reaction;
