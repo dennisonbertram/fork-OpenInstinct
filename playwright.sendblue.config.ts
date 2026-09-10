@@ -1,13 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { defineConfig } from "@playwright/test";
-
-// oxlint-disable-next-line eslint/no-restricted-properties, turbo/no-undeclared-env-vars -- A caller-selected port keeps isolated SendBlue E2E runs from attaching to an unrelated local server.
-const port = process.env.PLAYWRIGHT_PORT ?? "4000";
-const baseURL = `http://localhost:${port}`;
+import { baseURL, port } from "./playwright.config";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  testMatch: /sendblue-otp\.spec\.ts/,
+  testMatch: "**/sendblue-otp.spec.ts",
   timeout: 90_000,
   expect: { timeout: 15_000 },
   reporter: "line",

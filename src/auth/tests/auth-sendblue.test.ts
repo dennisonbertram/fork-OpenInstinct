@@ -220,7 +220,8 @@ describe("SendBlue phone authentication", () => {
     if (!(error instanceof APIError)) throw new TypeError("Expected APIError");
     const body = sendblueApiErrorSchema.parse(error.body);
     expect(body.code).toBe("SENDBLUE_SENDING_FAILED");
-    expect(body.message).toContain("approved");
+    expect(body.message).toContain("registered");
+    expect(body.message).toContain("eligible");
     expect(JSON.stringify(body)).not.toContain("4001");
   });
 
@@ -418,5 +419,110 @@ describe("SendBlue phone authentication", () => {
     expect(serializedError).not.toContain("test-api-key-id");
     expect(serializedError).not.toContain("test-api-secret-key");
     expect(serializedError).not.toContain("Invalid recipient");
+  });
+
+  describe("error_code: null handling", () => {
+    it.each([
+      "QUEUED",
+      "SENT",
+      "DELIVERED",
+      "REGISTERED",
+      "PENDING",
+      "ACCEPTED",
+    ])("treats %s with error_code: null as submitted", async (status) => {
+      setupSendblueEnv();
+      mocks.fetch.mockResolvedValueOnce(
+        Response.json({ error_code: null, status })
+      );
+
+      const { sendBlueOtp } = await import("@/auth/sendblue");
+      const result = await sendBlueOtp({
+        apiKeyId: "test-api-key-id",
+        apiSecretKey: "test-api-secret-key",
+        code: "123456",
+        fromNumber: "+12025550199",
+        to: "+12025550123",
+      });
+
+      expect(result).toEqual({ outcome: "submitted" });
+    });
+
+    it("returns uncertain for HTTP 503 with error_code: null and no terminal status", async () => {
+      setupSendblueEnv();
+      mocks.fetch.mockResolvedValueOnce(
+        Response.json({ error_code: null }, { status: 503 })
+      );
+
+      const { sendBlueOtp } = await import("@/auth/sendblue");
+      const result = await sendBlueOtp({
+        apiKeyId: "test-api-key-id",
+        apiSecretKey: "test-api-secret-key",
+        code: "123456",
+        fromNumber: "+12025550199",
+        to: "+12025550123",
+      });
+
+      expect(result).toEqual({ outcome: "uncertain" });
+    });
+
+    it("fails for ERROR with error_code: null", async () => {
+      setupSendblueEnv();
+      mocks.fetch.mockResolvedValueOnce(
+        Response.json({ error_code: null, status: "ERROR" })
+      );
+
+      const { sendBlueOtp, SendBlueDeliveryError } =
+        await import("@/auth/sendblue");
+      const error: unknown = await sendBlueOtp({
+        apiKeyId: "test-api-key-id",
+        apiSecretKey: "test-api-secret-key",
+        code: "123456",
+        fromNumber: "+12025550199",
+        to: "+12025550123",
+      }).catch((cause: unknown) => cause);
+
+      expect(error).toBeInstanceOf(SendBlueDeliveryError);
+    });
+
+    it("fails for DECLINED with error_code: null", async () => {
+      setupSendblueEnv();
+      mocks.fetch.mockResolvedValueOnce(
+        Response.json({ error_code: null, status: "DECLINED" })
+      );
+
+      const { sendBlueOtp, SendBlueDeliveryError } =
+        await import("@/auth/sendblue");
+      const error: unknown = await sendBlueOtp({
+        apiKeyId: "test-api-key-id",
+        apiSecretKey: "test-api-secret-key",
+        code: "123456",
+        fromNumber: "+12025550199",
+        to: "+12025550123",
+      }).catch((cause: unknown) => cause);
+
+      expect(error).toBeInstanceOf(SendBlueDeliveryError);
+    });
+
+    it.each([4001, 5001, 1])(
+      "fails for nonzero numeric error_code %s even when the status is accepted",
+      async (error_code) => {
+        setupSendblueEnv();
+        mocks.fetch.mockResolvedValueOnce(
+          Response.json({ error_code, status: "ACCEPTED" })
+        );
+
+        const { sendBlueOtp, SendBlueDeliveryError } =
+          await import("@/auth/sendblue");
+        const error: unknown = await sendBlueOtp({
+          apiKeyId: "test-api-key-id",
+          apiSecretKey: "test-api-secret-key",
+          code: "123456",
+          fromNumber: "+12025550199",
+          to: "+12025550123",
+        }).catch((cause: unknown) => cause);
+
+        expect(error).toBeInstanceOf(SendBlueDeliveryError);
+      }
+    );
   });
 });

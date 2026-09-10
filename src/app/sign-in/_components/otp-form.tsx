@@ -42,11 +42,13 @@ export function PhoneOtpAuthForm({
   linqPhoneNumber,
   localBypass = false,
   provider = "linq",
+  sendblueFromNumber,
 }: {
   readonly callbackUrl: string;
   readonly linqPhoneNumber?: string;
   readonly localBypass?: boolean;
   readonly provider?: PhoneOtpProvider;
+  readonly sendblueFromNumber?: string;
 }) {
   const sendOtp = useMutation({
     mutationFn: async (phoneNumberValue: string) => {
@@ -94,7 +96,7 @@ export function PhoneOtpAuthForm({
           <span className="type-mono">000000</span> on the next step.
         </p>
       ) : provider === "sendblue" ? (
-        <SendBlueSetupInfo />
+        <SendBlueSetupInfo fromNumber={sendblueFromNumber} />
       ) : (
         <FirstTimeLinqSetup phoneNumber={linqPhoneNumber} />
       )}
@@ -214,17 +216,16 @@ function VerificationCodeForm({
   );
 }
 
-function SendBlueSetupInfo() {
+function SendBlueSetupInfo({ fromNumber }: { readonly fromNumber?: string }) {
   return (
     <Alert className="mt-6" variant="information">
       <MessageSquareIcon />
       <AlertTitle>SendBlue sends your code</AlertTitle>
       <AlertDescription>
         <p>
-          SendBlue delivers the code by iMessage with SMS fallback. The phone
-          number you enter must be an approved test contact on your SendBlue
-          account. SendBlue may report accepted before the message is delivered;
-          enter the code once it reaches your phone.
+          This preview sends codes from the registered SendBlue sending line
+          {fromNumber ? ` ${fromNumber}` : ""} to eligible verified test
+          contacts.
         </p>
       </AlertDescription>
     </Alert>

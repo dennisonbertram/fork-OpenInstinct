@@ -10,6 +10,7 @@ import { readLinqOnboardingPhoneNumber } from "@/auth/linq";
 import {
   isPhoneOtpProviderConfigured,
   phoneOtpProvider,
+  sendblueConfig,
 } from "@/auth/phone-otp-config";
 import { requireRequestScope, UnauthenticatedError } from "@/lib/request-scope";
 import mascot from "./_assets/jory-avatar-desk.webp";
@@ -75,6 +76,11 @@ export default async function SignInPage({
               localBypass={localPhoneAuthBypassEnabled}
               linqPhoneNumber={linqPhoneNumber}
               provider={provider}
+              sendblueFromNumber={
+                provider === "sendblue"
+                  ? sendblueConfig()?.fromNumber
+                  : undefined
+              }
             />
           ) : null}
         </Card>

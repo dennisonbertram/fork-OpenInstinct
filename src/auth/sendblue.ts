@@ -65,7 +65,7 @@ function sendBlueFailureMessage(error: SendBlueDeliveryError): SendBlueFailure {
   return {
     code: "SENDBLUE_SENDING_FAILED",
     message:
-      "SendBlue could not send the code. Check the from number and recipient are approved test contacts, then try again.",
+      "SendBlue could not send the code. Check the from number is the registered sending line and the recipient is an eligible verified test contact, then try again.",
   };
 }
 
@@ -74,7 +74,9 @@ function isTerminalFailure(parsed: {
   status?: string;
 }) {
   return (
-    (parsed.error_code !== undefined && parsed.error_code !== 0) ||
+    (parsed.error_code !== undefined &&
+      parsed.error_code !== null &&
+      parsed.error_code !== 0) ||
     (parsed.status !== undefined && failureStatuses.has(parsed.status))
   );
 }

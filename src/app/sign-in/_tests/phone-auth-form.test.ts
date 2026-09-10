@@ -93,15 +93,17 @@ describe("phone OTP errors", () => {
       createElement(PhoneOtpAuthForm, {
         callbackUrl: "/",
         provider: "sendblue",
+        sendblueFromNumber: "+12025550199",
       })
     );
 
     expect(html).not.toContain("First time signing in?");
     expect(html).not.toContain("Linq requires one message");
     expect(html).not.toContain("Text Linq in Messages");
-    expect(html).toContain("SendBlue");
-    expect(html).toContain("accepted");
-    expect(html).toContain("delivered");
+    expect(html).toContain("SendBlue sends your code");
+    expect(html).toContain("registered SendBlue sending line");
+    expect(html).toContain("eligible verified test contacts");
+    expect(html).toContain("+12025550199");
   });
 
   it("shows actionable SendBlue errors without exposing provider details", () => {

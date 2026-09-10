@@ -235,7 +235,7 @@ alone is insufficient. Do not claim production readiness from local tests.
 
 - `@workflow/world-vercel` and Vercel Connect are not portable-provider support.
 - Local phone code `000000` is a development bypass, not a Linq or SendBlue delivery test.
-- `PHONE_OTP_PROVIDER=sendblue` requires SendBlue credentials and an E.164 verified test contact; an accepted API response is not proof of delivery.
+- `PHONE_OTP_PROVIDER=sendblue` requires SendBlue credentials; the from number must be the registered SendBlue sending line and the recipient must be an eligible verified test contact. An accepted API response is not proof of delivery.
 - The global configured Linq line is not a tenant model.
 - A workspace is the tenant; an agent, revision, line, participant, and user are
   distinct resources. Never collapse them into one ID because the MVP has one
