@@ -12,6 +12,7 @@ export function createProxy(dependencies = proxyDependencies) {
       pathname.startsWith("/api/cron/") ||
       pathname.startsWith("/v1/") ||
       pathname === "/eve/v1/health" ||
+      pathname === "/eve/v1/sendblue" ||
       pathname.startsWith("/internal/scheduled-run/") ||
       pathname === "/eve/v1/dev/schedules/dynamic"
     ) {

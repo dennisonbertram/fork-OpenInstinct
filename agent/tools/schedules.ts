@@ -113,8 +113,9 @@ export const answerSchedule = defineTool({
 
 export default defineDynamic({
   events: {
-    "turn.started": (_event, context) =>
-      resolveModeValue(context, {
+    "turn.started": (_event, context) => {
+      if (context.channel.kind === "channel:sendblue") return null;
+      return resolveModeValue(context, {
         interactive: {
           "schedules-answer": answerSchedule,
           "schedules-create": createSchedule,
@@ -122,7 +123,8 @@ export default defineDynamic({
           "schedules-update": updateSchedule,
         },
         "scheduled-report": { "schedules-answer": answerSchedule },
-      }),
+      });
+    },
   },
 });
 

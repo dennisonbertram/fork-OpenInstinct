@@ -55,4 +55,22 @@ describe("auth proxy matcher", () => {
     expect(response.headers.get("x-middleware-next")).toBe("1");
     expect(getAuthSession).not.toHaveBeenCalled();
   });
+
+  it("leaves only the SendBlue webhook route to its channel secret check", async () => {
+    const response = await proxy(
+      new NextRequest("http://localhost:3000/eve/v1/sendblue")
+    );
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(getAuthSession).not.toHaveBeenCalled();
+  });
+
+  it("continues to protect unrelated Eve routes", async () => {
+    const response = await proxy(
+      new NextRequest("http://localhost:3000/eve/v1/sessions/private")
+    );
+
+    expect(response.headers.get("location")).toContain("/sign-in");
+    expect(getAuthSession).toHaveBeenCalledOnce();
+  });
 });

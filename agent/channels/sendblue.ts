@@ -1,0 +1,570 @@
+import { createPostgresState } from "@chat-adapter/state-pg";
+import { createSendblueAdapter } from "chat-adapter-sendblue";
+import type { Lock, Message, Thread } from "chat";
+import { chatSdkChannel, messageToUserContent } from "eve/channels/chat-sdk";
+import {
+  finalDeliveryStatus,
+  recordUnconfirmedDelivery,
+  requestFinalDeliveryCompletion,
+  settleFinalDelivery,
+} from "@/agent/lib/message-delivery";
+import { sendMessageToolResultSchema } from "@/agent/lib/send-message";
+import { reactToMessageToolResultSchema } from "@/agent/lib/react-to-message";
+import { createHash } from "node:crypto";
+import { z } from "zod";
+import { getAuth } from "@/auth";
+import { env } from "@/env";
+import { accessScopeForUser } from "@/lib/access-scope";
+import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
+import {
+  createConversationBinding,
+  resolveConversationBinding,
+  resolveVerifiedConversationBinding,
+} from "@/db/services/channel-conversations";
+import { findVerifiedUserByPhoneNumber } from "@/db/services/phone-identities";
+import { verifyScopeAccess } from "@/db/services/scope";
+import {
+  hasSendblueWebhookSecret,
+  validateSendblueInboundPayload,
+} from "@/agent/lib/sendblue/admission";
+
+const verifiedPhoneUserSchema = z.object({
+  id: z.string().min(1),
+  phoneNumberVerified: z.literal(true),
+});
+const enabled = env.SENDBLUE_CONVERSATIONS === "on";
+const state = createPostgresState({
+  keyPrefix: "openinstinct-sendblue",
+  url: env.DATABASE_URL,
+});
+const configured = {
+  accountId: env.SENDBLUE_ACCOUNT_ID ?? "",
+  fromNumber: env.SENDBLUE_FROM_NUMBER ?? "",
+};
+const pendingInputTtlMs = 86_400_000;
+const pendingInputLockTtlMs = 30_000;
+const pendingInputLockRetryMs = 250;
+const maxWebhookBytes = 65_536;
+const pendingSendblueInputSchema = z.object({
+  requests: z.array(
+    z.object({
+      allowFreeform: z.boolean().optional(),
+      kind: z.enum(["question", "session-limit", "tool-approval"]).optional(),
+      options: z
+        .array(z.object({ id: z.string(), label: z.string() }))
+        .optional(),
+      prompt: z.string(),
+      requestId: z.string(),
+    })
+  ),
+  responses: z
+    .array(
+      z.object({
+        optionId: z.string().optional(),
+        requestId: z.string(),
+        text: z.string().optional(),
+      })
+    )
+    .default([]),
+  workspaceId: z.string().min(1),
+});
+const approvalReplies = new Set([
+  "do it",
+  "go ahead",
+  "looks good",
+  "ok",
+  "okay",
+  "send",
+  "send it",
+  "sure",
+  "yeah",
+  "yep",
+  "yes",
+]);
+const cancellationReplies = new Set([
+  "cancel",
+  "don't",
+  "do not",
+  "never mind",
+  "no",
+  "nope",
+  "stop",
+]);
+interface SendblueInputResponse {
+  readonly optionId?: string;
+  readonly requestId: string;
+  readonly text?: string;
+}
+interface PendingInputResult {
+  readonly inputResponseStateKey?: string;
+  readonly inputResponses?: readonly SendblueInputResponse[];
+  readonly pendingInputLock?: Lock;
+  readonly pendingInputPrompt?: string;
+}
+type SendblueThread = Thread;
+interface SendblueOnMessageResult extends PendingInputResult {
+  readonly auth: {
+    readonly attributes: {
+      readonly conversationChannel: "sendblue";
+      readonly conversationId: string;
+      readonly workspaceId: string;
+    };
+    readonly authenticator: "sendblue-message";
+    readonly principalId: string;
+    readonly principalType: "user";
+  };
+}
+
+const adapter = createSendblueAdapter({
+  apiKey: env.SENDBLUE_API_KEY_ID ?? "disabled",
+  apiSecret: env.SENDBLUE_API_SECRET_KEY ?? "disabled",
+  allowedServices: ["iMessage", "SMS", "RCS"],
+  defaultFromNumber: configured.fromNumber || "+10000000000",
+  webhookSecret: env.SENDBLUE_WEBHOOK_SECRET ?? "disabled",
+  webhookSecretHeader: "sb-signing-secret",
+});
+const nativeHandleWebhook = adapter.handleWebhook.bind(adapter);
+adapter.handleWebhook = async (request, options) => {
+  if (!enabled) return new Response("Not Found", { status: 404 });
+  if (!hasSendblueWebhookSecret(request, env.SENDBLUE_WEBHOOK_SECRET ?? ""))
+    return new Response("Unauthorized", { status: 401 });
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maxWebhookBytes)
+    return new Response("Payload Too Large", { status: 413 });
+  const bytes = await request.arrayBuffer();
+  if (bytes.byteLength > maxWebhookBytes)
+    return new Response("Payload Too Large", { status: 413 });
+  let payload: unknown;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return new Response("Bad Request", { status: 400 });
+  }
+  if (!validateSendblueInboundPayload(payload, configured))
+    return new Response("OK", { status: 200 });
+  return nativeHandleWebhook(
+    new Request(request.url, {
+      body: bytes,
+      headers: request.headers,
+      method: request.method,
+    }),
+    options
+  );
+};
+
+export const sendblueChannelConfig = {
+  async onMessage(
+    context: { readonly thread: SendblueThread },
+    message: Message
+  ): Promise<SendblueOnMessageResult | null> {
+    if (message.author.isBot === true) return null;
+    const admitted = validateSendblueInboundPayload(message.raw, configured);
+    if (!admitted || admitted.messageHandle !== message.id) return null;
+    const verifiedUserId = await findVerifiedAuthUserIdByPhoneNumber(
+      admitted.senderNumber
+    );
+    if (!verifiedUserId) return null;
+    const scope = accessScopeForUser(`better-auth:${verifiedUserId}`);
+    const verifiedScope = await verifyScopeAccess(scope);
+    if (!verifiedScope) return null;
+    const identity = await findVerifiedUserByPhoneNumber(admitted.senderNumber);
+    if (!identity || identity.userId !== verifiedUserId) return null;
+    let binding = await resolveConversationBinding({
+      provider: "sendblue",
+      providerAccountId: admitted.accountId,
+      providerConversationId: context.thread.id,
+    });
+    binding ??= await createConversationBinding({
+      phoneIdentityId: identity.phoneIdentityId,
+      platformLine: { providerLineId: admitted.fromNumber },
+      provider: "sendblue",
+      providerAccountId: admitted.accountId,
+      providerConversationId: context.thread.id,
+      userId: verifiedUserId,
+    });
+    if (!binding || binding.workspaceId !== verifiedScope.workspaceId)
+      return null;
+    binding = await resolveVerifiedConversationBinding({
+      phoneIdentityId: identity.phoneIdentityId,
+      provider: "sendblue",
+      providerAccountId: admitted.accountId,
+      providerConversationId: context.thread.id,
+      providerLineId: admitted.fromNumber,
+      workspaceId: verifiedScope.workspaceId,
+    });
+    if (!binding) return null;
+    await state.connect();
+    const pendingInputLock = await acquirePendingInputLock(context.thread.id);
+    let lockHandedToDispatch = false;
+    try {
+      const claimed = await state.setIfNotExists(
+        inboundMessageKey(binding.id, admitted.messageHandle),
+        true
+      );
+      if (!claimed) return null;
+      const pendingInputResponse = await resolvePendingInputResponses({
+        message,
+        threadId: context.thread.id,
+        workspaceId: verifiedScope.workspaceId,
+      });
+      const result: SendblueOnMessageResult = {
+        auth: {
+          attributes: {
+            conversationChannel: "sendblue" as const,
+            conversationId: context.thread.id,
+            workspaceId: verifiedScope.workspaceId,
+          },
+          authenticator: "sendblue-message" as const,
+          principalId: `better-auth:${verifiedUserId}`,
+          principalType: "user" as const,
+        },
+        ...pendingInputResponse,
+        pendingInputLock,
+      };
+      lockHandedToDispatch = true;
+      return result;
+    } finally {
+      if (!lockHandedToDispatch) await state.releaseLock(pendingInputLock);
+    }
+  },
+};
+
+const bridge = chatSdkChannel({
+  adapters: { sendblue: adapter },
+  concurrency: "concurrent",
+  events: {
+    async "input.requested"(event, context, session) {
+      if (!context.thread || event.requests.length === 0) return;
+      const caller =
+        session.session.auth.current ?? session.session.auth.initiator;
+      if (!caller) return;
+      const scope = scopeFromPrincipal(caller);
+      await state.connect();
+      const [request] = event.requests;
+      if (!request) return;
+      await state.set(
+        pendingInputKey(context.thread.id),
+        {
+          // SMS receives one request at a time. The remaining requests and
+          // their accepted replies stay in the same scoped durable state.
+          requests: event.requests.map((pendingRequest) => ({
+            allowFreeform: pendingRequest.allowFreeform,
+            kind: pendingRequest.kind,
+            options: pendingRequest.options?.map((option) => ({
+              id: option.id,
+              label: option.label,
+            })),
+            prompt: pendingRequest.prompt,
+            requestId: pendingRequest.requestId,
+          })),
+          responses: [],
+          workspaceId: scope.workspaceId,
+        },
+        pendingInputTtlMs
+      );
+      await context.thread.post({
+        raw: renderInputRequest(request),
+      });
+    },
+    async "action.result"(event, context) {
+      if (event.status !== "completed" || !context.thread) return;
+      const reaction = reactToMessageToolResultSchema.safeParse(event.result);
+      if (reaction.success) {
+        if (reaction.data.output.operation !== "add") return;
+        let accepted = false;
+        try {
+          const messageId = context.thread.toJSON().currentMessage?.id;
+          if (!messageId) return;
+          await adapter.addReaction(
+            context.thread.id,
+            messageId,
+            reaction.data.output.type
+          );
+          accepted = true;
+        } catch (error) {
+          recordUnconfirmedDelivery(event.turnId, event.result.callId);
+          throw error;
+        } finally {
+          settleFinalDelivery(event.result.callId, accepted);
+        }
+        requestFinalDeliveryCompletion(
+          event.result.callId,
+          event.turnId,
+          event.stepIndex
+        );
+        return;
+      }
+      const message = sendMessageToolResultSchema.safeParse(event.result);
+      if (!message.success) return;
+      let accepted = false;
+      try {
+        if (message.data.output.kind === "link") {
+          const posted = await context.thread.post({
+            raw: message.data.output.url,
+          });
+          if (!posted.id)
+            throw new Error("SendBlue did not accept the message.");
+        } else {
+          const attachments = message.data.output.attachments ?? [];
+          if (attachments.length === 0) {
+            const posted = await context.thread.post({
+              raw: message.data.output.text ?? "",
+            });
+            if (!posted.id)
+              throw new Error("SendBlue did not accept the message.");
+          } else {
+            const recipient = adapter.decodeThreadId(context.thread.id);
+            const contactNumber = recipient.contactNumber;
+            if (
+              recipient.fromNumber !== configured.fromNumber ||
+              !contactNumber
+            )
+              throw new Error(
+                "SendBlue delivery requires the configured 1:1 sender line."
+              );
+            const attachmentCaption = z
+              .string()
+              .catch("")
+              .parse(message.data.output.text);
+            await Promise.all(
+              attachments.map(async (attachment, index) => {
+                const response = await adapter.getSdk().messages.send({
+                  content: index === 0 ? attachmentCaption : "",
+                  from_number: configured.fromNumber,
+                  media_url: attachment.url,
+                  number: contactNumber,
+                });
+                if (!response.message_handle)
+                  throw new Error("SendBlue did not accept the media message.");
+              })
+            );
+          }
+        }
+        accepted = true;
+      } catch (error) {
+        recordUnconfirmedDelivery(event.turnId, event.result.callId);
+        throw error;
+      } finally {
+        settleFinalDelivery(event.result.callId, accepted);
+      }
+      requestFinalDeliveryCompletion(
+        event.result.callId,
+        event.turnId,
+        event.stepIndex
+      );
+    },
+    // Delivery is owned by send_message/action.result. Never let the Chat SDK
+    // default message handler send model text or DELIVERY_COMPLETE directly.
+    async "message.completed"() {
+      await Promise.resolve();
+    },
+    async "turn.failed"(event, context) {
+      if (!context.thread || finalDeliveryStatus(event.turnId) !== undefined)
+        return;
+      await context.thread.post({
+        raw: "I couldn’t complete that request because of a service error. Please try again later.",
+      });
+    },
+  },
+  routes: { sendblue: "/eve/v1/sendblue" },
+  state,
+  streaming: false,
+  userName: "eve",
+});
+
+export async function dispatchSendblueMessage(
+  thread: SendblueThread,
+  message: Parameters<typeof sendblueChannelConfig.onMessage>[1]
+): Promise<void> {
+  const result = await sendblueChannelConfig.onMessage({ thread }, message);
+  if (!result) return;
+  const lockRenewal = result.pendingInputLock
+    ? startPendingInputLockRenewal(result.pendingInputLock)
+    : undefined;
+  try {
+    try {
+      await adapter.markRead(thread.id);
+    } catch {
+      // Read receipts are cosmetic and are never retried.
+    }
+    if (result.inputResponses) {
+      await bridge.send(
+        { inputResponses: result.inputResponses },
+        { auth: result.auth, thread }
+      );
+      if (lockRenewal?.lost())
+        throw new Error(
+          "Lost the SendBlue conversation lock before acknowledgement."
+        );
+      if (result.inputResponseStateKey)
+        await state.delete(result.inputResponseStateKey);
+      return;
+    }
+    if (result.pendingInputPrompt) {
+      await thread.post({ raw: result.pendingInputPrompt });
+      if (lockRenewal?.lost())
+        throw new Error(
+          "Lost the SendBlue conversation lock before prompting."
+        );
+      return;
+    }
+    await bridge.send(messageToUserContent(message), {
+      auth: result.auth,
+      thread,
+    });
+    if (lockRenewal?.lost())
+      throw new Error("Lost the SendBlue conversation lock during dispatch.");
+  } finally {
+    lockRenewal?.stop();
+    if (result.pendingInputLock)
+      await state.releaseLock(result.pendingInputLock);
+  }
+}
+
+bridge.bot.onDirectMessage(dispatchSendblueMessage);
+
+export default bridge.channel;
+
+async function findVerifiedAuthUserIdByPhoneNumber(phoneNumber: string) {
+  const auth = await getAuth();
+  const context = await auth.$context;
+  const user = await context.adapter.findOne({
+    model: "user",
+    where: [{ field: "phoneNumber", value: phoneNumber }],
+  });
+  const parsed = verifiedPhoneUserSchema.safeParse(user);
+  return parsed.success ? parsed.data.id : undefined;
+}
+
+function inboundMessageKey(bindingId: string, messageHandle: string) {
+  const digest = createHash("sha256")
+    .update(`${bindingId}:${messageHandle}`)
+    .digest("hex");
+  return `inbound:${digest}`;
+}
+
+function pendingInputKey(threadId: string) {
+  return `pending-input:${threadId}`;
+}
+
+async function acquirePendingInputLock(threadId: string) {
+  /* oxlint-disable eslint/no-await-in-loop -- Each attempt must observe the prior owner before retrying; the native adapter has already acknowledged the webhook. */
+  for (;;) {
+    const lock = await state.acquireLock(threadId, pendingInputLockTtlMs);
+    if (lock) return lock;
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, pendingInputLockRetryMs);
+    });
+  }
+}
+
+function startPendingInputLockRenewal(lock: Lock) {
+  let lost = false;
+  const timer = setInterval(() => {
+    void state
+      .extendLock(lock, pendingInputLockTtlMs)
+      .then((extended) => {
+        if (!extended) lost = true;
+        return undefined;
+      })
+      .catch(() => {
+        lost = true;
+        return undefined;
+      });
+  }, pendingInputLockTtlMs / 2);
+  return {
+    lost: () => lost,
+    stop: () => {
+      clearInterval(timer);
+    },
+  };
+}
+
+function renderInputRequest(request: {
+  readonly kind?: string;
+  readonly options?: readonly { readonly label: string }[];
+  readonly prompt: string;
+}) {
+  if (request.kind === "tool-approval")
+    return "Ready for me to do that?\n\nReply naturally—“yes,” “go ahead,” or “cancel.”";
+  if (request.options?.length)
+    return [
+      request.prompt,
+      request.options
+        .map((option, index) => `${String(index + 1)}. ${option.label}`)
+        .join("\n"),
+      "Reply with an option label or number.",
+    ].join("\n\n");
+  return `${request.prompt}\n\nReply with your answer.`;
+}
+
+async function resolvePendingInputResponses({
+  message,
+  threadId,
+  workspaceId,
+}: {
+  readonly message: { readonly text: string };
+  readonly threadId: string;
+  readonly workspaceId: string;
+}): Promise<PendingInputResult | undefined> {
+  const text = message.text.trim();
+  if (!text) return undefined;
+  const key = pendingInputKey(threadId);
+  await state.connect();
+  const parsed = pendingSendblueInputSchema.safeParse(await state.get(key));
+  if (!parsed.success || parsed.data.workspaceId !== workspaceId)
+    return undefined;
+  const answeredRequestIds = new Set(
+    parsed.data.responses.map((response) => response.requestId)
+  );
+  const request = parsed.data.requests.find(
+    (candidate) => !answeredRequestIds.has(candidate.requestId)
+  );
+  if (!request)
+    return parsed.data.responses.length === parsed.data.requests.length
+      ? { inputResponses: parsed.data.responses, inputResponseStateKey: key }
+      : undefined;
+  const normalized = normalizeInputReply(text);
+  let option = request.options?.find(
+    (candidate, index) =>
+      normalizeInputReply(candidate.id) === normalized ||
+      normalizeInputReply(candidate.label) === normalized ||
+      String(index + 1) === normalized
+  );
+  if (!option && request.kind === "tool-approval")
+    option = request.options?.find(
+      (candidate) => candidate.id === approvalOptionId(normalized)
+    );
+  const response = option
+    ? { optionId: option.id, requestId: request.requestId }
+    : request.allowFreeform
+      ? { requestId: request.requestId, text }
+      : undefined;
+  if (!response) return undefined;
+  const responses = [...parsed.data.responses, response];
+  await state.set(key, { ...parsed.data, responses }, pendingInputTtlMs);
+  const nextRequest = parsed.data.requests.find(
+    (candidate) =>
+      candidate.requestId !== request.requestId &&
+      !answeredRequestIds.has(candidate.requestId)
+  );
+  if (nextRequest) {
+    return { pendingInputPrompt: renderInputRequest(nextRequest) };
+  }
+  return { inputResponses: responses, inputResponseStateKey: key };
+}
+
+function normalizeInputReply(text: string) {
+  return text
+    .normalize("NFKC")
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[.!?]+$/gu, "")
+    .trim();
+}
+
+function approvalOptionId(reply: string) {
+  if (approvalReplies.has(reply)) return "approve";
+  if (cancellationReplies.has(reply)) return "cancel";
+  return undefined;
+}

@@ -42,6 +42,13 @@ describe("interactive delivery guard", () => {
     ).toEqual({ type: "required" });
     expect(
       deliveryToolChoiceForInteractiveTurn({
+        channelKind: "channel:sendblue",
+        deliveryStatus: undefined,
+        mode: "interactive",
+      })
+    ).toEqual({ type: "required" });
+    expect(
+      deliveryToolChoiceForInteractiveTurn({
         channelKind: "channel:linq",
         deliveryStatus: undefined,
         mode: "scheduled-report",

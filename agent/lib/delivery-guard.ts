@@ -15,7 +15,9 @@ export function deliveryToolChoiceForInteractiveTurn({
   mode,
 }: InteractiveDeliveryGuardContext) {
   if (
-    (channelKind !== "channel:linq" && channelKind !== "channel:eve") ||
+    (channelKind !== "channel:linq" &&
+      channelKind !== "channel:sendblue" &&
+      channelKind !== "channel:eve") ||
     mode === "scheduled-report" ||
     deliveryStatus !== undefined
   )

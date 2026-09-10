@@ -1,4 +1,5 @@
 import { drizzle } from "drizzle-orm/node-postgres";
+import { createPostgresState } from "@chat-adapter/state-pg";
 import { Pool } from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 import {
@@ -157,6 +158,171 @@ describe.skipIf(realPostgres === undefined)(
           "SELECT id FROM phone_identities WHERE status = 'verified'"
         );
         expect(rows).toHaveLength(1);
+      } finally {
+        resetDatabaseForIntegrationTest();
+        await pool.end();
+      }
+    });
+
+    it("persists SendBlue message claims across adapters and restart", async () => {
+      if (!realPostgres) throw new Error("Real Postgres was not initialized.");
+      const prefix = "sendblue-state-integration";
+      const first = createPostgresState({
+        keyPrefix: prefix,
+        url: realPostgres.connectionString,
+      });
+      const second = createPostgresState({
+        keyPrefix: prefix,
+        url: realPostgres.connectionString,
+      });
+      await first.connect();
+      await second.connect();
+      try {
+        expect(await first.setIfNotExists("message:A", true)).toBe(true);
+        expect(await second.setIfNotExists("message:B", true)).toBe(true);
+        expect(await first.setIfNotExists("message:A", true)).toBe(false);
+        const parallel = await Promise.all(
+          Array.from({ length: 8 }, (_, index) =>
+            (index % 2 === 0 ? first : second).setIfNotExists(
+              "message:parallel",
+              true
+            )
+          )
+        );
+        expect(parallel.filter(Boolean)).toHaveLength(1);
+        await Promise.all([first.disconnect(), second.disconnect()]);
+        const restarted = createPostgresState({
+          keyPrefix: prefix,
+          url: realPostgres.connectionString,
+        });
+        await restarted.connect();
+        try {
+          expect(await restarted.setIfNotExists("message:A", true)).toBe(false);
+          expect(await restarted.setIfNotExists("message:B", true)).toBe(false);
+          expect(await restarted.setIfNotExists("message:parallel", true)).toBe(
+            false
+          );
+        } finally {
+          await restarted.disconnect();
+        }
+      } finally {
+        await Promise.all([first.disconnect(), second.disconnect()]);
+      }
+    });
+
+    it("creates a SendBlue binding after the provider schema gate", async () => {
+      if (!realPostgres) throw new Error("Real Postgres was not initialized.");
+      const pool = new Pool({
+        connectionString: realPostgres.connectionString,
+      });
+      setDatabaseForIntegrationTest(drizzle({ client: pool, schema }));
+      const userId = "sendblue-real-pg-user";
+      try {
+        await pool.query(
+          'INSERT INTO "user" (id, name, email) VALUES ($1, $2, $3)',
+          [userId, "SendBlue Test", "sendblue-real-pg@test.invalid"]
+        );
+        await pool.query(
+          `INSERT INTO phone_identities (id, user_id, encrypted_phone_number, phone_lookup_hash, verified_at) VALUES ($1, $2, $3, $4, $5)`,
+          [
+            "sendblue-real-pg-identity",
+            userId,
+            "synthetic-encrypted-phone",
+            "sendblue-real-pg-phone-hash",
+            new Date(),
+          ]
+        );
+        const scopeService = await import("@/db/services/scope");
+        const agents = await import("@/db/services/agents");
+        const conversations =
+          await import("@/db/services/channel-conversations");
+        const access = (await import("@/lib/access-scope")).accessScopeForUser(
+          `better-auth:${userId}`
+        );
+        await scopeService.ensureScope(access);
+        const agent = await agents.createAgent(access, {
+          slug: "sendblue-test",
+        });
+        const revision = await agents.createRevision(access, agent.id, {
+          capabilities: ["calendar.read"],
+          instructions: "Synthetic SendBlue integration test.",
+          modelPolicy: { tier: "standard" },
+          version: 1,
+        });
+        await agents.publishRevision(access, agent.id, revision.id);
+        const suspendedLineUpdatedAt = new Date("2020-01-01T00:00:00.000Z");
+        await pool.query(
+          `INSERT INTO platform_lines
+             (id, provider, provider_line_id, connector_id, environment, status, updated_at)
+           VALUES
+             ('suspended-sendblue-line', 'sendblue', 'suspended-sendblue-line',
+              'existing-connector', 'existing-environment', 'suspended', $1)`,
+          [suspendedLineUpdatedAt]
+        );
+        await expect(
+          conversations.createConversationBinding({
+            phoneIdentityId: "sendblue-real-pg-identity",
+            platformLine: {
+              connectorId: "replacement-connector",
+              environment: "integration",
+              providerLineId: "suspended-sendblue-line",
+            },
+            provider: "sendblue",
+            providerAccountId: "suspended-sendblue-account",
+            providerConversationId: "suspended-sendblue-conversation",
+            userId,
+          })
+        ).resolves.toBeUndefined();
+        const { rows: suspendedLines } = await pool.query<{
+          connector_id: string | null;
+          environment: string | null;
+          status: string;
+          updated_at: Date;
+        }>(
+          `SELECT connector_id, environment, status, updated_at
+             FROM platform_lines WHERE id = 'suspended-sendblue-line'`
+        );
+        const [suspendedLine] = suspendedLines;
+        if (!suspendedLine)
+          throw new Error("Suspended SendBlue line was deleted.");
+        expect(suspendedLine).toMatchObject({
+          connector_id: "existing-connector",
+          environment: "existing-environment",
+          status: "suspended",
+        });
+        expect(suspendedLine.updated_at.toISOString()).toBe(
+          suspendedLineUpdatedAt.toISOString()
+        );
+        await expect(
+          pool.query(
+            `SELECT id FROM channel_conversations
+             WHERE provider_account_id = 'suspended-sendblue-account'`
+          )
+        ).resolves.toMatchObject({ rows: [] });
+        await expect(
+          pool.query("SELECT id FROM channel_participants")
+        ).resolves.toMatchObject({ rows: [] });
+        await expect(
+          pool.query(
+            `SELECT id FROM audit_events WHERE action = 'channel.conversation.bind'`
+          )
+        ).resolves.toMatchObject({ rows: [] });
+        const binding = await conversations.createConversationBinding({
+          phoneIdentityId: "sendblue-real-pg-identity",
+          platformLine: {
+            environment: "integration",
+            providerLineId: "synthetic-sendblue-line",
+          },
+          provider: "sendblue",
+          providerAccountId: "synthetic-sendblue-account",
+          providerConversationId: "synthetic-sendblue-conversation",
+          userId,
+        });
+        expect(binding).toMatchObject({
+          provider: "sendblue",
+          providerAccountId: "synthetic-sendblue-account",
+          providerConversationId: "synthetic-sendblue-conversation",
+        });
       } finally {
         resetDatabaseForIntegrationTest();
         await pool.end();

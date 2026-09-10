@@ -5,6 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
+  chat-adapter-sendblue@0.2.0: 493ee3a2c959873b3465c0d0e656dcba13a0348007f3992dc31a1daab2634008
   eve@0.49.0: 7ca81b13f6d4ec8b3b1b540a962729142f0ebfaddd7769c9b7a71b3dab4dbb9d
 
 importers:
@@ -89,6 +90,9 @@ importers:
       chat:
         specifier: 4.34.0
         version: 4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)
+      chat-adapter-sendblue:
+        specifier: 0.2.0
+        version: 0.2.0(patch_hash=493ee3a2c959873b3465c0d0e656dcba13a0348007f3992dc31a1daab2634008)(chat@4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3))
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -4970,6 +4974,11 @@ packages:
   character-reference-invalid@2.0.1:
     resolution: {integrity: sha512-iBZ4F4wRbyORVsu0jPV7gXkOsGYjGHPmAyv+HiHG8gi5PtC9KI2j1+v8/tlibRvjoWX027ypmG/n0HtO5t7unw==}
 
+  chat-adapter-sendblue@0.2.0:
+    resolution: {integrity: sha512-JKqRa5KyoBsndRrq2LuGhob1uCdO1goWAbqaSLCld3KE9q288CnEo999GdWuDVWa9yqt1uf5F9/Oe3iFkSrW2w==}
+    peerDependencies:
+      chat: '>=4.0.0'
+
   chat@4.34.0:
     resolution: {integrity: sha512-g3c9ANavtCX7BwHcB5c3lWKIUm+8Oo7qlbgQ7/ni1rmVLLeCQa7FiMfeIyEyTAd/4HlRQu5jcS4EPdb0VyhUDQ==}
     engines: {node: '>=20'}
@@ -7980,6 +7989,9 @@ packages:
   send@1.2.1:
     resolution: {integrity: sha512-1gnZf7DFcoIcajTjTwjwuDjzuz4PPcY2StKPlsGAQ1+YH20IRVrBaXSWmdjowTJ6u8Rc01PoYOGHXfP1mYcZNQ==}
     engines: {node: '>= 18'}
+
+  sendblue@3.16.1:
+    resolution: {integrity: sha512-ZJzDBvjFO+0h7MZMaHeBaisdw5PS/K7PQzB42VF4te0c2rnAPFness6A09nrP5gmajjIV2pqqJePHQGUwwBJkg==}
 
   serve-static@2.2.1:
     resolution: {integrity: sha512-xRXBn0pPqQTVQiC8wyQrKs2MOlX24zQ0POGaj0kultvoOCstBQM5yvOhAVSUwOMjQtTvsPWoNCHfPGwaaQJhTw==}
@@ -13105,6 +13117,11 @@ snapshots:
 
   character-reference-invalid@2.0.1: {}
 
+  chat-adapter-sendblue@0.2.0(patch_hash=493ee3a2c959873b3465c0d0e656dcba13a0348007f3992dc31a1daab2634008)(chat@4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)):
+    dependencies:
+      chat: 4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)
+      sendblue: 3.16.1
+
   chat@4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3):
     dependencies:
       '@workflow/serde': 4.1.0-beta.2
@@ -16583,6 +16600,8 @@ snapshots:
       statuses: 2.0.2
     transitivePeerDependencies:
       - supports-color
+
+  sendblue@3.16.1: {}
 
   serve-static@2.2.1(supports-color@7.2.0):
     dependencies:

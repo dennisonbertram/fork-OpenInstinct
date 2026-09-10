@@ -26,7 +26,7 @@ export const phoneIdentityStatuses = [
 ] as const;
 export type PhoneIdentityStatus = (typeof phoneIdentityStatuses)[number];
 
-export const platformLineProviders = ["linq"] as const;
+export const platformLineProviders = ["linq", "sendblue"] as const;
 export type PlatformLineProvider = (typeof platformLineProviders)[number];
 
 export const platformLineStatuses = ["active", "suspended", "retired"] as const;

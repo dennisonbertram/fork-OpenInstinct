@@ -113,6 +113,9 @@ export const env = createEnv({
     PHONE_OTP_PROVIDER: z.enum(["linq", "sendblue"]).default("linq"),
     SENDBLUE_API_KEY_ID: requiredValue.optional(),
     SENDBLUE_API_SECRET_KEY: requiredValue.optional(),
+    SENDBLUE_CONVERSATIONS: z.enum(["on", "off"]).default("off"),
+    SENDBLUE_ACCOUNT_ID: requiredValue.optional(),
+    SENDBLUE_WEBHOOK_SECRET: requiredValue.optional(),
     SENDBLUE_FROM_NUMBER: requiredValue
       .refine(
         (value) => isE164PhoneNumber(value),
@@ -144,6 +147,20 @@ export const env = createEnv({
           message:
             "SQUARE_SANDBOX_ACCESS_TOKEN must not be set when SQUARE_ENVIRONMENT or VERCEL_ENV is production.",
           path: ["SQUARE_SANDBOX_ACCESS_TOKEN"],
+        }
+      )
+      .refine(
+        (value) =>
+          value.SENDBLUE_CONVERSATIONS !== "on" ||
+          (value.SENDBLUE_API_KEY_ID !== undefined &&
+            value.SENDBLUE_API_SECRET_KEY !== undefined &&
+            value.SENDBLUE_FROM_NUMBER !== undefined &&
+            value.SENDBLUE_ACCOUNT_ID !== undefined &&
+            value.SENDBLUE_WEBHOOK_SECRET !== undefined),
+        {
+          message:
+            "SENDBLUE_CONVERSATIONS=on requires SendBlue credentials, sender, account ID, and webhook secret.",
+          path: ["SENDBLUE_CONVERSATIONS"],
         }
       )
       .refine(

@@ -48,6 +48,9 @@ describe("schedule tools", () => {
     if (!resolve) return;
 
     expect(await resolve({}, dynamicContext("scheduled-worker"))).toBeNull();
+    expect(
+      await resolve({}, dynamicContext("sendblue-message", "channel:sendblue"))
+    ).toBeNull();
     expect(await resolve({}, resumedWorkerContext())).toBeNull();
     expect(
       await resolve({}, dynamicContext("scheduled-result"))

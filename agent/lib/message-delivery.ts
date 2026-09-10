@@ -32,6 +32,15 @@ export function settleFinalDelivery(callId: string, accepted: boolean) {
   );
 }
 
+/** Suppress an automatic fallback after a provider request may have reached it. */
+export function recordUnconfirmedDelivery(turnId: string, callId: string) {
+  finalDelivery.update((delivery) =>
+    delivery?.turnId === turnId
+      ? { ...delivery, status: "unconfirmed" }
+      : { callId, turnId, status: "unconfirmed" }
+  );
+}
+
 export function requestFinalDeliveryCompletion(
   callId: string,
   turnId: string,

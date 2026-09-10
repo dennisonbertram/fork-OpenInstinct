@@ -272,10 +272,10 @@
         <!-- inbound: Linq -->
         <rect x="20" y="60" width="230" height="96" class="box" />
         <text x="32" y="82" font-size="13" font-weight="600">
-          iMessage / SMS via Linq
+          iMessage / SMS
         </text>
         <text x="32" y="100" font-size="11.5" class="mono muted">
-          agent/channels/linq.ts
+          channels/linq.ts · sendblue.ts
         </text>
         <text x="32" y="120" font-size="12">
           webhook on /eve/v1 · onMessage()
@@ -303,7 +303,9 @@
         <text x="312" y="100" font-size="11.5" class="mono muted">
           src/lib/access-scope.ts
         </text>
-        <text x="312" y="126" font-size="12">Linq: phone number →</text>
+        <text x="312" y="126" font-size="12">
+          Messaging channel: phone number →
+        </text>
         <text x="312" y="142" font-size="12">verified Better Auth user</text>
         <text x="312" y="168" font-size="12" class="mono">principalId</text>
         <text x="312" y="184" font-size="12" class="mono">
@@ -428,9 +430,7 @@
           resumes at the last completed step
         </text>
         <text x="862" y="226" font-size="12" class="mono">step.started</text>
-        <text x="862" y="242" font-size="12">
-          Eve/Linq: require a tool before delivery
-        </text>
+        <text x="862" y="242" font-size="12">Require a delivery tool</text>
         <text x="862" y="264" font-size="12" class="mono">step.completed</text>
         <text x="862" y="280" font-size="12">
           recordUsageEvent(tokens, USD)
@@ -453,7 +453,7 @@
           marker-end="url(#arrow-accent)"
         />
         <text x="1002" y="318" font-size="11.5" class="accent-text mono">
-          message.completed
+          action.result
         </text>
 
         <!-- reply box, Linq -->
@@ -462,7 +462,7 @@
           Reply to iMessage
         </text>
         <text x="312" y="390" font-size="11.5" class="mono muted">
-          linq.ts · agent/tools/messaging.ts
+          linq.ts · sendblue.ts · messaging.ts
         </text>
         <text x="312" y="412" font-size="12">
           1. model calls send_message, one call = one bubble
@@ -534,14 +534,15 @@
       </svg>
     </div>
     <figcaption>
-      One turn end to end. Both channels resolve to the same principal and
-      verified workspace scope before eve sees the message; Linq also resolves
-      an owned conversation binding and atomically claims each inbound provider
-      message ID. Its Chat SDK locks and pending input IDs live in Postgres, so
-      an exact text reply resumes the parked Eve request rather than starting a
-      new model turn. The session, vault, Square grant, and usage ledger all key
-      on that scope. The turn runs as a Workflow SDK durable workflow; the
-      accent path is the reply leaving the turn. On iMessage each
+      One turn end to end. All three channels resolve to the same principal and
+      verified workspace scope before eve sees the message; Linq and SendBlue
+      resolve an owned conversation binding and atomically claim each inbound
+      provider message ID. Its Chat SDK locks and pending input IDs live in
+      Postgres, so an exact text reply resumes the parked Eve request rather
+      than starting a new model turn. The session, vault, Square grant, and
+      usage ledger all key on that scope. The turn runs as a Workflow SDK
+      durable workflow; the accent path is the reply leaving the turn. On
+      iMessage each
       <code>send_message</code> call becomes exactly one provider message; text
       is never re-split by paragraph or bullet. The provider contract and eval
       gym gate this mapping, native attachments, Tapbacks, and approval text.
@@ -760,7 +761,7 @@
         <text x="446" y="300" font-size="10.5" class="mono muted">stop</text>
         <rect x="320" y="372" width="230" height="70" class="soft" />
         <text x="335" y="396" font-size="13" font-weight="600">Reply</text>
-        <text x="335" y="414" font-size="12">message.completed →</text>
+        <text x="335" y="414" font-size="12">action.result →</text>
         <text x="335" y="430" font-size="12">channel posts it (Figure 1)</text>
 
         <!-- cancel note -->
