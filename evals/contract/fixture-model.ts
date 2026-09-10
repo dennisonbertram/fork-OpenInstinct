@@ -113,7 +113,10 @@ export function contractFixtureResponse(
     };
   }
 
-  if (command === "final-reaction-timeout" || command === "final-reaction-normal") {
+  if (
+    command === "final-reaction-timeout" ||
+    command === "final-reaction-normal"
+  ) {
     return {
       toolCalls: [
         {

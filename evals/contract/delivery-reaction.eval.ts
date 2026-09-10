@@ -1,6 +1,6 @@
 import { defineEval } from "eve/evals";
 import { equals } from "eve/evals/expect";
-import { contractEvalTags, deliveryComplete } from "./shared";
+import { contractEvalTags } from "./shared";
 
 export default defineEval({
   description: "A reaction is a complete reply with no text delivery.",
@@ -13,6 +13,6 @@ export default defineEval({
       input: { operation: "add", type: "heart" },
     });
     turn.notCalledTool("send_message");
-    t.check(t.reply, equals(deliveryComplete));
+    t.check(t.reply, equals(null));
   },
 });

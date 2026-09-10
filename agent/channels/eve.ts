@@ -10,6 +10,7 @@ import { verifyScopeAccess } from "@/db/services/scope";
 import { accessScopeForUser, type AccessScope } from "@/lib/access-scope";
 import { getAuthSession } from "@/auth/session";
 import { sendMessageToolResultSchema } from "@/agent/lib/send-message";
+import { reactToMessageToolResultSchema } from "@/agent/lib/react-to-message";
 import { requestFinalDeliveryCompletion } from "@/agent/lib/message-delivery";
 import {
   finalizeScheduledReportDelivery,
@@ -70,18 +71,33 @@ export default eveChannel({
   ],
   events: {
     async "action.result"(event, _channel, session) {
-      if (
-        event.status === "completed" &&
-        sendMessageToolResultSchema.safeParse(event.result).success
-      ) {
-        const report = scheduledReportFromSession(session);
-        await finalizeScheduledReportDelivery(session);
-        if (!report) {
-          requestFinalDeliveryCompletion(
-            event.result.callId,
-            event.turnId,
-            event.stepIndex
-          );
+      if (event.status === "completed") {
+        const message = sendMessageToolResultSchema.safeParse(event.result);
+        if (message.success) {
+          const report = scheduledReportFromSession(session);
+          await finalizeScheduledReportDelivery(session);
+          if (!report) {
+            requestFinalDeliveryCompletion(
+              event.result.callId,
+              event.turnId,
+              event.stepIndex
+            );
+          }
+          return;
+        }
+
+        const reaction = reactToMessageToolResultSchema.safeParse(event.result);
+        if (reaction.success) {
+          const report = scheduledReportFromSession(session);
+          await finalizeScheduledReportDelivery(session);
+          if (!report && reaction.data.output.operation === "add") {
+            requestFinalDeliveryCompletion(
+              event.result.callId,
+              event.turnId,
+              event.stepIndex
+            );
+          }
+          return;
         }
       }
     },

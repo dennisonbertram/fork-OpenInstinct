@@ -396,7 +396,9 @@ export function matchesProviderState(
     (expected.pending === undefined || actual.pending === expected.pending) &&
     (expected.rejected === undefined ||
       actual.rejected === expected.rejected) &&
-    (expected.requests === undefined || actual.requests === expected.requests)
+    (expected.requests === undefined ||
+      actual.requests === expected.requests) &&
+    (expected.waiters === undefined || actual.waiters === expected.waiters)
   );
 }
 

@@ -205,10 +205,7 @@ describe("Eve reaction delivery", () => {
 
   it("does not request completion for a failed reaction action", async () => {
     await handleActionResult(
-      reactToMessageResult(
-        { operation: "add", type: "heart" },
-        "failed"
-      ),
+      reactToMessageResult({ operation: "add", type: "heart" }, "failed"),
       {},
       interactiveSession()
     );

@@ -50,7 +50,9 @@ describe("linq final delivery provider state matcher", () => {
   });
 
   it("asserts zero waiters", () => {
-    assertProviderState(baseState, { waiters: 0 });
+    expect(() => {
+      assertProviderState(baseState, { waiters: 0 });
+    }).not.toThrow();
   });
 
   it("throws when asserting mismatched waiters", () => {
@@ -58,6 +60,8 @@ describe("linq final delivery provider state matcher", () => {
       ...baseState,
       counts: { ...baseState.counts, waiters: 1 },
     };
-    expect(() => assertProviderState(state, { waiters: 0 })).toThrow();
+    expect(() => {
+      assertProviderState(state, { waiters: 0 });
+    }).toThrow("Contract provider state did not match");
   });
 });
