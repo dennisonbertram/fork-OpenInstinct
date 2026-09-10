@@ -7,12 +7,24 @@ import { PhoneOtpAuthForm } from "@/app/sign-in/_components/otp-form";
 import { env, localPhoneAuthBypassEnabled } from "@/env";
 import { getAuthSession } from "@/auth/session";
 import { readLinqOnboardingPhoneNumber } from "@/auth/linq";
+import { requireRequestScope, UnauthenticatedError } from "@/lib/request-scope";
 import mascot from "./_assets/jory-avatar-desk.webp";
+import { UnavailableAccountNotice } from "./_components/unavailable-account-notice";
 
 export default async function SignInPage({
   searchParams,
 }: PageProps<"/sign-in">) {
-  if (await getAuthSession(await headers())) redirect("/");
+  const session = await getAuthSession(await headers());
+  if (session) {
+    let accountUnavailable = false;
+    try {
+      await requireRequestScope();
+    } catch (error) {
+      if (!(error instanceof UnauthenticatedError)) throw error;
+      accountUnavailable = true;
+    }
+    if (!accountUnavailable) redirect("/");
+  }
 
   const callbackValue = (await searchParams).callbackUrl;
   const requestedCallback = Array.isArray(callbackValue)
@@ -22,34 +34,37 @@ export default async function SignInPage({
     requestedCallback?.startsWith("/") && !requestedCallback.startsWith("//")
       ? requestedCallback
       : "/";
-  const linqConfigured = env.LINQ_CONNECTOR !== undefined;
+  const linqConfigured = !session && env.LINQ_CONNECTOR !== undefined;
   const linqPhoneNumber =
-    localPhoneAuthBypassEnabled || !env.LINQ_CONNECTOR
+    session || localPhoneAuthBypassEnabled || !env.LINQ_CONNECTOR
       ? undefined
       : (env.LINQ_PHONE_NUMBER ??
         (await readLinqOnboardingPhoneNumber(env.LINQ_CONNECTOR)));
-  const subhead = signInSubhead({
-    localBypass: localPhoneAuthBypassEnabled,
-    linqConfigured,
-  });
+  const subhead = session
+    ? undefined
+    : signInSubhead({
+        localBypass: localPhoneAuthBypassEnabled,
+        linqConfigured,
+      });
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-background px-4 py-8 text-foreground">
       <div className="grid w-full max-w-5xl items-end gap-10 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
         <Card className="w-full max-w-md gap-6 justify-self-center p-8 lg:justify-self-start">
           <SignInHero headline="Hey, Jory" subhead={subhead} />
-          {!localPhoneAuthBypassEnabled && !linqConfigured ? (
+          {session ? <UnavailableAccountNotice /> : null}
+          {!session && !localPhoneAuthBypassEnabled && !linqConfigured ? (
             <p className="type-supporting-body mt-6 text-muted-foreground">
               iMessage sign-in is not configured for this deployment. Attach a
               Linq connector through Vercel Connect.
             </p>
-          ) : (
+          ) : !session ? (
             <PhoneOtpAuthForm
               callbackUrl={callbackUrl}
               localBypass={localPhoneAuthBypassEnabled}
               linqPhoneNumber={linqPhoneNumber}
             />
-          )}
+          ) : null}
         </Card>
         <div className="order-first flex justify-center lg:order-0 lg:justify-start">
           <Image
