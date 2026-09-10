@@ -6,6 +6,7 @@ import { Message, MessageContent } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
 import { AgentMessagePart, partKey } from "./parts";
 import type { RespondToAgentInput } from "./types";
+import { MessageAvatar } from "./avatar";
 
 export function AgentMessage({
   canRespond,
@@ -14,6 +15,8 @@ export function AgentMessage({
   onInputResponses,
   sentMessageParts,
   timestamp,
+  userAvatarUrl,
+  userId,
   userVisibleOnly = false,
 }: {
   readonly canRespond: boolean;
@@ -22,6 +25,8 @@ export function AgentMessage({
   readonly onInputResponses: RespondToAgentInput;
   readonly sentMessageParts?: readonly EveMessage["parts"][number][];
   readonly timestamp?: string;
+  readonly userAvatarUrl?: string | null;
+  readonly userId?: string;
   readonly userVisibleOnly?: boolean;
 }) {
   const [optimisticTimestamp] = useState(() => new Date().toISOString());
@@ -37,6 +42,15 @@ export function AgentMessage({
   const hasAssistantText =
     message.role === "assistant" &&
     visibleParts.some((part) => part.type === "text" && part.text.length > 0);
+  const showsAssistantIdentity =
+    message.role === "assistant" &&
+    visibleParts.some(
+      (part) =>
+        (part.type === "text" && part.text.length > 0) ||
+        part.type === "file" ||
+        part.type === "authorization" ||
+        (part.type === "dynamic-tool" && userVisibleOnly)
+    );
 
   if (visibleParts.length === 0) return null;
 
@@ -44,42 +58,67 @@ export function AgentMessage({
     <Message
       data-optimistic={message.metadata?.optimistic ? "true" : undefined}
       from={message.role}
+      className="max-w-full"
     >
-      {message.role === "assistant" ? (
-        <span className="pl-1 type-caption text-muted-foreground">Jory</span>
-      ) : null}
-      <MessageContent>
-        {visibleParts.map((part, index) =>
-          hasAssistantText && part.type === "reasoning" ? null : (
-            <AgentMessagePart
-              canRespond={canRespond}
-              key={partKey(part, index)}
-              onInputResponses={onInputResponses}
-              part={part}
-              showCaret={
-                isStreaming &&
-                message.role === "assistant" &&
-                index === lastTextIndex
-              }
-              userVisibleOnly={userVisibleOnly}
-            />
-          )
+      <div
+        className={cn(
+          "flex w-full items-start gap-2",
+          message.role === "user" && "justify-end"
         )}
-      </MessageContent>
-      {displayedTimestamp ? (
-        <time
+      >
+        {showsAssistantIdentity ? <MessageAvatar kind="assistant" /> : null}
+        <div
           className={cn(
-            "text-muted-foreground",
-            message.role === "user" ? "ml-auto pr-1" : "mr-auto"
+            "flex min-w-0 flex-col gap-2 sm:max-w-[90%]",
+            showsAssistantIdentity || message.role === "user"
+              ? "max-w-[calc(100%-2.75rem)]"
+              : "max-w-full"
           )}
-          dateTime={displayedTimestamp}
-          title={fullTimestampFormatter.format(new Date(displayedTimestamp))}
         >
-          <span className="type-caption" suppressHydrationWarning>
-            {timestampFormatter.format(new Date(displayedTimestamp))}
-          </span>
-        </time>
-      ) : null}
+          {showsAssistantIdentity ? (
+            <span className="pl-1 type-caption text-muted-foreground">
+              Jory
+            </span>
+          ) : null}
+          <MessageContent>
+            {visibleParts.map((part, index) =>
+              hasAssistantText && part.type === "reasoning" ? null : (
+                <AgentMessagePart
+                  canRespond={canRespond}
+                  key={partKey(part, index)}
+                  onInputResponses={onInputResponses}
+                  part={part}
+                  showCaret={
+                    isStreaming &&
+                    message.role === "assistant" &&
+                    index === lastTextIndex
+                  }
+                  userVisibleOnly={userVisibleOnly}
+                />
+              )
+            )}
+          </MessageContent>
+          {displayedTimestamp ? (
+            <time
+              className={cn(
+                "text-muted-foreground",
+                message.role === "user" ? "ml-auto pr-1" : "mr-auto"
+              )}
+              dateTime={displayedTimestamp}
+              title={fullTimestampFormatter.format(
+                new Date(displayedTimestamp)
+              )}
+            >
+              <span className="type-caption" suppressHydrationWarning>
+                {timestampFormatter.format(new Date(displayedTimestamp))}
+              </span>
+            </time>
+          ) : null}
+        </div>
+        {message.role === "user" ? (
+          <MessageAvatar imageUrl={userAvatarUrl} kind="user" userId={userId} />
+        ) : null}
+      </div>
     </Message>
   );
 }

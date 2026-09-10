@@ -18,6 +18,12 @@ test("delivers, reloads, and continues a real authenticated conversation", async
   await expect(firstBubble).toBeVisible();
   await expect(firstBubble).toHaveCount(1);
   await expect(
+    page.locator('[data-slot="message-avatar"][aria-label="Jory"]')
+  ).toHaveCount(1);
+  await expect(
+    page.locator('.is-user [data-slot="message-avatar"][aria-label="You"]')
+  ).toHaveCount(1);
+  await expect(
     page.getByRole("button", { name: "Submit", exact: true })
   ).toBeEnabled();
 
@@ -36,12 +42,45 @@ test("delivers, reloads, and continues a real authenticated conversation", async
   await expect(followUpBubble).toBeVisible();
   await expect(followUpBubble).toHaveCount(1);
   await expect(firstBubble).toHaveCount(1);
+  await expect(
+    page.locator('[data-slot="message-avatar"][aria-label="Jory"]')
+  ).toHaveCount(2);
+  await expect(
+    page.locator('.is-user [data-slot="message-avatar"][aria-label="You"]')
+  ).toHaveCount(2);
   await expect(page).toHaveURL(conversationUrl);
   await page.reload();
   await expect(firstBubble).toHaveCount(1);
   await expect(followUpBubble).toHaveCount(1);
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(conversationUrl);
+  await expect(followUpBubble).toBeVisible();
+  await expect(
+    page.locator('[data-slot="message-avatar"][aria-label="Jory"]')
+  ).toHaveCount(2);
+  await expect(
+    page.locator('.is-user [data-slot="message-avatar"][aria-label="You"]')
+  ).toHaveCount(2);
+  const mobileChatBox = await page.getByRole("log").boundingBox();
+  const mobileAvatarBoxes = await page
+    .locator('[data-slot="message-avatar"]')
+    .evaluateAll((avatars) =>
+      avatars.map((avatar) => {
+        const box = avatar.getBoundingClientRect();
+        return { right: box.right, width: box.width };
+      })
+    );
+  if (!mobileChatBox || mobileAvatarBoxes.length !== 4) {
+    throw new Error("Mobile chat and its avatars must have visible bounds");
+  }
+  for (const avatarBox of mobileAvatarBoxes) {
+    expect(avatarBox.width).toBe(36);
+    expect(avatarBox.right).toBeLessThanOrEqual(
+      mobileChatBox.x + mobileChatBox.width + 1
+    );
+  }
+
   await page.goto("/chat/history");
   const history = page.getByRole("region", { name: "Chat history" });
   const chatCard = history.locator(

@@ -408,32 +408,64 @@ line lifecycle UI.
 SendBlue. The selection does not affect local development, which still uses
 `000000` and never calls a provider.
 
-SendBlue configuration is restricted to the hosted preview pilot on the
-`feat/sendblue-otp` branch. Do not add SendBlue variables to the Production
-environment.
+SendBlue should first be tested on the isolated hosted preview pilot on the
+`pilot-sendblue` branch. After the existing tenant preflight and backup gates
+pass, it may be enabled for an explicitly approved Production webchat release.
+Use the existing Production database and production `BETTER_AUTH_URL`; never
+promote the ephemeral pilot database or its secrets by accident. This section
+documents the path and does not claim that Production has already been
+released.
 
-Set all three values for the preview environment, branch-scoped to
-`feat/sendblue-otp`:
+Set the provider selector and all three provider values for the Preview
+environment, branch-scoped to `pilot-sendblue`:
 
 ```bash
 # OPERATOR ACTION: enter each value at its interactive prompt.
-pnpm exec vercel env add PHONE_OTP_PROVIDER preview --git-branch feat/sendblue-otp --project open-instinct --scope dennisons-projects --no-sensitive
-pnpm exec vercel env add SENDBLUE_API_KEY_ID preview --git-branch feat/sendblue-otp --project open-instinct --scope dennisons-projects --sensitive
-pnpm exec vercel env add SENDBLUE_API_SECRET_KEY preview --git-branch feat/sendblue-otp --project open-instinct --scope dennisons-projects --sensitive
-pnpm exec vercel env add SENDBLUE_FROM_NUMBER preview --git-branch feat/sendblue-otp --project open-instinct --scope dennisons-projects --no-sensitive
+pnpm exec vercel env add PHONE_OTP_PROVIDER preview --git-branch pilot-sendblue --project open-instinct --scope dennisons-projects --no-sensitive
+pnpm exec vercel env add SENDBLUE_API_KEY_ID preview --git-branch pilot-sendblue --project open-instinct --scope dennisons-projects --sensitive
+pnpm exec vercel env add SENDBLUE_API_SECRET_KEY preview --git-branch pilot-sendblue --project open-instinct --scope dennisons-projects --sensitive
+pnpm exec vercel env add SENDBLUE_FROM_NUMBER preview --git-branch pilot-sendblue --project open-instinct --scope dennisons-projects --sensitive
+```
+
+For an explicitly approved Production webchat release, repeat the provider
+selector and the same three provider values with the `production` target, after
+tenant preflight and backup gates pass and with the existing Production
+database and canonical
+`BETTER_AUTH_URL` selected:
+
+```bash
+# OPERATOR ACTION: enter each value at its interactive prompt.
+pnpm exec vercel env add PHONE_OTP_PROVIDER production --project open-instinct --scope dennisons-projects --no-sensitive
+pnpm exec vercel env add SENDBLUE_API_KEY_ID production --project open-instinct --scope dennisons-projects --sensitive
+pnpm exec vercel env add SENDBLUE_API_SECRET_KEY production --project open-instinct --scope dennisons-projects --sensitive
+pnpm exec vercel env add SENDBLUE_FROM_NUMBER production --project open-instinct --scope dennisons-projects --sensitive
 ```
 
 `SENDBLUE_FROM_NUMBER` is the registered SendBlue sending line for the account.
-The recipient must be an eligible verified test contact. Do not treat an
-accepted SendBlue API response as proof the message was delivered; the sign-in
-UI warns the user that "accepted" only means the request was accepted by the
-provider.
+For shared/free SendBlue lines, use the strict V3 verified-contact route
+(`GET /v3/verified-contacts`) and require the contact and shared line to match.
+For the assigned pilot line, use the normal V2 targeted contact route
+(`GET /api/v2/contacts/{phone_number}`), requiring an exact phone match, the
+associated configured sender, and `opt_out=false`. The official references are
+[retrieve a contact](https://docs.sendblue.com/api/resources/contacts/methods/retrieve)
+and [list verified contacts](https://docs.sendblue.com/api/resources/verified_contacts/methods/list).
+The configured from number must be the assigned registered SendBlue sending
+line. Hosted OTP ownership is confirmed only after the user enters the code.
+Do not treat an accepted SendBlue API response as proof the message was
+delivered; the sign-in UI warns the user that "accepted" only means the request
+was accepted by the provider.
 
-Before any live hosted test, validate:
+Before a hosted preview test, validate:
 
 - the preview database is isolated from production;
 - `BETTER_AUTH_URL` equals the canonical HTTPS origin assigned to the preview;
 - credentials and a freshly confirmed recipient/action are ready.
+
+Before enabling Production, also complete the existing tenant preflight and
+backup gates, select the existing Production database, and verify the
+Production `BETTER_AUTH_URL`. Keep the exact configured sender and receiving
+line isolated to the intended account. The pilot database and Preview secrets
+must not be promoted.
 
 SendBlue is intentionally not a fallback for Linq failures. Missing or
 incomplete SendBlue configuration renders the sign-in page unavailable and

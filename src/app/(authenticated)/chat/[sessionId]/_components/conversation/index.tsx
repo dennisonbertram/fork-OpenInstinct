@@ -36,6 +36,8 @@ export function ChatConversation({
   initial,
   sessionId,
   traceView,
+  userAvatarUrl,
+  userId,
 }: {
   readonly agent: Pick<
     ChatAgent,
@@ -50,6 +52,8 @@ export function ChatConversation({
   readonly initial?: false;
   readonly sessionId?: string;
   readonly traceView: TraceView;
+  readonly userAvatarUrl?: string | null;
+  readonly userId?: string;
 }) {
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
   const isRestoring =
@@ -160,6 +164,8 @@ export function ChatConversation({
                     onInputResponses={(responses) => agent.respond(responses)}
                     sentMessageParts={delivery.parts}
                     timestamp={delivery.timestamp}
+                    userAvatarUrl={userAvatarUrl}
+                    userId={userId}
                     userVisibleOnly
                   />
                 ))}
@@ -177,6 +183,8 @@ export function ChatConversation({
               message={message}
               onInputResponses={(responses) => agent.respond(responses)}
               timestamp={timestamps.get(message.id)}
+              userAvatarUrl={userAvatarUrl}
+              userId={userId}
               userVisibleOnly={traceView === "imessage"}
             />
           );
