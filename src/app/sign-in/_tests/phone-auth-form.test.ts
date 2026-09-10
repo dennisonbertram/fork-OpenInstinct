@@ -87,4 +87,66 @@ describe("phone OTP errors", () => {
     expect(html).toContain("000000");
     expect(html).not.toContain("Verify code");
   });
+
+  it("shows SendBlue setup information instead of Linq onboarding", () => {
+    const html = renderForm(
+      createElement(PhoneOtpAuthForm, {
+        callbackUrl: "/",
+        provider: "sendblue",
+        sendblueFromNumber: "+12025550199",
+      })
+    );
+
+    expect(html).not.toContain("First time signing in?");
+    expect(html).not.toContain("Linq requires one message");
+    expect(html).not.toContain("Text Linq in Messages");
+    expect(html).toContain("SendBlue sends your code");
+    expect(html).toContain("registered SendBlue sending line");
+    expect(html).toContain("eligible verified test contacts");
+    expect(html).toContain("+12025550199");
+  });
+
+  it("shows actionable SendBlue errors without exposing provider details", () => {
+    expect(
+      phoneOtpErrorMessage({
+        code: "SENDBLUE_RATE_LIMITED",
+        message:
+          "SendBlue rate-limited the request. Wait a moment and try again.",
+      })
+    ).toBe("SendBlue rate-limited the request. Wait a moment and try again.");
+
+    expect(
+      phoneOtpErrorMessage({
+        code: "SENDBLUE_SENDING_FAILED",
+        message: "Check the from number and recipient.",
+      })
+    ).toBe("Check the from number and recipient.");
+
+    expect(
+      phoneOtpErrorMessage({
+        code: "SENDBLUE_UNAUTHORIZED",
+        message: "secret-key-value",
+      })
+    ).toBe("secret-key-value");
+
+    expect(
+      phoneOtpErrorMessage({
+        code: "SENDBLUE_SUBMISSION_UNCONFIRMED",
+        message: "The submission could not be confirmed.",
+      })
+    ).toBe("The submission could not be confirmed.");
+  });
+
+  it("does not show an unconfirmed warning before a SendBlue request", () => {
+    const html = renderForm(
+      createElement(PhoneOtpAuthForm, {
+        callbackUrl: "/",
+        provider: "sendblue",
+      })
+    );
+
+    expect(html).toContain("SendBlue sends your code");
+    expect(html).not.toContain("Code submission could not be confirmed");
+    expect(html).not.toContain("First time signing in?");
+  });
 });

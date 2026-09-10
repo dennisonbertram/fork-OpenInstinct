@@ -1,13 +1,16 @@
+import type { PhoneOtpProvider } from "@/auth/phone-otp-config";
+
 export function signInSubhead({
   localBypass,
-  linqConfigured,
+  provider: _provider,
+  configured,
 }: {
   readonly localBypass: boolean;
-  readonly linqConfigured: boolean;
+  readonly provider: PhoneOtpProvider;
+  readonly configured: boolean;
 }) {
   if (localBypass) return "Enter your phone number to request a sign-in code.";
-  if (linqConfigured)
-    return "Enter your phone number and we will text you a code.";
+  if (configured) return "Enter your phone number and we will text you a code.";
   return undefined;
 }
 

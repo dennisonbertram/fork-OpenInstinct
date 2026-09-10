@@ -64,6 +64,31 @@ describe("phone identity verification wiring", () => {
     });
   });
 
+  it("keeps Better Auth OTP limits and verification semantics", async () => {
+    const { options, sendPhoneCode } = optionsFor();
+
+    expect(options.allowedAttempts).toBe(3);
+    expect(options.expiresIn).toBe(300);
+    expect(options.requireVerification).toBe(true);
+    expect(options.signUpOnVerification).toBeDefined();
+
+    await options.sendOTP({ code: "123456", phoneNumber });
+    expect(sendPhoneCode).toHaveBeenCalledWith({
+      code: "123456",
+      to: phoneNumber,
+    });
+  });
+
+  it("never calls a provider in local bypass mode", async () => {
+    const { options, sendPhoneCode } = optionsFor({
+      localPhoneAuthBypassEnabled: true,
+    });
+
+    await options.sendOTP({ code: "123456", phoneNumber });
+    expect(sendPhoneCode).not.toHaveBeenCalled();
+    expect(options.verifyOTP?.({ code: "000000", phoneNumber })).toBe(true);
+  });
+
   it("does not reject verification when identity recording fails", async () => {
     const storageError = new Error("storage unavailable");
     storageError.name = "IdentityStoreError";

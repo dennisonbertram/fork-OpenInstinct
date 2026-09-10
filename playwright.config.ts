@@ -2,8 +2,8 @@ import { randomBytes } from "node:crypto";
 import { defineConfig } from "@playwright/test";
 
 // oxlint-disable-next-line eslint/no-restricted-properties, turbo/no-undeclared-env-vars -- A caller-selected port keeps isolated E2E runs from attaching to an unrelated local server.
-const port = process.env.PLAYWRIGHT_PORT ?? "3000";
-const baseURL = `http://localhost:${port}`;
+export const port = process.env.PLAYWRIGHT_PORT ?? "3000";
+export const baseURL = `http://localhost:${port}`;
 const storageState = "playwright/.auth/user.json";
 
 export default defineConfig({
@@ -27,7 +27,7 @@ export default defineConfig({
     {
       name: "chromium",
       dependencies: ["setup"],
-      testIgnore: /.*\.setup\.ts/,
+      testIgnore: [/.*\.setup\.ts/, "**/sendblue-otp.spec.ts"],
       use: {
         browserName: "chromium",
         storageState,

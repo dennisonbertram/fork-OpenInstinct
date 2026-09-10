@@ -9,6 +9,12 @@ import { betterAuthBaseURL } from "@/lib/application-origin";
 import { env, localPhoneAuthBypassEnabled } from "@/env";
 import { getInstallationSecrets } from "@/lib/installation-secrets";
 import { LinqDeliveryError, linqOtpFailure, sendLinqText } from "./linq";
+import { phoneOtpProvider, sendblueConfig } from "./phone-otp-config";
+import {
+  apiErrorFromSendBlueError,
+  sendBlueOtp,
+  SendBlueDeliveryError,
+} from "./sendblue";
 import { isE164PhoneNumber } from "./phone-number";
 
 let authPromise: ReturnType<typeof createAuth> | undefined;
@@ -122,42 +128,86 @@ export async function sendPhoneCode({
   readonly code: string;
   readonly to: string;
 }) {
-  if (!env.LINQ_CONNECTOR) {
-    throw new APIError("SERVICE_UNAVAILABLE", {
-      code: "LINQ_NOT_CONFIGURED",
-      message:
-        "iMessage sign-in is not configured. Attach a Linq connector to this deployment.",
-    });
-  }
+  const provider = phoneOtpProvider();
 
-  try {
-    await sendLinqText({
-      connector: env.LINQ_CONNECTOR,
-      idempotencyKey: `auth-otp-${createHash("sha256")
-        .update(`${to}\u0000${code}`)
-        .digest("hex")}`,
-      message: `Local Vault Assistant sign-in code: ${code}. Expires in 5 minutes.`,
-      to,
-    });
-  } catch (error) {
-    if (error instanceof LinqDeliveryError) {
-      const failure = linqOtpFailure(error);
-      throw new APIError("BAD_GATEWAY", {
-        code: failure.code,
-        linqError: {
-          code: error.code,
-          message: error.linqMessage,
-          status: error.status,
-          trace_id: error.traceId,
-        },
-        message: failure.message,
+  if (provider === "linq") {
+    if (!env.LINQ_CONNECTOR) {
+      throw new APIError("SERVICE_UNAVAILABLE", {
+        code: "LINQ_NOT_CONFIGURED",
+        message:
+          "iMessage sign-in is not configured. Attach a Linq connector to this deployment.",
       });
     }
 
-    throw new APIError("BAD_GATEWAY", {
-      code: "LINQ_CONNECTOR_UNAVAILABLE",
+    try {
+      await sendLinqText({
+        connector: env.LINQ_CONNECTOR,
+        idempotencyKey: `auth-otp-${createHash("sha256")
+          .update(`${to}\u0000${code}`)
+          .digest("hex")}`,
+        message: `Local Vault Assistant sign-in code: ${code}. Expires in 5 minutes.`,
+        to,
+      });
+    } catch (error) {
+      if (error instanceof LinqDeliveryError) {
+        const failure = linqOtpFailure(error);
+        throw new APIError("BAD_GATEWAY", {
+          code: failure.code,
+          linqError: {
+            code: error.code,
+            message: error.linqMessage,
+            status: error.status,
+            trace_id: error.traceId,
+          },
+          message: failure.message,
+        });
+      }
+
+      throw new APIError("BAD_GATEWAY", {
+        code: "LINQ_CONNECTOR_UNAVAILABLE",
+        message:
+          "This deployment cannot access its Linq connector. Check LINQ_CONNECTOR and the connector's Vercel project attachment.",
+      });
+    }
+
+    return;
+  }
+
+  const config = sendblueConfig();
+  if (!config) {
+    throw new APIError("SERVICE_UNAVAILABLE", {
+      code: "SENDBLUE_NOT_CONFIGURED",
       message:
-        "This deployment cannot access its Linq connector. Check LINQ_CONNECTOR and the connector's Vercel project attachment.",
+        "Phone sign-in is not configured. Set the SendBlue API credentials and from number.",
+    });
+  }
+
+  let outcome: { outcome: "submitted" | "uncertain" };
+  try {
+    outcome = await sendBlueOtp({
+      apiKeyId: config.apiKeyId,
+      apiSecretKey: config.apiSecretKey,
+      code,
+      fromNumber: config.fromNumber,
+      to,
+    });
+  } catch (error) {
+    if (error instanceof SendBlueDeliveryError) {
+      throw apiErrorFromSendBlueError(error);
+    }
+
+    throw new APIError("BAD_GATEWAY", {
+      code: "SENDBLUE_DELIVERY_FAILED",
+      message:
+        "SendBlue could not send a sign-in code. Check the credentials, from number, and recipient eligibility, then try again.",
+    });
+  }
+
+  if (outcome.outcome === "uncertain") {
+    throw new APIError("BAD_GATEWAY", {
+      code: "SENDBLUE_SUBMISSION_UNCONFIRMED",
+      message:
+        "The SendBlue submission could not be confirmed. The request may have reached SendBlue. Enter the code if it arrives, or use a different number.",
     });
   }
 }

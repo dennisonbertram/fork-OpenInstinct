@@ -1,12 +1,13 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { MessageSquareIcon } from "lucide-react";
+import { AlertTriangleIcon, MessageSquareIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { SubmitEvent } from "react";
 import { authClient } from "@/app/_lib/auth-client";
 import { formValue, verifyPhoneNumber } from "@/app/sign-in/_lib/phone-auth";
 import { normalizeAuthPhoneNumber } from "@/auth/phone-number";
+import type { PhoneOtpProvider } from "@/auth/phone-otp-config";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,14 +19,36 @@ import {
 import { Input } from "@/components/ui/input";
 import { PhoneNumberField } from "./phone-field";
 
+class UnconfirmedSubmissionError extends Error {
+  readonly phoneNumber: string;
+
+  constructor(phoneNumber: string) {
+    super(
+      "The SendBlue submission could not be confirmed. The request may have reached SendBlue. Enter the code if it arrives, or use a different number."
+    );
+    this.name = "UnconfirmedSubmissionError";
+    this.phoneNumber = phoneNumber;
+  }
+}
+
+function isUnconfirmedSubmissionError(
+  error: unknown
+): error is UnconfirmedSubmissionError {
+  return error instanceof UnconfirmedSubmissionError;
+}
+
 export function PhoneOtpAuthForm({
   callbackUrl,
   linqPhoneNumber,
   localBypass = false,
+  provider = "linq",
+  sendblueFromNumber,
 }: {
   readonly callbackUrl: string;
   readonly linqPhoneNumber?: string;
   readonly localBypass?: boolean;
+  readonly provider?: PhoneOtpProvider;
+  readonly sendblueFromNumber?: string;
 }) {
   const sendOtp = useMutation({
     mutationFn: async (phoneNumberValue: string) => {
@@ -35,12 +58,30 @@ export function PhoneOtpAuthForm({
       const result = await authClient.phoneNumber
         .sendOtp({ phoneNumber })
         .catch(() => {
+          if (provider === "sendblue") {
+            throw new UnconfirmedSubmissionError(phoneNumber);
+          }
           throw new Error("Unable to send a code. Please try again.");
         });
-      if (result.error) throw new Error(phoneOtpErrorMessage(result.error));
+      if (result.error) {
+        if (
+          provider === "sendblue" &&
+          result.error.code === "SENDBLUE_SUBMISSION_UNCONFIRMED"
+        ) {
+          throw new UnconfirmedSubmissionError(phoneNumber);
+        }
+        throw new Error(phoneOtpErrorMessage(result.error));
+      }
       return phoneNumber;
     },
   });
+
+  const unconfirmedError =
+    sendOtp.error && isUnconfirmedSubmissionError(sendOtp.error)
+      ? sendOtp.error
+      : undefined;
+  const submittedPhone = sendOtp.data ?? unconfirmedError?.phoneNumber;
+  const showCodeForm = sendOtp.isSuccess || unconfirmedError !== undefined;
 
   function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,14 +95,17 @@ export function PhoneOtpAuthForm({
           Local development does not send a text. Use code{" "}
           <span className="type-mono">000000</span> on the next step.
         </p>
+      ) : provider === "sendblue" ? (
+        <SendBlueSetupInfo fromNumber={sendblueFromNumber} />
       ) : (
         <FirstTimeLinqSetup phoneNumber={linqPhoneNumber} />
       )}
-      {sendOtp.isSuccess ? (
+      {showCodeForm && submittedPhone ? (
         <VerificationCodeForm
           callbackUrl={callbackUrl}
           onUseDifferentNumber={sendOtp.reset}
-          phoneNumber={sendOtp.data}
+          phoneNumber={submittedPhone}
+          unconfirmed={unconfirmedError !== undefined}
         />
       ) : (
         <form
@@ -72,7 +116,11 @@ export function PhoneOtpAuthForm({
         >
           <FieldGroup>
             <PhoneNumberField />
-            <FieldError errors={sendOtp.error ? [sendOtp.error] : undefined} />
+            <FieldError
+              errors={
+                sendOtp.error && !unconfirmedError ? [sendOtp.error] : undefined
+              }
+            />
             <Button
               className="w-full rounded-full"
               disabled={sendOtp.isPending}
@@ -91,10 +139,12 @@ function VerificationCodeForm({
   callbackUrl,
   onUseDifferentNumber,
   phoneNumber,
+  unconfirmed,
 }: {
   readonly callbackUrl: string;
   readonly onUseDifferentNumber: () => void;
   readonly phoneNumber: string;
+  readonly unconfirmed: boolean;
 }) {
   const router = useRouter();
   const verifyCode = useMutation({
@@ -128,6 +178,7 @@ function VerificationCodeForm({
         submit(event);
       }}
     >
+      {unconfirmed ? <SendBlueUnconfirmedWarning /> : null}
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="code">Verification Code</FieldLabel>
@@ -162,6 +213,35 @@ function VerificationCodeForm({
         </Button>
       </FieldGroup>
     </form>
+  );
+}
+
+function SendBlueSetupInfo({ fromNumber }: { readonly fromNumber?: string }) {
+  return (
+    <Alert className="mt-6" variant="information">
+      <MessageSquareIcon />
+      <AlertTitle>SendBlue sends your code</AlertTitle>
+      <AlertDescription>
+        <p>
+          This preview sends codes from the registered SendBlue sending line
+          {fromNumber ? ` ${fromNumber}` : ""} to eligible verified test
+          contacts.
+        </p>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function SendBlueUnconfirmedWarning() {
+  return (
+    <Alert className="mb-6" variant="warning">
+      <AlertTriangleIcon />
+      <AlertTitle>Code submission could not be confirmed</AlertTitle>
+      <AlertDescription>
+        The request may have reached SendBlue. Enter the six-digit code if it
+        arrives, or use a different number.
+      </AlertDescription>
+    </Alert>
   );
 }
 
@@ -213,7 +293,11 @@ export function phoneOtpErrorMessage(error: {
   readonly code?: string;
   readonly message?: string;
 }) {
-  return error.code?.startsWith("LINQ_") && error.message
-    ? error.message
-    : "Unable to send a code. Please try again.";
+  if (
+    (error.code?.startsWith("LINQ_") || error.code?.startsWith("SENDBLUE_")) &&
+    error.message
+  ) {
+    return error.message;
+  }
+  return "Unable to send a code. Please try again.";
 }

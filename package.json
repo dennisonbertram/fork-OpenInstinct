@@ -127,7 +127,7 @@
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test && playwright test --config playwright.sendblue.config.ts",
     "tenancy:readiness": "tsx scripts/tenancy-readiness.ts",
     "types:check": "turbo run types:check:app",
     "types:generate": "next typegen",

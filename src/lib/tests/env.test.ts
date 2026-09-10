@@ -371,6 +371,48 @@ describe("environment", () => {
     );
   });
 
+  it("defaults the OTP provider to linq and keeps SendBlue credentials optional", async () => {
+    vi.stubEnv("PHONE_OTP_PROVIDER", "");
+    vi.stubEnv("SENDBLUE_API_KEY_ID", "");
+
+    const { env } = await import("@/env");
+
+    expect(env.PHONE_OTP_PROVIDER).toBe("linq");
+    expect(env.SENDBLUE_API_KEY_ID).toBeUndefined();
+    expect(env.SENDBLUE_API_SECRET_KEY).toBeUndefined();
+    expect(env.SENDBLUE_FROM_NUMBER).toBeUndefined();
+  });
+
+  it("accepts SendBlue as the selected provider", async () => {
+    vi.stubEnv("PHONE_OTP_PROVIDER", "sendblue");
+    vi.stubEnv("SENDBLUE_API_KEY_ID", "key-id");
+    vi.stubEnv("SENDBLUE_API_SECRET_KEY", "secret-key");
+    vi.stubEnv("SENDBLUE_FROM_NUMBER", "+12025550199");
+
+    const { env } = await import("@/env");
+
+    expect(env.PHONE_OTP_PROVIDER).toBe("sendblue");
+    expect(env.SENDBLUE_API_KEY_ID).toBe("key-id");
+    expect(env.SENDBLUE_FROM_NUMBER).toBe("+12025550199");
+  });
+
+  it("rejects an invalid OTP provider value", async () => {
+    vi.stubEnv("PHONE_OTP_PROVIDER", "twilio");
+
+    await expect(import("@/env")).rejects.toThrow(
+      "Invalid environment variables"
+    );
+  });
+
+  it("rejects a SendBlue from number outside E.164 format", async () => {
+    vi.stubEnv("PHONE_OTP_PROVIDER", "sendblue");
+    vi.stubEnv("SENDBLUE_FROM_NUMBER", "(202) 555-0123");
+
+    await expect(import("@/env")).rejects.toThrow(
+      "Invalid environment variables"
+    );
+  });
+
   it.each([
     ["http://localhost:3000", "development", undefined, true],
     ["https://openinstinct.localhost", "development", undefined, true],
