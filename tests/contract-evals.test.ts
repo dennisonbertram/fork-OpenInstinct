@@ -76,6 +76,37 @@ describe("contract eval supervisor", { timeout: 20_000 }, () => {
       / down --volumes$/u
     );
   });
+
+  it("can focus the mounted final-delivery eval without running the core suite", async () => {
+    const result = await runSupervisor({}, [
+      "--mount-only",
+      "--timeout",
+      "30000",
+    ]);
+
+    expect(result.code).toBe(0);
+    expect(result.commands).not.toContain("eve eval contract");
+    expect(result.commands).toContain(
+      "pnpm exec eve eval linq-final-delivery --strict --tag contract-mount --max-concurrency 1 --skip-report --timeout 30000"
+    );
+    expect(result.commands.trim().split("\n").at(-1)).toMatch(
+      / down --volumes$/u
+    );
+  });
+
+  it("tears down after the provider snapshot cannot be written", async () => {
+    const result = await runSupervisor({
+      CONTRACT_DELIVERY_PROVIDER_SNAPSHOT_PATH: ".",
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain(
+      "Could not write the contract delivery provider snapshot."
+    );
+    expect(result.commands.trim().split("\n").at(-1)).toMatch(
+      / down --volumes$/u
+    );
+  });
 });
 
 async function runSupervisor(

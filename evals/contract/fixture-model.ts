@@ -70,10 +70,64 @@ export function contractFixtureResponse(
   const command = request.lastUserMessage?.trim();
   if (!command) throw new Error("Contract fixture requires a command.");
 
+  // Exercise the real tool-result-to-next-step boundary. The first invocation
+  // requests an accepted final delivery; if the harness incorrectly starts a
+  // second model step for that same turn, fail deterministically.
+  const deliveredThisTurn = request.toolResults.some((result) =>
+    deliveryTools.has(result.name)
+  );
+  if (command === "final-timeout" && deliveredThisTurn) {
+    throw new Error("contract fixture late model timeout after final delivery");
+  }
+
+  if (command === "final-normal" && deliveredThisTurn) {
+    return { text: "DELIVERY_COMPLETE" };
+  }
+
+  if (command === "final-reaction-timeout" && deliveredThisTurn) {
+    throw new Error("contract fixture late model timeout after final delivery");
+  }
+
+  if (command === "final-reaction-normal" && deliveredThisTurn) {
+    return { text: "DELIVERY_COMPLETE" };
+  }
+
   if (command === "silent") return { text: "DELIVERY_COMPLETE" };
   if (command === "wait") return { text: "WAIT_COMPLETE" };
 
-  if (request.toolResults.some((result) => deliveryTools.has(result.name))) {
+  if (command === "final-timeout" || command === "final-normal") {
+    return {
+      toolCalls: [
+        {
+          input: {
+            final: true,
+            kind: "message",
+            text:
+              command === "final-timeout"
+                ? "fixture final timeout"
+                : "fixture final normal",
+          },
+          name: "send_message",
+        },
+      ],
+    };
+  }
+
+  if (
+    command === "final-reaction-timeout" ||
+    command === "final-reaction-normal"
+  ) {
+    return {
+      toolCalls: [
+        {
+          input: { operation: "add", type: "heart" },
+          name: "react_to_message",
+        },
+      ],
+    };
+  }
+
+  if (deliveredThisTurn) {
     return { text: "DELIVERY_COMPLETE" };
   }
 

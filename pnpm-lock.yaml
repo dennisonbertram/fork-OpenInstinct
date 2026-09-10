@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  eve@0.49.0: c25ac2d77a8d2156777ef8e7e9fa981c5e6e7fcc4bd6ae2811fbe29730c8604a
+  eve@0.49.0: 7ca81b13f6d4ec8b3b1b540a962729142f0ebfaddd7769c9b7a71b3dab4dbb9d
 
 importers:
 
@@ -76,7 +76,7 @@ importers:
         version: 2.8.0
       '@vercel/connect':
         specifier: ^2.0.0
-        version: 2.0.0(859f816cb2bcdd17b6ac889e96c24b4d)
+        version: 2.0.0(bc8ae0e6b4629bfa8813494e65bbc188)
       '@vercel/oidc':
         specifier: 3.8.5
         version: 3.8.5
@@ -106,10 +106,10 @@ importers:
         version: 0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0)
       eve:
         specifier: ^0.49.0
-        version: 0.49.0(patch_hash=c25ac2d77a8d2156777ef8e7e9fa981c5e6e7fcc4bd6ae2811fbe29730c8604a)(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@vercel/blob@2.8.0)(@vercel/functions@3.9.5(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3))(ai@7.0.83(zod@4.4.3))(better-sqlite3@12.11.1)(chokidar@4.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.2)(rollup@4.63.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
+        version: 0.49.0(patch_hash=7ca81b13f6d4ec8b3b1b540a962729142f0ebfaddd7769c9b7a71b3dab4dbb9d)(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@vercel/blob@2.8.0)(@vercel/functions@3.9.5(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3))(ai@7.0.83(zod@4.4.3))(better-sqlite3@12.11.1)(chokidar@4.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.2)(rollup@4.63.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
       evlog:
         specifier: 2.27.1
-        version: 2.27.1(35359fefd28eeea010527415eea86672)
+        version: 2.27.1(3136107ff464dc8f79affe816979b584)
       lucide-react:
         specifier: 1.34.0
         version: 1.34.0(react@19.2.8)
@@ -334,7 +334,7 @@ importers:
         version: 24.13.3
       eve:
         specifier: 0.49.0
-        version: 0.49.0(patch_hash=c25ac2d77a8d2156777ef8e7e9fa981c5e6e7fcc4bd6ae2811fbe29730c8604a)(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@vercel/blob@2.8.0)(@vercel/functions@3.9.5(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3))(ai@7.0.83(zod@4.4.3))(better-sqlite3@12.11.1)(chokidar@4.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.2)(rollup@4.63.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
+        version: 0.49.0(patch_hash=7ca81b13f6d4ec8b3b1b540a962729142f0ebfaddd7769c9b7a71b3dab4dbb9d)(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@vercel/blob@2.8.0)(@vercel/functions@3.9.5(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3))(ai@7.0.83(zod@4.4.3))(better-sqlite3@12.11.1)(chokidar@4.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.2)(rollup@4.63.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -347,12 +347,19 @@ importers:
       '@t3-oss/env-core':
         specifier: 0.13.11
         version: 0.13.11(typescript@6.0.3)(zod@4.4.3)
+      ai:
+        specifier: 7.0.83
+        version: 7.0.83(zod@4.4.3)
       eve:
         specifier: 0.49.0
-        version: 0.49.0(patch_hash=c25ac2d77a8d2156777ef8e7e9fa981c5e6e7fcc4bd6ae2811fbe29730c8604a)(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@vercel/blob@2.8.0)(@vercel/functions@3.9.5(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3))(ai@7.0.83(zod@4.4.3))(better-sqlite3@12.11.1)(chokidar@4.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.2)(rollup@4.63.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
+        version: 0.49.0(patch_hash=7ca81b13f6d4ec8b3b1b540a962729142f0ebfaddd7769c9b7a71b3dab4dbb9d)(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@vercel/blob@2.8.0)(@vercel/functions@3.9.5(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3))(ai@7.0.83(zod@4.4.3))(better-sqlite3@12.11.1)(chokidar@4.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.2)(rollup@4.63.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
       zod:
         specifier: 4.4.3
         version: 4.4.3
+    devDependencies:
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0(supports-color@7.2.0))(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
 
 packages:
 
@@ -12382,13 +12389,13 @@ snapshots:
     dependencies:
       execa: 5.1.1
 
-  '@vercel/connect@2.0.0(859f816cb2bcdd17b6ac889e96c24b4d)':
+  '@vercel/connect@2.0.0(bc8ae0e6b4629bfa8813494e65bbc188)':
     dependencies:
       '@vercel/oidc': 3.8.5
     optionalDependencies:
       ai: 7.0.83(zod@4.4.3)
       better-auth: 1.7.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(next@16.3.3(@babel/core@7.29.7(supports-color@7.2.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.62.1)(@types/node@24.13.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(pg@8.23.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@4.1.11)
-      eve: 0.49.0(patch_hash=c25ac2d77a8d2156777ef8e7e9fa981c5e6e7fcc4bd6ae2811fbe29730c8604a)(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@vercel/blob@2.8.0)(@vercel/functions@3.9.5(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3))(ai@7.0.83(zod@4.4.3))(better-sqlite3@12.11.1)(chokidar@4.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.2)(rollup@4.63.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
+      eve: 0.49.0(patch_hash=7ca81b13f6d4ec8b3b1b540a962729142f0ebfaddd7769c9b7a71b3dab4dbb9d)(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@vercel/blob@2.8.0)(@vercel/functions@3.9.5(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3))(ai@7.0.83(zod@4.4.3))(better-sqlite3@12.11.1)(chokidar@4.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.2)(rollup@4.63.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
 
   '@vercel/container@3.0.0(@vercel/build-utils@14.5.0)':
     dependencies:
@@ -13819,7 +13826,7 @@ snapshots:
 
   etag@1.8.1: {}
 
-  eve@0.49.0(patch_hash=c25ac2d77a8d2156777ef8e7e9fa981c5e6e7fcc4bd6ae2811fbe29730c8604a)(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@vercel/blob@2.8.0)(@vercel/functions@3.9.5(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3))(ai@7.0.83(zod@4.4.3))(better-sqlite3@12.11.1)(chokidar@4.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.2)(rollup@4.63.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0)):
+  eve@0.49.0(patch_hash=7ca81b13f6d4ec8b3b1b540a962729142f0ebfaddd7769c9b7a71b3dab4dbb9d)(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@vercel/blob@2.8.0)(@vercel/functions@3.9.5(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3))(ai@7.0.83(zod@4.4.3))(better-sqlite3@12.11.1)(chokidar@4.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.2)(rollup@4.63.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0)):
     dependencies:
       ai: 7.0.83(zod@4.4.3)
       nitro: 3.0.260610-beta(@electric-sql/pglite@0.5.8)(@vercel/blob@2.8.0)(@vercel/functions@3.9.5(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3))(better-sqlite3@12.11.1)(chokidar@4.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.2)(rollup@4.63.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
@@ -13880,10 +13887,10 @@ snapshots:
     dependencies:
       eventsource-parser: 3.1.1
 
-  evlog@2.27.1(35359fefd28eeea010527415eea86672):
+  evlog@2.27.1(3136107ff464dc8f79affe816979b584):
     optionalDependencies:
       ai: 7.0.83(zod@4.4.3)
-      eve: 0.49.0(patch_hash=c25ac2d77a8d2156777ef8e7e9fa981c5e6e7fcc4bd6ae2811fbe29730c8604a)(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@vercel/blob@2.8.0)(@vercel/functions@3.9.5(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3))(ai@7.0.83(zod@4.4.3))(better-sqlite3@12.11.1)(chokidar@4.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.2)(rollup@4.63.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
+      eve: 0.49.0(patch_hash=7ca81b13f6d4ec8b3b1b540a962729142f0ebfaddd7769c9b7a71b3dab4dbb9d)(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@vercel/blob@2.8.0)(@vercel/functions@3.9.5(@aws-sdk/credential-provider-web-identity@3.972.76)(ws@8.21.3))(ai@7.0.83(zod@4.4.3))(better-sqlite3@12.11.1)(chokidar@4.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0))(giget@3.3.1)(jiti@2.7.0)(lru-cache@11.5.2)(rollup@4.63.1)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.27.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
       express: 5.2.1(supports-color@7.2.0)
       hono: 4.13.5
       next: 16.3.3(@babel/core@7.29.7(supports-color@7.2.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.62.1)(@types/node@24.13.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

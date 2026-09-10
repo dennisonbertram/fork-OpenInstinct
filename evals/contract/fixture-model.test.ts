@@ -148,6 +148,79 @@ describe("contract fixture model", () => {
     });
   });
 
+  it("makes one final-normal delivery, then returns its normal marker", () => {
+    expect(contractFixtureResponse(request("final-normal"))).toEqual({
+      toolCalls: [
+        {
+          input: {
+            final: true,
+            kind: "message",
+            text: "fixture final normal",
+          },
+          name: "send_message",
+        },
+      ],
+    });
+    expect(
+      contractFixtureResponse(
+        request("final-normal", [
+          {
+            id: "contract-turn-1-0-0",
+            isError: false,
+            name: "send_message",
+            output: { kind: "message", text: "fixture final normal" },
+          },
+        ])
+      )
+    ).toEqual({ text: "DELIVERY_COMPLETE" });
+  });
+
+  it("makes one final-reaction-normal delivery, then returns its normal marker", () => {
+    expect(contractFixtureResponse(request("final-reaction-normal"))).toEqual({
+      toolCalls: [
+        {
+          input: { operation: "add", type: "heart" },
+          name: "react_to_message",
+        },
+      ],
+    });
+    expect(
+      contractFixtureResponse(
+        request("final-reaction-normal", [
+          {
+            id: "contract-turn-1-0-0",
+            isError: false,
+            name: "react_to_message",
+            output: { operation: "add", type: "heart" },
+          },
+        ])
+      )
+    ).toEqual({ text: "DELIVERY_COMPLETE" });
+  });
+
+  it("makes one final-reaction-timeout delivery and rejects a second model step", () => {
+    expect(contractFixtureResponse(request("final-reaction-timeout"))).toEqual({
+      toolCalls: [
+        {
+          input: { operation: "add", type: "heart" },
+          name: "react_to_message",
+        },
+      ],
+    });
+    expect(() =>
+      contractFixtureResponse(
+        request("final-reaction-timeout", [
+          {
+            id: "contract-turn-1-0-0",
+            isError: false,
+            name: "react_to_message",
+            output: { operation: "add", type: "heart" },
+          },
+        ])
+      )
+    ).toThrow("contract fixture late model timeout after final delivery");
+  });
+
   it("keeps the guarded wait command pending until its stream is cancelled", async () => {
     const result = await contractFixtureModel.doStream({
       prompt: [

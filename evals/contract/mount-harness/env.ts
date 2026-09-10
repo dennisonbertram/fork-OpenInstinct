@@ -3,6 +3,7 @@ import { z } from "zod";
 
 export const env = createEnv({
   server: {
+    CONTRACT_DELIVERY_PROVIDER_URL: z.url(),
     CONTRACT_MCP_TOKEN: z.string().min(16),
     CONTRACT_MCP_URL: z.url(),
   },

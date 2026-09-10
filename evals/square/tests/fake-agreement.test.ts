@@ -77,10 +77,20 @@ async function listInvoices() {
 }
 
 describe("fake Square agrees with case facts", () => {
-  it("SearchOrders for Ada matches the ada-order-total case's derived total", async () => {
+  it("SearchOrders for Ada matches the ada-order-total case's scope and derived total", async () => {
     const fixture = loadSquareFixture();
     const adaCase = squareCases.find((c) => c.id === "ada-order-total");
-    const expected = adaCase?.facts(fixture) ?? [];
+    expect(adaCase?.requiresSearchOrderCursorDrain).toBe(true);
+    const sales = adaCase?.sales;
+    expect(sales).toBeDefined();
+    if (!sales) throw new Error("ada-order-total sales metadata missing");
+    expect(sales.location).toContain("LQK1QAMZG63BM");
+    expect(sales.period).toContain("2026-11-01T04:00:00.000Z");
+    expect(sales.period).toContain("2026-11-02T04:59:59.999Z");
+    expect(sales.exclusions).toMatch(/canceled|open/);
+    expect(sales.measure).toContain("Ada");
+
+    const expected = adaCase.facts(fixture);
 
     const result = await searchOrders({
       location_ids: ["LQK1QAMZG63BM"],
@@ -99,6 +109,7 @@ describe("fake Square agrees with case facts", () => {
     });
 
     expect(result.orders).toHaveLength(1);
+    expect(result.cursor).toBeUndefined();
     const [order] = result.orders;
     const totalDollars = `$${((order?.total_money.amount ?? 0) / 100).toFixed(2)}`;
     expect(expected).toContain(totalDollars);

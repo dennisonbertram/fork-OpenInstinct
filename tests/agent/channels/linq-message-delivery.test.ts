@@ -140,6 +140,13 @@ const scheduleDeliveryCapture = vi.hoisted(() => ({
   finalize: vi.fn<typeof finalizeScheduledReport>(),
   release: vi.fn<typeof releaseScheduledReport>(),
 }));
+const completionCapture = vi.hoisted(() => ({
+  request: vi.fn<(callId: string, turnId: string, stepIndex: number) => void>(),
+}));
+vi.mock("@/agent/lib/message-delivery", async (importOriginal) => ({
+  ...(await importOriginal()),
+  requestFinalDeliveryCompletion: completionCapture.request,
+}));
 vi.mock("@/db/services/scheduled-agent-jobs", () => ({
   finalizeScheduledReport: scheduleDeliveryCapture.finalize,
   releaseScheduledReport: scheduleDeliveryCapture.release,
@@ -248,6 +255,7 @@ describe("Linq message delivery", () => {
     usageCapture.recordUsageEvent.mockResolvedValue(undefined);
     scheduleDeliveryCapture.finalize.mockResolvedValue(true);
     scheduleDeliveryCapture.release.mockResolvedValue(true);
+    completionCapture.request.mockReset();
   });
 
   it.each([false, true])(
@@ -328,8 +336,136 @@ describe("Linq message delivery", () => {
       expect(retryAllowed).toBe(failed);
       expect(post).toHaveBeenCalledTimes(1);
       expect(output).not.toHaveProperty("final");
+      expect(completionCapture.request.mock.calls).toEqual(
+        failed ? [] : [["call-send-message", "turn-1", 0]]
+      );
     }
   );
+
+  it("waits for provider acceptance before requesting interactive completion", async () => {
+    let releaseProvider!: () => void;
+    const providerAccepted = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    const { context, post } = handlerContext();
+    post.mockImplementationOnce(async () => {
+      await providerAccepted;
+      return { id: "posted-message" };
+    });
+    const resolverContext = {
+      channel: { kind: "channel:linq" },
+      session: { id: "root", auth: { current: null, initiator: null } },
+      messages: [],
+    };
+    const tools = await messaging.events["step.started"]?.(
+      { data: { turnId: "turn-1" } },
+      resolverContext
+    );
+    if (!tools) throw new Error("Missing messaging tools");
+    const base = toolContextFor({
+      sessionId: "root",
+      callId: "call-send-message",
+    });
+    const output = sendMessageOutputSchema.parse(
+      await tools.send_message.execute(
+        { kind: "message", text: "Result", final: true },
+        {
+          ...base,
+          session: { ...base.session, turn: { id: "turn-1", sequence: 0 } },
+        }
+      )
+    );
+    const delivery = handleActionResult(
+      sendMessageResult(output),
+      context,
+      sessionContext()
+    );
+    await Promise.resolve();
+    expect(completionCapture.request).not.toHaveBeenCalled();
+    releaseProvider();
+    await delivery;
+    expect(completionCapture.request).toHaveBeenCalledExactlyOnceWith(
+      "call-send-message",
+      "turn-1",
+      0
+    );
+  });
+
+  it("does not request completion when scheduled bookkeeping fails after acceptance", async () => {
+    const { context } = handlerContext();
+    scheduleDeliveryCapture.finalize.mockRejectedValueOnce(
+      new Error("bookkeeping failed")
+    );
+    await expect(
+      handleActionResult(
+        sendMessageResult({ kind: "message", text: "Result" }),
+        context,
+        sessionContext("scheduled-result")
+      )
+    ).rejects.toThrow("bookkeeping failed");
+    expect(linqChannelCapture.postMessage).toHaveBeenCalledOnce();
+    expect(completionCapture.request).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a later final delivery failure after an earlier progress post", async () => {
+    const { context, post } = handlerContext();
+    post.mockResolvedValueOnce({ id: "progress-message" });
+    post.mockRejectedValueOnce(new Error("Provider rejected final message"));
+    const resolverContext = {
+      channel: { kind: "channel:linq" },
+      session: { id: "root", auth: { current: null, initiator: null } },
+      messages: [],
+    };
+    const tools = await messaging.events["step.started"]?.(
+      { data: { turnId: "turn-1" } },
+      resolverContext
+    );
+    if (!tools) throw new Error("Missing messaging tools");
+    const base = toolContextFor({
+      sessionId: "root",
+      callId: "call-send-message",
+    });
+    const progress = sendMessageOutputSchema.parse(
+      await tools.send_message.execute(
+        { kind: "message", text: "Progress" },
+        {
+          ...base,
+          session: { ...base.session, turn: { id: "turn-1", sequence: 0 } },
+        }
+      )
+    );
+    await handleActionResult(
+      sendMessageResult(progress),
+      context,
+      sessionContext()
+    );
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(completionCapture.request).toHaveBeenCalledExactlyOnceWith(
+      "call-send-message",
+      "turn-1",
+      0
+    );
+    completionCapture.request.mockClear();
+
+    const final = sendMessageOutputSchema.parse(
+      await tools.send_message.execute(
+        {
+          final: true,
+          kind: "message",
+          text: "Paragraph one.\n\nParagraph two.",
+        },
+        {
+          ...base,
+          session: { ...base.session, turn: { id: "turn-1", sequence: 0 } },
+        }
+      )
+    );
+    await expect(
+      handleActionResult(sendMessageResult(final), context, sessionContext())
+    ).rejects.toThrow("Provider rejected final message");
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(completionCapture.request).not.toHaveBeenCalled();
+  });
 
   it.each([false, true])(
     "closes a reaction-only reply only after Linq accepts it (failure=%s)",
@@ -382,6 +518,7 @@ describe("Linq message delivery", () => {
         resolverContext
       );
       expect(nextTools === null).toBe(!failed);
+      expect(completionCapture.request).toHaveBeenCalledTimes(failed ? 0 : 1);
     }
   );
 
@@ -789,6 +926,40 @@ describe("Linq message delivery", () => {
           "scheduled-report:00000000-0000-4000-8000-000000000002:1",
       }
     );
+    expect(completionCapture.request).not.toHaveBeenCalled();
+  });
+
+  it("does not finalize a rejected scheduled delivery and retries with its key", async () => {
+    const { context } = handlerContext();
+    const event = sendMessageResult({
+      kind: "message",
+      text: "The price fell.",
+    });
+    linqChannelCapture.postMessage.mockRejectedValueOnce(
+      new Error("Provider rejected the report")
+    );
+
+    await expect(
+      handleActionResult(event, context, sessionContext("scheduled-result"))
+    ).rejects.toThrow("Provider rejected the report");
+    expect(scheduleDeliveryCapture.finalize).not.toHaveBeenCalled();
+    expect(completionCapture.request).not.toHaveBeenCalled();
+
+    await handleActionResult(
+      event,
+      context,
+      sessionContext("scheduled-result")
+    );
+    expect(linqChannelCapture.postMessage).toHaveBeenCalledTimes(2);
+    expect(linqChannelCapture.postMessage.mock.calls[0]?.[2]).toEqual(
+      linqChannelCapture.postMessage.mock.calls[1]?.[2]
+    );
+    expect(scheduleDeliveryCapture.finalize).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000002",
+      "00000000-0000-4000-8000-000000000004",
+      "delivered"
+    );
+    expect(completionCapture.request).not.toHaveBeenCalled();
   });
 
   it("uses the same Linq idempotency key when a report turn is retried", async () => {
@@ -1155,6 +1326,7 @@ describe("Linq message delivery", () => {
       "heart"
     );
     expect(post).not.toHaveBeenCalled();
+    expect(completionCapture.request).not.toHaveBeenCalled();
   });
 });
 
