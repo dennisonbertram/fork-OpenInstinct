@@ -1,5 +1,17 @@
+diff --git a/dist/adapter.d.ts b/dist/adapter.d.ts
+index e9648068188bdb91c358af16d614a445b25cdda6..8af7dc3daf59784aefda05ee1cccd182c67cdc53 100644
+--- a/dist/adapter.d.ts
++++ b/dist/adapter.d.ts
+@@ -17,6 +17,7 @@ export declare class SendblueAdapter implements Adapter<SendblueThreadId, Sendbl
+     disconnect(): Promise<void>;
+     encodeThreadId(data: SendblueThreadId): string;
+     decodeThreadId(threadId: string): SendblueThreadId;
++    isDM(threadId: string): boolean;
+     handleWebhook(request: Request, options?: WebhookOptions): Promise<Response>;
+     private processInboundMessage;
+     private handleTypingWebhook;
 diff --git a/dist/index.js b/dist/index.js
-index 3c8c8d8cff337f1520b79ca76d0e48422c746707..285098a291ecdb9493de550745b47ca0ce41d1fa 100644
+index 3c8c8d8cff337f1520b79ca76d0e48422c746707..58849f10cc69865a61d6f0f950e7b66a450b1ea0 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -56,7 +56,8 @@ var SendblueAdapter = class {
@@ -12,7 +24,17 @@ index 3c8c8d8cff337f1520b79ca76d0e48422c746707..285098a291ecdb9493de550745b47ca0
      });
    }
    // ---------------------------------------------------------------------------
-@@ -125,14 +126,6 @@ var SendblueAdapter = class {
+@@ -99,6 +100,9 @@ var SendblueAdapter = class {
+       contactNumber: Buffer.from(parts[2], "base64url").toString()
+     };
+   }
++  isDM(threadId) {
++    return !this.decodeThreadId(threadId).groupId;
++  }
+   // ---------------------------------------------------------------------------
+   // Webhook handling
+   // ---------------------------------------------------------------------------
+@@ -125,14 +129,6 @@ var SendblueAdapter = class {
      }
      if ("message_handle" in body && typeof body.message_handle === "string") {
        const payload = body;
@@ -27,7 +49,7 @@ index 3c8c8d8cff337f1520b79ca76d0e48422c746707..285098a291ecdb9493de550745b47ca0
        if (!this.isServiceAllowed(payload.service)) {
          this.logger.debug("Sendblue webhook filtered by service", {
            service: payload.service
-@@ -152,8 +145,6 @@ var SendblueAdapter = class {
+@@ -152,8 +148,6 @@ var SendblueAdapter = class {
    async processInboundMessage(payload, options) {
      if (!this.chat) return;
      const threadId = this.threadIdFromPayload(payload);
@@ -36,37 +58,47 @@ index 3c8c8d8cff337f1520b79ca76d0e48422c746707..285098a291ecdb9493de550745b47ca0
      const factory = async () => {
        return this.parseMessage(payload);
      };
-@@ -201,4 +192,5 @@ var SendblueAdapter = class {
+@@ -201,6 +195,7 @@ var SendblueAdapter = class {
    // ---------------------------------------------------------------------------
    async postMessage(threadId, message) {
      const decoded = this.decodeThreadId(threadId);
 +    this.assertConfiguredLine(decoded);
      const text = this.renderOutbound(message);
-@@ -234,4 +226,5 @@ var SendblueAdapter = class {
+     if (!text?.trim()) {
+       this.logger.debug("Skipping empty outbound message");
+@@ -234,6 +229,7 @@ var SendblueAdapter = class {
    }
    async sendMediaMessage(threadId, mediaUrl, content) {
      const decoded = this.decodeThreadId(threadId);
 +    this.assertConfiguredLine(decoded);
      if (decoded.groupId) return;
-@@ -292,4 +285,5 @@ var SendblueAdapter = class {
+     await this.sdk.messages.send({
+       number: decoded.contactNumber,
+@@ -292,6 +288,7 @@ var SendblueAdapter = class {
    // ---------------------------------------------------------------------------
    async addReaction(threadId, messageId, emoji) {
      const decoded = this.decodeThreadId(threadId);
 +    this.assertConfiguredLine(decoded);
      const emojiName = typeof emoji === "string" ? emoji : emoji.name;
-@@ -352,4 +346,5 @@ var SendblueAdapter = class {
+     const reaction = this.resolveReaction(emojiName);
+     if (!reaction) {
+@@ -352,6 +349,7 @@ var SendblueAdapter = class {
    // ---------------------------------------------------------------------------
    async startTyping(threadId) {
      const decoded = this.decodeThreadId(threadId);
 +    this.assertConfiguredLine(decoded);
      if (!decoded.contactNumber) {
-@@ -380,4 +375,5 @@ var SendblueAdapter = class {
+       this.logger.debug(
+         "Sendblue typing indicators not supported for group threads"
+@@ -380,6 +378,7 @@ var SendblueAdapter = class {
    // ---------------------------------------------------------------------------
    async markRead(threadId) {
      const decoded = this.decodeThreadId(threadId);
 +    this.assertConfiguredLine(decoded);
      if (!decoded.contactNumber) return;
-@@ -416,6 +412,9 @@ var SendblueAdapter = class {
+     await this.sdk.post("/api/mark-read", {
+       body: {
+@@ -416,6 +415,9 @@ var SendblueAdapter = class {
    // ---------------------------------------------------------------------------
    renderOutbound(message) {
      if (typeof message === "string") return toPlainText(message);
@@ -76,7 +108,7 @@ index 3c8c8d8cff337f1520b79ca76d0e48422c746707..285098a291ecdb9493de550745b47ca0
      if ("markdown" in message && typeof message.markdown === "string") {
        return toPlainText(message.markdown);
      }
-@@ -427,4 +426,9 @@ var SendblueAdapter = class {
+@@ -427,6 +429,11 @@ var SendblueAdapter = class {
      }
      return "";
    }
@@ -86,3 +118,5 @@ index 3c8c8d8cff337f1520b79ca76d0e48422c746707..285098a291ecdb9493de550745b47ca0
 +    }
 +  }
    threadIdFromPayload(payload) {
+     const fromNumber = payload.sendblue_number ?? (payload.is_outbound ? payload.from_number : payload.to_number);
+     if (payload.group_id && payload.group_id.length > 0) {
