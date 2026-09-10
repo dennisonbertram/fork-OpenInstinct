@@ -1,13 +1,14 @@
 export function signInSubhead({
   localBypass,
-  linqConfigured,
+  provider: _provider,
+  configured,
 }: {
   readonly localBypass: boolean;
-  readonly linqConfigured: boolean;
+  readonly provider: "linq" | "sendblue";
+  readonly configured: boolean;
 }) {
   if (localBypass) return "Enter your phone number to request a sign-in code.";
-  if (linqConfigured)
-    return "Enter your phone number and we will text you a code.";
+  if (configured) return "Enter your phone number and we will text you a code.";
   return undefined;
 }
 

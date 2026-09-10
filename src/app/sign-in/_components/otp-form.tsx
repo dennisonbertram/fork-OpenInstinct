@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { MessageSquareIcon } from "lucide-react";
+import { AlertTriangleIcon, MessageSquareIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { SubmitEvent } from "react";
 import { authClient } from "@/app/_lib/auth-client";
@@ -22,10 +22,12 @@ export function PhoneOtpAuthForm({
   callbackUrl,
   linqPhoneNumber,
   localBypass = false,
+  provider = "linq",
 }: {
   readonly callbackUrl: string;
   readonly linqPhoneNumber?: string;
   readonly localBypass?: boolean;
+  readonly provider?: "linq" | "sendblue";
 }) {
   const sendOtp = useMutation({
     mutationFn: async (phoneNumberValue: string) => {
@@ -54,6 +56,8 @@ export function PhoneOtpAuthForm({
           Local development does not send a text. Use code{" "}
           <span className="type-mono">000000</span> on the next step.
         </p>
+      ) : provider === "sendblue" ? (
+        <SendBlueSetupInfo />
       ) : (
         <FirstTimeLinqSetup phoneNumber={linqPhoneNumber} />
       )}
@@ -62,6 +66,7 @@ export function PhoneOtpAuthForm({
           callbackUrl={callbackUrl}
           onUseDifferentNumber={sendOtp.reset}
           phoneNumber={sendOtp.data}
+          provider={provider}
         />
       ) : (
         <form
@@ -91,10 +96,12 @@ function VerificationCodeForm({
   callbackUrl,
   onUseDifferentNumber,
   phoneNumber,
+  provider,
 }: {
   readonly callbackUrl: string;
   readonly onUseDifferentNumber: () => void;
   readonly phoneNumber: string;
+  readonly provider: "linq" | "sendblue";
 }) {
   const router = useRouter();
   const verifyCode = useMutation({
@@ -128,6 +135,7 @@ function VerificationCodeForm({
         submit(event);
       }}
     >
+      {provider === "sendblue" ? <SendBlueVerificationWarning /> : null}
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="code">Verification Code</FieldLabel>
@@ -162,6 +170,37 @@ function VerificationCodeForm({
         </Button>
       </FieldGroup>
     </form>
+  );
+}
+
+function SendBlueSetupInfo() {
+  return (
+    <Alert className="mt-6" variant="information">
+      <MessageSquareIcon />
+      <AlertTitle>SendBlue sends your code</AlertTitle>
+      <AlertDescription>
+        <p>
+          SendBlue delivers the code by iMessage with SMS fallback. The phone
+          number you enter must be an approved test contact on your SendBlue
+          account. SendBlue may report accepted before the message is delivered;
+          enter the code once it reaches your phone.
+        </p>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function SendBlueVerificationWarning() {
+  return (
+    <Alert className="mb-6" variant="warning">
+      <AlertTriangleIcon />
+      <AlertTitle>Message accepted, not confirmed delivered</AlertTitle>
+      <AlertDescription>
+        SendBlue accepted the message, which is not the same as delivery. Enter
+        the six-digit code once your phone receives it. If it does not arrive,
+        use a different number.
+      </AlertDescription>
+    </Alert>
   );
 }
 
@@ -213,7 +252,11 @@ export function phoneOtpErrorMessage(error: {
   readonly code?: string;
   readonly message?: string;
 }) {
-  return error.code?.startsWith("LINQ_") && error.message
-    ? error.message
-    : "Unable to send a code. Please try again.";
+  if (
+    (error.code?.startsWith("LINQ_") || error.code?.startsWith("SENDBLUE_")) &&
+    error.message
+  ) {
+    return error.message;
+  }
+  return "Unable to send a code. Please try again.";
 }

@@ -25,6 +25,8 @@ vi.mock("next/image", () => ({
 let authSession: TestSession = null;
 let configuredLinq = false;
 let localBypass = true;
+let currentProvider: "linq" | "sendblue" = "linq";
+let currentConfigured = false;
 
 vi.mock("@/auth/session", () => ({
   getAuthSession: async () => authSession,
@@ -33,6 +35,12 @@ vi.mock("@/auth/session", () => ({
 vi.mock("@/lib/request-scope", () => ({
   UnauthenticatedError: class UnauthenticatedError extends Error {},
   requireRequestScope: vi.fn<() => Promise<undefined>>(async () => undefined),
+}));
+
+vi.mock("@/auth/phone-otp-config", () => ({
+  phoneOtpProvider: () => currentProvider,
+  isPhoneOtpProviderConfigured: () => currentConfigured,
+  sendblueConfig: () => undefined,
 }));
 
 vi.mock("@/auth/linq", () => ({
@@ -64,14 +72,18 @@ vi.mock("@/app/sign-in/_components/otp-form", () => ({
   PhoneOtpAuthForm: ({
     linqPhoneNumber,
     localBypass: formLocalBypass,
+    provider: formProvider,
   }: {
     readonly linqPhoneNumber?: string;
     readonly localBypass?: boolean;
+    readonly provider?: "linq" | "sendblue";
   }) =>
     createElement(
       "form",
       null,
-      formLocalBypass ? "two-step-local" : `live-otp:${linqPhoneNumber ?? ""}`
+      formLocalBypass
+        ? "two-step-local"
+        : `otp-form:${formProvider ?? "linq"}:${linqPhoneNumber ?? ""}`
     ),
 }));
 
@@ -87,6 +99,8 @@ describe("sign-in page", () => {
     authSession = null;
     configuredLinq = false;
     localBypass = true;
+    currentProvider = "linq";
+    currentConfigured = false;
     vi.mocked(readLinqOnboardingPhoneNumber).mockReset();
     vi.mocked(readLinqOnboardingPhoneNumber).mockResolvedValue(undefined);
     vi.mocked(requireRequestScope).mockReset();
@@ -156,6 +170,7 @@ describe("sign-in page", () => {
   it("uses Linq onboarding for an anonymous configured deployment", async () => {
     configuredLinq = true;
     localBypass = false;
+    currentConfigured = true;
     vi.mocked(readLinqOnboardingPhoneNumber).mockResolvedValue("+12025550199");
 
     const page = await SignInPage({
@@ -167,7 +182,40 @@ describe("sign-in page", () => {
     expect(readLinqOnboardingPhoneNumber).toHaveBeenCalledExactlyOnceWith(
       "configured"
     );
-    expect(html).toContain("live-otp:+12025550199");
+    expect(html).toContain("otp-form:linq:+12025550199");
+  });
+
+  it("renders SendBlue mode without Linq onboarding", async () => {
+    configuredLinq = false;
+    localBypass = false;
+    currentProvider = "sendblue";
+    currentConfigured = true;
+
+    const page = await SignInPage({
+      params: Promise.resolve({}),
+      searchParams: Promise.resolve({}),
+    });
+    const html = renderToStaticMarkup(page);
+
+    expect(readLinqOnboardingPhoneNumber).not.toHaveBeenCalled();
+    expect(html).toContain("otp-form:sendblue:");
+  });
+
+  it("shows a SendBlue configuration notice when credentials are missing", async () => {
+    configuredLinq = false;
+    localBypass = false;
+    currentProvider = "sendblue";
+    currentConfigured = false;
+
+    const page = await SignInPage({
+      params: Promise.resolve({}),
+      searchParams: Promise.resolve({}),
+    });
+    const html = renderToStaticMarkup(page);
+
+    expect(html).toContain("SendBlue API credentials and from number");
+    expect(html).not.toContain("Linq connector");
+    expect(html).not.toContain("otp-form");
   });
 
   it("propagates unexpected scope errors", async () => {

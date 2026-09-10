@@ -7,6 +7,10 @@ import { PhoneOtpAuthForm } from "@/app/sign-in/_components/otp-form";
 import { env, localPhoneAuthBypassEnabled } from "@/env";
 import { getAuthSession } from "@/auth/session";
 import { readLinqOnboardingPhoneNumber } from "@/auth/linq";
+import {
+  isPhoneOtpProviderConfigured,
+  phoneOtpProvider,
+} from "@/auth/phone-otp-config";
 import { requireRequestScope, UnauthenticatedError } from "@/lib/request-scope";
 import mascot from "./_assets/jory-avatar-desk.webp";
 import { UnavailableAccountNotice } from "./_components/unavailable-account-notice";
@@ -34,9 +38,14 @@ export default async function SignInPage({
     requestedCallback?.startsWith("/") && !requestedCallback.startsWith("//")
       ? requestedCallback
       : "/";
-  const linqConfigured = !session && env.LINQ_CONNECTOR !== undefined;
+  const provider = phoneOtpProvider();
+  const otpConfigured =
+    !session && (localPhoneAuthBypassEnabled || isPhoneOtpProviderConfigured());
   const linqPhoneNumber =
-    session || localPhoneAuthBypassEnabled || !env.LINQ_CONNECTOR
+    session ||
+    localPhoneAuthBypassEnabled ||
+    provider !== "linq" ||
+    !env.LINQ_CONNECTOR
       ? undefined
       : (env.LINQ_PHONE_NUMBER ??
         (await readLinqOnboardingPhoneNumber(env.LINQ_CONNECTOR)));
@@ -44,7 +53,8 @@ export default async function SignInPage({
     ? undefined
     : signInSubhead({
         localBypass: localPhoneAuthBypassEnabled,
-        linqConfigured,
+        provider,
+        configured: otpConfigured,
       });
 
   return (
@@ -53,16 +63,18 @@ export default async function SignInPage({
         <Card className="w-full max-w-md gap-6 justify-self-center p-8 lg:justify-self-start">
           <SignInHero headline="Hey, Jory" subhead={subhead} />
           {session ? <UnavailableAccountNotice /> : null}
-          {!session && !localPhoneAuthBypassEnabled && !linqConfigured ? (
+          {!session && !otpConfigured ? (
             <p className="type-supporting-body mt-6 text-muted-foreground">
-              iMessage sign-in is not configured for this deployment. Attach a
-              Linq connector through Vercel Connect.
+              {provider === "sendblue"
+                ? "Phone sign-in is not configured for this deployment. Set the SendBlue API credentials and from number."
+                : "iMessage sign-in is not configured for this deployment. Attach a Linq connector through Vercel Connect."}
             </p>
           ) : !session ? (
             <PhoneOtpAuthForm
               callbackUrl={callbackUrl}
               localBypass={localPhoneAuthBypassEnabled}
               linqPhoneNumber={linqPhoneNumber}
+              provider={provider}
             />
           ) : null}
         </Card>

@@ -11,6 +11,14 @@ const sendblueApiErrorSchema = z.object({
   message: z.string(),
 });
 
+const requestInitSchema = z.object({
+  method: z.string(),
+  redirect: z.string(),
+  signal: z.any(),
+  headers: z.record(z.string(), z.string()),
+  body: z.string(),
+});
+
 const requiredEnvironment = {
   BETTER_AUTH_SECRET: "test-auth-secret-0123456789abcdefghijklmnop",
   BETTER_AUTH_URL: "https://example.com",
@@ -72,20 +80,25 @@ describe("SendBlue phone authentication", () => {
 
     expect(result).toEqual({ outcome: "submitted" });
     expect(mocks.fetch).toHaveBeenCalledOnce();
-    const [url, init] = mocks.fetch.mock.calls[0];
+    const call = mocks.fetch.mock.calls[0];
+    if (!call) throw new Error("fetch was not called");
+    const [url, init] = call;
     expect(url).toBe("https://api.sendblue.co/api/send-message");
-    expect(init).toMatchObject({
-      method: "POST",
-      redirect: "error",
-      signal: expect.any(AbortSignal),
-    });
-    const headers = init?.headers as Record<string, string>;
-    expect(headers["sb-api-key-id"]).toBe("test-api-key-id");
-    expect(headers["sb-api-secret-key"]).toBe("test-api-secret-key");
-    expect(headers["Content-Type"]).toBe("application/json");
-    const body = JSON.parse((init?.body as string) ?? "{}") as unknown;
+
+    const requestInit = requestInitSchema.parse(init);
+    expect(requestInit.method).toBe("POST");
+    expect(requestInit.redirect).toBe("error");
+    expect(requestInit.signal).toBeInstanceOf(AbortSignal);
+
+    const headers = new Headers(requestInit.headers);
+    expect(headers.get("sb-api-key-id")).toBe("test-api-key-id");
+    expect(headers.get("sb-api-secret-key")).toBe("test-api-secret-key");
+    expect(headers.get("Content-Type")).toBe("application/json");
+
+    const body: unknown = JSON.parse(requestInit.body);
     expect(body).toEqual({
-      content: "Local Vault Assistant sign-in code: 123456. Expires in 5 minutes.",
+      content:
+        "Local Vault Assistant sign-in code: 123456. Expires in 5 minutes.",
       from_number: "+12025550199",
       number: "+12025550123",
     });
@@ -124,7 +137,7 @@ describe("SendBlue phone authentication", () => {
     if (!(error instanceof APIError)) throw new TypeError("Expected APIError");
     const body = sendblueApiErrorSchema.parse(error.body);
     expect(body.code).toBe("SENDBLUE_UNAUTHORIZED");
-    expect(body.message).toContain("API credentials");
+    expect(body.message).toContain("API key ID and secret key");
     expect(JSON.stringify(body)).not.toContain("123456");
     expect(JSON.stringify(body)).not.toContain("+12025550123");
   });
@@ -187,7 +200,9 @@ describe("SendBlue phone authentication", () => {
 
   it("returns uncertain for a malformed response instead of exposing it", async () => {
     setupSendblueEnv();
-    mocks.fetch.mockResolvedValueOnce(new Response("not json", { status: 200 }));
+    mocks.fetch.mockResolvedValueOnce(
+      new Response("not json", { status: 200 })
+    );
 
     const { sendBlueOtp } = await import("@/auth/sendblue");
     const result = await sendBlueOtp({
@@ -203,7 +218,9 @@ describe("SendBlue phone authentication", () => {
 
   it("returns uncertain on timeout without retry", async () => {
     setupSendblueEnv();
-    mocks.fetch.mockRejectedValueOnce(new DOMException("Timeout", "TimeoutError"));
+    mocks.fetch.mockRejectedValueOnce(
+      new DOMException("Timeout", "TimeoutError")
+    );
 
     const { sendBlueOtp } = await import("@/auth/sendblue");
     const result = await sendBlueOtp({
@@ -245,7 +262,9 @@ describe("SendBlue phone authentication", () => {
     await sendPhoneCode({ code: "123456", to: "+12025550123" });
 
     expect(mocks.fetch).toHaveBeenCalledOnce();
-    const [url] = mocks.fetch.mock.calls[0];
+    const call = mocks.fetch.mock.calls[0];
+    if (!call) throw new Error("fetch was not called");
+    const [url] = call;
     expect(url).toBe("https://api.sendblue.co/api/send-message");
   });
 

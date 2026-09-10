@@ -108,7 +108,8 @@ describe("phone OTP errors", () => {
     expect(
       phoneOtpErrorMessage({
         code: "SENDBLUE_RATE_LIMITED",
-        message: "SendBlue rate-limited the request. Wait a moment and try again.",
+        message:
+          "SendBlue rate-limited the request. Wait a moment and try again.",
       })
     ).toBe("SendBlue rate-limited the request. Wait a moment and try again.");
 

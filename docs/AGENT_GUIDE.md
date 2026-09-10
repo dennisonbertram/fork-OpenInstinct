@@ -47,7 +47,7 @@ Next redirect is an Eve authorization decision.
 - `agent/channels/scheduled-run.ts`: internal channel a cron job (`agent/schedules/dynamic.ts`) dispatches onto to run a scheduled job's turn; `agent/hooks/scheduled-run-completion.ts` tracks its lease and reports the outcome back.
 - `agent/subagents/browser-agent/`: the isolated browser worker and its flat tool surface.
 - `agent/instructions/`: root instructions, split into ordered `*.ts` modules whose content lives under `agent/instructions/content/**.md` (interactive, scheduled-report, scheduled-worker role variants); `agent/instructions.md` is now a stub.
-- `auth/`: Better Auth configuration, phone normalization, and Linq OTP delivery.
+- `auth/`: Better Auth configuration, phone normalization, and Linq or SendBlue OTP delivery.
 - `trpc/`: request context and the application router.
 - `db/schema/`: Drizzle source of truth; `db/services/` owns scoped queries.
 - `lib/`: shared schemas, scope derivation, Kernel, vault, images, models, and adapters.
@@ -234,7 +234,8 @@ alone is insufficient. Do not claim production readiness from local tests.
   the supported manual drain path.
 
 - `@workflow/world-vercel` and Vercel Connect are not portable-provider support.
-- Local phone code `000000` is a development bypass, not a Linq delivery test.
+- Local phone code `000000` is a development bypass, not a Linq or SendBlue delivery test.
+- `PHONE_OTP_PROVIDER=sendblue` requires SendBlue credentials and an E.164 verified test contact; an accepted API response is not proof of delivery.
 - The global configured Linq line is not a tenant model.
 - A workspace is the tenant; an agent, revision, line, participant, and user are
   distinct resources. Never collapse them into one ID because the MVP has one

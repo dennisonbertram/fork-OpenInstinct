@@ -28,9 +28,8 @@ describe("phone OTP configuration", () => {
   });
 
   it("defaults to the Linq provider", async () => {
-    const { phoneOtpProvider, isPhoneOtpProviderConfigured } = await import(
-      "@/auth/phone-otp-config"
-    );
+    const { phoneOtpProvider, isPhoneOtpProviderConfigured } =
+      await import("@/auth/phone-otp-config");
 
     expect(phoneOtpProvider()).toBe("linq");
     expect(isPhoneOtpProviderConfigured()).toBe(false);
@@ -39,9 +38,8 @@ describe("phone OTP configuration", () => {
   it("reports Linq configured when the connector is set", async () => {
     vi.stubEnv("LINQ_CONNECTOR", "linq/open-instinct");
 
-    const { phoneOtpProvider, isPhoneOtpProviderConfigured } = await import(
-      "@/auth/phone-otp-config"
-    );
+    const { phoneOtpProvider, isPhoneOtpProviderConfigured } =
+      await import("@/auth/phone-otp-config");
 
     expect(phoneOtpProvider()).toBe("linq");
     expect(isPhoneOtpProviderConfigured()).toBe(true);
@@ -53,11 +51,8 @@ describe("phone OTP configuration", () => {
     vi.stubEnv("SENDBLUE_API_SECRET_KEY", "secret-key");
     vi.stubEnv("SENDBLUE_FROM_NUMBER", "+12025550199");
 
-    const {
-      phoneOtpProvider,
-      isPhoneOtpProviderConfigured,
-      sendblueConfig,
-    } = await import("@/auth/phone-otp-config");
+    const { phoneOtpProvider, isPhoneOtpProviderConfigured, sendblueConfig } =
+      await import("@/auth/phone-otp-config");
 
     expect(phoneOtpProvider()).toBe("sendblue");
     expect(isPhoneOtpProviderConfigured()).toBe(true);
@@ -73,23 +68,8 @@ describe("phone OTP configuration", () => {
     vi.stubEnv("SENDBLUE_API_KEY_ID", "key-id");
     vi.stubEnv("SENDBLUE_API_SECRET_KEY", "secret-key");
 
-    const { isPhoneOtpProviderConfigured, sendblueConfig } = await import(
-      "@/auth/phone-otp-config"
-    );
-
-    expect(isPhoneOtpProviderConfigured()).toBe(false);
-    expect(sendblueConfig()).toBeUndefined();
-  });
-
-  it("rejects a SendBlue from number outside E.164", async () => {
-    vi.stubEnv("PHONE_OTP_PROVIDER", "sendblue");
-    vi.stubEnv("SENDBLUE_API_KEY_ID", "key-id");
-    vi.stubEnv("SENDBLUE_API_SECRET_KEY", "secret-key");
-    vi.stubEnv("SENDBLUE_FROM_NUMBER", "(202) 555-0123");
-
-    const { isPhoneOtpProviderConfigured, sendblueConfig } = await import(
-      "@/auth/phone-otp-config"
-    );
+    const { isPhoneOtpProviderConfigured, sendblueConfig } =
+      await import("@/auth/phone-otp-config");
 
     expect(isPhoneOtpProviderConfigured()).toBe(false);
     expect(sendblueConfig()).toBeUndefined();

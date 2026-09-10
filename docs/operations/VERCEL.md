@@ -272,20 +272,22 @@ Set each value through Vercel environment management. Secret values are entered
 at the interactive prompt, so they do not appear in shell history or process
 arguments. These commands are operator actions:
 
-| Variable                               | Required            | Normal source          | Notes                                                    |
-| -------------------------------------- | ------------------- | ---------------------- | -------------------------------------------------------- |
-| `DATABASE_URL`                         | Yes                 | Neon attachment        | Pooled request-time URL                                  |
-| `DATABASE_URL_UNPOOLED`                | Yes                 | Neon attachment        | Direct migration URL; must target the same database      |
-| `KERNEL_API_KEY`                       | Yes                 | Kernel attachment      | Never expose to the model, browser, or logs              |
-| `BETTER_AUTH_SECRET`                   | Yes                 | Generated once         | Back up and rotate deliberately                          |
-| `BETTER_AUTH_URL`                      | Yes                 | Operator               | Exact canonical HTTPS origin; no guessed alias           |
-| `SECRET_ENCRYPTION_KEY`                | Yes                 | Generated once         | Base64-encoded 32 bytes; rotation requires re-encryption |
-| `BLOB_STORE_ID` / `VERCEL_OIDC_TOKEN`  | Vercel path         | Blob/Vercel attachment | Preferred short-lived Vercel path                        |
-| `BLOB_READ_WRITE_TOKEN`                | Non-Vercel fallback | Private Blob store     | Do not set when the Vercel attachment path is used       |
-| `LINQ_CONNECTOR` + `LINQ_PHONE_NUMBER` | Optional pair       | Linq setup             | Both or neither; production-only by default              |
-| `GOOGLE_CONNECTOR_UID`                 | Optional            | Google Connect setup   | User-scoped grant; defaults to `google/open-instinct`    |
-| `SQUARE_CONNECTOR_UID`                 | Optional            | Square Connect setup   | User-scoped grant path                                   |
-| `SQUARE_ENVIRONMENT`                   | Optional            | Operator               | `sandbox` or `production`; default `sandbox`             |
+| Variable                                                                   | Required            | Normal source          | Notes                                                                                                     |
+| -------------------------------------------------------------------------- | ------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                                             | Yes                 | Neon attachment        | Pooled request-time URL                                                                                   |
+| `DATABASE_URL_UNPOOLED`                                                    | Yes                 | Neon attachment        | Direct migration URL; must target the same database                                                       |
+| `KERNEL_API_KEY`                                                           | Yes                 | Kernel attachment      | Never expose to the model, browser, or logs                                                               |
+| `BETTER_AUTH_SECRET`                                                       | Yes                 | Generated once         | Back up and rotate deliberately                                                                           |
+| `BETTER_AUTH_URL`                                                          | Yes                 | Operator               | Exact canonical HTTPS origin; no guessed alias                                                            |
+| `SECRET_ENCRYPTION_KEY`                                                    | Yes                 | Generated once         | Base64-encoded 32 bytes; rotation requires re-encryption                                                  |
+| `BLOB_STORE_ID` / `VERCEL_OIDC_TOKEN`                                      | Vercel path         | Blob/Vercel attachment | Preferred short-lived Vercel path                                                                         |
+| `BLOB_READ_WRITE_TOKEN`                                                    | Non-Vercel fallback | Private Blob store     | Do not set when the Vercel attachment path is used                                                        |
+| `LINQ_CONNECTOR` + `LINQ_PHONE_NUMBER`                                     | Optional pair       | Linq setup             | Both or neither; production-only by default                                                               |
+| `PHONE_OTP_PROVIDER`                                                       | Optional            | Operator               | `linq` (default) or `sendblue`                                                                            |
+| `SENDBLUE_API_KEY_ID` + `SENDBLUE_API_SECRET_KEY` + `SENDBLUE_FROM_NUMBER` | Optional trio       | SendBlue account       | All three required when `PHONE_OTP_PROVIDER=sendblue`; from number must be an E.164 verified test contact |
+| `GOOGLE_CONNECTOR_UID`                                                     | Optional            | Google Connect setup   | User-scoped grant; defaults to `google/open-instinct`                                                     |
+| `SQUARE_CONNECTOR_UID`                                                     | Optional            | Square Connect setup   | User-scoped grant path                                                                                    |
+| `SQUARE_ENVIRONMENT`                                                       | Optional            | Operator               | `sandbox` or `production`; default `sandbox`                                                              |
 
 Generate new application secrets directly into the Vercel prompt rather than
 copying them through chat or a ticket:
@@ -394,6 +396,32 @@ Keep `LINQ_CONNECTOR` and `LINQ_PHONE_NUMBER` production-only unless a separate
 non-production line and explicit test contact list exist. The reference project
 attaches the connector for project access, but only production receives the two
 runtime values, so preview/development cannot send through the live line.
+
+## SendBlue phone OTP
+
+`PHONE_OTP_PROVIDER=sendblue` switches hosted sign-in codes from Linq to
+SendBlue. The selection does not affect local development, which still uses
+`000000` and never calls a provider.
+
+Set all three values for the intended environment:
+
+```bash
+# OPERATOR ACTION: enter each value at its interactive prompt.
+pnpm exec vercel env add PHONE_OTP_PROVIDER production
+pnpm exec vercel env add SENDBLUE_API_KEY_ID production
+pnpm exec vercel env add SENDBLUE_API_SECRET_KEY production
+pnpm exec vercel env add SENDBLUE_FROM_NUMBER production
+```
+
+`SENDBLUE_FROM_NUMBER` must be an E.164 verified test contact on the SendBlue
+account. Do not treat an accepted SendBlue API response as proof the message was
+delivered; the sign-in UI warns the user that "accepted" only means the request
+was accepted by the provider. A fresh recipient/action confirmation is required
+before any live hosted test.
+
+SendBlue is intentionally not a fallback for Linq failures. Missing or
+incomplete SendBlue configuration renders the sign-in page unavailable and
+displays a safe configuration notice.
 
 Monitor Linq line service status and reputation. A future multi-tenant control
 plane must consume `phone_number.status_updated` and stop outbound traffic for

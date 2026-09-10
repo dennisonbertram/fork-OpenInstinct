@@ -110,6 +110,15 @@ export const env = createEnv({
         "LINQ_PHONE_NUMBER must use E.164 format"
       )
       .optional(),
+    PHONE_OTP_PROVIDER: z.enum(["linq", "sendblue"]).default("linq"),
+    SENDBLUE_API_KEY_ID: requiredValue.optional(),
+    SENDBLUE_API_SECRET_KEY: requiredValue.optional(),
+    SENDBLUE_FROM_NUMBER: requiredValue
+      .refine(
+        (value) => isE164PhoneNumber(value),
+        "SENDBLUE_FROM_NUMBER must use E.164 format"
+      )
+      .optional(),
     ADMIN_PHONE_NUMBERS: z.string().default(""),
     WORKSPACE_SCOPE_ENFORCEMENT: z.enum(["off", "enforce"]).default("enforce"),
     NODE_ENV: z
