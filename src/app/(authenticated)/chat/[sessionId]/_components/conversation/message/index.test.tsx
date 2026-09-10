@@ -60,6 +60,37 @@ describe("agent messages", () => {
     expect(markup).toContain('aria-label="Jory"');
   });
 
+  it("keeps assistant identity beside an attachment-only delivery", () => {
+    const message = {
+      id: "assistant-attachment-only",
+      metadata: { status: "complete" },
+      parts: [
+        {
+          filename: "result.png",
+          mediaType: "image/png",
+          type: "file",
+          url: "https://example.com/result.png",
+        },
+      ],
+      role: "assistant",
+    } satisfies EveMessage;
+
+    const markup = renderToStaticMarkup(
+      <AgentMessage
+        canRespond
+        isStreaming={false}
+        message={message}
+        onInputResponses={() => undefined}
+        sentMessageParts={message.parts}
+        userVisibleOnly
+      />
+    );
+
+    expect(markup).toContain("result.png");
+    expect(markup).toContain('data-slot="message-avatar"');
+    expect(markup).toContain('aria-label="Jory"');
+  });
+
   it("uses the current profile image when it is a secure URL", () => {
     const message = {
       id: "user-with-image",

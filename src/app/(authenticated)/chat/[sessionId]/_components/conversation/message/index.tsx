@@ -47,6 +47,7 @@ export function AgentMessage({
     visibleParts.some(
       (part) =>
         (part.type === "text" && part.text.length > 0) ||
+        part.type === "file" ||
         part.type === "authorization" ||
         (part.type === "dynamic-tool" && userVisibleOnly)
     );
