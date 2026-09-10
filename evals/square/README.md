@@ -37,7 +37,7 @@ The fake is deliberately narrow, not a Square emulator. Its fixture pins an
 timezone; date-sensitive case prompts repeat those values so results do not
 depend on the machine clock. It has two locations, completed/open/canceled
 orders, completed refunds inside and outside the selected period, and boundary orders for both 2026 New York DST
-transitions.
+transitions. The `ada-order-total` case is scoped to Ada Lovelace's completed orders created on 2026-11-01 local time at Default Test Account (LQK1QAMZG63BM).
 
 For the selected `SearchOrders` paths it supports `location_ids`,
 `state_filter.states`, `date_time_filter.created_at` and `closed_at`, the

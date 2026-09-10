@@ -100,15 +100,45 @@ export const squareCases: readonly SquareCase[] = [
       ["square__SearchOrders"],
     ],
     facts: (fixture) => {
-      const ada = fixture.orders.find((o) => o.customerId === "CUST_ADA");
-      if (!ada) throw new Error("Fixture has no order for Ada.");
-      const items = ada.itemIndexes.map((index) => itemAt(fixture, index).name);
-      return [...items, dollars(orderTotal(fixture, ada))];
+      const startAt = Date.parse("2026-11-01T04:00:00.000Z");
+      const endAt = Date.parse("2026-11-02T04:59:59.999Z");
+      const customerId = "CUST_ADA";
+      const locationId = "LQK1QAMZG63BM";
+      const matches = fixture.orders.filter(
+        (o) =>
+          o.customerId === customerId &&
+          o.locationId === locationId &&
+          o.state === "COMPLETED" &&
+          Date.parse(o.createdAt) >= startAt &&
+          Date.parse(o.createdAt) <= endAt
+      );
+      if (matches.length === 0)
+        throw new Error(
+          "Fixture has no completed Ada order for the requested period."
+        );
+      const itemNames = new Set<string>();
+      let totalCents = 0;
+      for (const order of matches) {
+        for (const index of order.itemIndexes) {
+          itemNames.add(itemAt(fixture, index).name);
+        }
+        totalCents += orderTotal(fixture, order);
+      }
+      return [...itemNames, dollars(totalCents)];
     },
     forbidTools: writeToolPattern,
     id: "ada-order-total",
     layout: "normal",
-    prompt: "What did Ada Lovelace order, and what was the total?",
+    prompt:
+      "As of 2026-11-02T04:59:59.999Z, what items did Ada Lovelace order from completed orders at Default Test Account in America/New_York? Treat the order date as 2026-11-01 local time, include all pages, and exclude canceled, open, other-day, and other-location orders. What was the total?",
+    sales: {
+      exclusions: "canceled, open, other-day, and other-location orders",
+      location: "Default Test Account (LQK1QAMZG63BM)",
+      measure: "completed order total for Ada Lovelace",
+      period:
+        "2026-11-01 America/New_York inclusive: [2026-11-01T04:00:00.000Z, 2026-11-02T04:59:59.999Z]",
+    },
+    requiresSearchOrderCursorDrain: true,
     tone: directTone,
   },
   {
