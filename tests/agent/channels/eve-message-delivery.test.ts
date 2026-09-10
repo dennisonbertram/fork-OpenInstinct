@@ -255,19 +255,26 @@ describe("Eve reaction delivery", () => {
     expect(completion.request).not.toHaveBeenCalled();
   });
 
-  it("finalizes a report and does not request completion for a scheduled reaction", async () => {
+  it("does not finalize a report or request completion for a scheduled reaction add", async () => {
     await handleActionResult(
       reactToMessageResult({ operation: "add", type: "heart" }),
       {},
       scheduledReportSession()
     );
 
-    expect(delivery.finalize).toHaveBeenCalledExactlyOnceWith(
-      "00000000-0000-4000-8000-000000000002",
-      "00000000-0000-4000-8000-000000000004",
-      "delivered"
-    );
     expect(completion.request).not.toHaveBeenCalled();
+    expect(delivery.finalize).not.toHaveBeenCalled();
+  });
+
+  it("does not finalize a report or request completion for a scheduled reaction remove", async () => {
+    await handleActionResult(
+      reactToMessageResult({ operation: "remove", type: "heart" }),
+      {},
+      scheduledReportSession()
+    );
+
+    expect(completion.request).not.toHaveBeenCalled();
+    expect(delivery.finalize).not.toHaveBeenCalled();
   });
 });
 

@@ -87,17 +87,16 @@ export default eveChannel({
         }
 
         const reaction = reactToMessageToolResultSchema.safeParse(event.result);
-        if (reaction.success) {
-          const report = scheduledReportFromSession(session);
-          await finalizeScheduledReportDelivery(session);
-          if (!report && reaction.data.output.operation === "add") {
-            requestFinalDeliveryCompletion(
-              event.result.callId,
-              event.turnId,
-              event.stepIndex
-            );
-          }
-          return;
+        if (
+          reaction.success &&
+          reaction.data.output.operation === "add" &&
+          !scheduledReportFromSession(session)
+        ) {
+          requestFinalDeliveryCompletion(
+            event.result.callId,
+            event.turnId,
+            event.stepIndex
+          );
         }
       }
     },
