@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  chat-adapter-sendblue@0.2.0: 493ee3a2c959873b3465c0d0e656dcba13a0348007f3992dc31a1daab2634008
+  chat-adapter-sendblue@0.2.0: 3d97bb4c8ae5e1f4cfc52398a3aa24361abe726ac4209ddacd1769473e3525d4
   eve@0.49.0: 7ca81b13f6d4ec8b3b1b540a962729142f0ebfaddd7769c9b7a71b3dab4dbb9d
 
 importers:
@@ -92,7 +92,7 @@ importers:
         version: 4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)
       chat-adapter-sendblue:
         specifier: 0.2.0
-        version: 0.2.0(patch_hash=493ee3a2c959873b3465c0d0e656dcba13a0348007f3992dc31a1daab2634008)(chat@4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3))
+        version: 0.2.0(patch_hash=3d97bb4c8ae5e1f4cfc52398a3aa24361abe726ac4209ddacd1769473e3525d4)(chat@4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3))
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -13117,7 +13117,7 @@ snapshots:
 
   character-reference-invalid@2.0.1: {}
 
-  chat-adapter-sendblue@0.2.0(patch_hash=493ee3a2c959873b3465c0d0e656dcba13a0348007f3992dc31a1daab2634008)(chat@4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)):
+  chat-adapter-sendblue@0.2.0(patch_hash=3d97bb4c8ae5e1f4cfc52398a3aa24361abe726ac4209ddacd1769473e3525d4)(chat@4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)):
     dependencies:
       chat: 4.34.0(ai@7.0.83(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)
       sendblue: 3.16.1
