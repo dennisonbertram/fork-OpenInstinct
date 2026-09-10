@@ -28,20 +28,30 @@ describe("sign-in hero", () => {
 
 describe("sign-in subhead", () => {
   it("explains the local bypass", () => {
-    expect(signInSubhead({ localBypass: true, linqConfigured: true })).toBe(
-      "Enter your phone number to request a sign-in code."
-    );
+    expect(
+      signInSubhead({ localBypass: true, provider: "linq", configured: true })
+    ).toBe("Enter your phone number to request a sign-in code.");
   });
 
   it("explains the text code when Linq is configured", () => {
-    expect(signInSubhead({ localBypass: false, linqConfigured: true })).toBe(
-      "Enter your phone number and we will text you a code."
-    );
+    expect(
+      signInSubhead({ localBypass: false, provider: "linq", configured: true })
+    ).toBe("Enter your phone number and we will text you a code.");
+  });
+
+  it("explains the text code when SendBlue is configured", () => {
+    expect(
+      signInSubhead({
+        localBypass: false,
+        provider: "sendblue",
+        configured: true,
+      })
+    ).toBe("Enter your phone number and we will text you a code.");
   });
 
   it("has no subhead when nothing is configured", () => {
     expect(
-      signInSubhead({ localBypass: false, linqConfigured: false })
+      signInSubhead({ localBypass: false, provider: "linq", configured: false })
     ).toBeUndefined();
   });
 });
