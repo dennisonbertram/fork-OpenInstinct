@@ -5,6 +5,12 @@ import { z } from "zod";
 const mocks = vi.hoisted(() => ({ fetch: vi.fn<typeof fetch>() }));
 
 vi.stubGlobal("fetch", mocks.fetch);
+vi.mock("@/auth/linq", () => ({
+  LinqDeliveryError: class LinqDeliveryError extends Error {},
+  linqOtpFailure: vi.fn<() => { code: string; message: string }>(),
+  readLinqOnboardingPhoneNumber: vi.fn<() => Promise<undefined>>(),
+  sendLinqText: vi.fn<() => Promise<void>>(),
+}));
 
 const sendblueApiErrorSchema = z.object({
   code: z.string(),
@@ -159,9 +165,29 @@ describe("SendBlue phone authentication", () => {
     expect(body.message).toContain("rate");
   });
 
-  it("throws a safe APIError on provider server errors", async () => {
+  it("throws SENDBLUE_SUBMISSION_UNCONFIRMED for HTTP 503 without a terminal failure body", async () => {
     setupSendblueEnv();
     mocks.fetch.mockResolvedValueOnce(Response.json({}, { status: 503 }));
+
+    const { sendPhoneCode } = await import("@/auth");
+    const error: unknown = await sendPhoneCode({
+      code: "123456",
+      to: "+12025550123",
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(APIError);
+    if (!(error instanceof APIError)) throw new TypeError("Expected APIError");
+    const body = sendblueApiErrorSchema.parse(error.body);
+    expect(body.code).toBe("SENDBLUE_SUBMISSION_UNCONFIRMED");
+    expect(body.message).toContain("could not be confirmed");
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+  });
+
+  it("throws a safe APIError for HTTP 503 with a terminal failure body", async () => {
+    setupSendblueEnv();
+    mocks.fetch.mockResolvedValueOnce(
+      Response.json({ error_code: 5001, status: "ERROR" }, { status: 503 })
+    );
 
     const { sendPhoneCode } = await import("@/auth");
     const error: unknown = await sendPhoneCode({
@@ -283,5 +309,114 @@ describe("SendBlue phone authentication", () => {
     const body = sendblueApiErrorSchema.parse(error.body);
     expect(body.code).toBe("SENDBLUE_NOT_CONFIGURED");
     expect(body.message).toContain("SendBlue");
+  });
+
+  it("throws SENDBLUE_SUBMISSION_UNCONFIRMED for a timeout through sendPhoneCode", async () => {
+    setupSendblueEnv();
+    mocks.fetch.mockRejectedValueOnce(
+      new DOMException("Timeout", "TimeoutError")
+    );
+
+    const { sendPhoneCode } = await import("@/auth");
+    const error: unknown = await sendPhoneCode({
+      code: "123456",
+      to: "+12025550123",
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(APIError);
+    if (!(error instanceof APIError)) throw new TypeError("Expected APIError");
+    const body = sendblueApiErrorSchema.parse(error.body);
+    expect(body.code).toBe("SENDBLUE_SUBMISSION_UNCONFIRMED");
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+  });
+
+  it("throws SENDBLUE_SUBMISSION_UNCONFIRMED for a malformed response through sendPhoneCode", async () => {
+    setupSendblueEnv();
+    mocks.fetch.mockResolvedValueOnce(
+      new Response("not json", { status: 200 })
+    );
+
+    const { sendPhoneCode } = await import("@/auth");
+    const error: unknown = await sendPhoneCode({
+      code: "123456",
+      to: "+12025550123",
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(APIError);
+    if (!(error instanceof APIError)) throw new TypeError("Expected APIError");
+    const body = sendblueApiErrorSchema.parse(error.body);
+    expect(body.code).toBe("SENDBLUE_SUBMISSION_UNCONFIRMED");
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+  });
+
+  it("does not call Linq when SendBlue is selected and submission is uncertain", async () => {
+    setupSendblueEnv({ LINQ_CONNECTOR: "linq/open-instinct" });
+    mocks.fetch.mockRejectedValueOnce(new TypeError("fetch failed"));
+
+    const { sendLinqText } = await import("@/auth/linq");
+    const { sendPhoneCode } = await import("@/auth");
+    const error: unknown = await sendPhoneCode({
+      code: "123456",
+      to: "+12025550123",
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(APIError);
+    if (!(error instanceof APIError)) throw new TypeError("Expected APIError");
+    const body = sendblueApiErrorSchema.parse(error.body);
+    expect(body.code).toBe("SENDBLUE_SUBMISSION_UNCONFIRMED");
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+    expect(sendLinqText).not.toHaveBeenCalled();
+  });
+
+  it("does not POST SendBlue for an invalid sender or recipient", async () => {
+    setupSendblueEnv();
+
+    const { sendBlueOtp } = await import("@/auth/sendblue");
+    const error: unknown = await sendBlueOtp({
+      apiKeyId: "test-api-key-id",
+      apiSecretKey: "test-api-secret-key",
+      code: "123456",
+      fromNumber: "not-e164",
+      to: "+12025550123",
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(
+      await import("@/auth/sendblue").then((m) => m.SendBlueDeliveryError)
+    );
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not expose raw provider body, OTP, keys, or phone numbers in API errors or helper exceptions", async () => {
+    setupSendblueEnv();
+    mocks.fetch.mockResolvedValueOnce(
+      Response.json({
+        error_code: 4001,
+        error_message: "Invalid recipient +12025550123",
+        status: "ERROR",
+      })
+    );
+
+    const { sendPhoneCode } = await import("@/auth");
+    const error: unknown = await sendPhoneCode({
+      code: "123456",
+      to: "+12025550123",
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(APIError);
+    if (!(error instanceof APIError)) throw new TypeError("Expected APIError");
+    const serializedError = JSON.stringify(error);
+    const serializedBody = JSON.stringify(error.body);
+    expect(serializedBody).not.toContain("123456");
+    expect(serializedBody).not.toContain("+12025550123");
+    expect(serializedBody).not.toContain("test-api-key-id");
+    expect(serializedBody).not.toContain("test-api-secret-key");
+    expect(serializedBody).not.toContain("4001");
+    expect(serializedBody).not.toContain("Invalid recipient");
+    expect(serializedBody).not.toContain("ERROR");
+    expect(serializedError).not.toContain("123456");
+    expect(serializedError).not.toContain("+12025550123");
+    expect(serializedError).not.toContain("test-api-key-id");
+    expect(serializedError).not.toContain("test-api-secret-key");
+    expect(serializedError).not.toContain("Invalid recipient");
   });
 });

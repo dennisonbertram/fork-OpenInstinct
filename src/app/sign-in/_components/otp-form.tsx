@@ -7,6 +7,7 @@ import type { SubmitEvent } from "react";
 import { authClient } from "@/app/_lib/auth-client";
 import { formValue, verifyPhoneNumber } from "@/app/sign-in/_lib/phone-auth";
 import { normalizeAuthPhoneNumber } from "@/auth/phone-number";
+import type { PhoneOtpProvider } from "@/auth/phone-otp-config";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +19,24 @@ import {
 import { Input } from "@/components/ui/input";
 import { PhoneNumberField } from "./phone-field";
 
+class UnconfirmedSubmissionError extends Error {
+  readonly phoneNumber: string;
+
+  constructor(phoneNumber: string) {
+    super(
+      "The SendBlue submission could not be confirmed. The request may have reached SendBlue. Enter the code if it arrives, or use a different number."
+    );
+    this.name = "UnconfirmedSubmissionError";
+    this.phoneNumber = phoneNumber;
+  }
+}
+
+function isUnconfirmedSubmissionError(
+  error: unknown
+): error is UnconfirmedSubmissionError {
+  return error instanceof UnconfirmedSubmissionError;
+}
+
 export function PhoneOtpAuthForm({
   callbackUrl,
   linqPhoneNumber,
@@ -27,7 +46,7 @@ export function PhoneOtpAuthForm({
   readonly callbackUrl: string;
   readonly linqPhoneNumber?: string;
   readonly localBypass?: boolean;
-  readonly provider?: "linq" | "sendblue";
+  readonly provider?: PhoneOtpProvider;
 }) {
   const sendOtp = useMutation({
     mutationFn: async (phoneNumberValue: string) => {
@@ -37,12 +56,30 @@ export function PhoneOtpAuthForm({
       const result = await authClient.phoneNumber
         .sendOtp({ phoneNumber })
         .catch(() => {
+          if (provider === "sendblue") {
+            throw new UnconfirmedSubmissionError(phoneNumber);
+          }
           throw new Error("Unable to send a code. Please try again.");
         });
-      if (result.error) throw new Error(phoneOtpErrorMessage(result.error));
+      if (result.error) {
+        if (
+          provider === "sendblue" &&
+          result.error.code === "SENDBLUE_SUBMISSION_UNCONFIRMED"
+        ) {
+          throw new UnconfirmedSubmissionError(phoneNumber);
+        }
+        throw new Error(phoneOtpErrorMessage(result.error));
+      }
       return phoneNumber;
     },
   });
+
+  const unconfirmedError =
+    sendOtp.error && isUnconfirmedSubmissionError(sendOtp.error)
+      ? sendOtp.error
+      : undefined;
+  const submittedPhone = sendOtp.data ?? unconfirmedError?.phoneNumber;
+  const showCodeForm = sendOtp.isSuccess || unconfirmedError !== undefined;
 
   function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,12 +98,12 @@ export function PhoneOtpAuthForm({
       ) : (
         <FirstTimeLinqSetup phoneNumber={linqPhoneNumber} />
       )}
-      {sendOtp.isSuccess ? (
+      {showCodeForm && submittedPhone ? (
         <VerificationCodeForm
           callbackUrl={callbackUrl}
           onUseDifferentNumber={sendOtp.reset}
-          phoneNumber={sendOtp.data}
-          provider={provider}
+          phoneNumber={submittedPhone}
+          unconfirmed={unconfirmedError !== undefined}
         />
       ) : (
         <form
@@ -77,7 +114,11 @@ export function PhoneOtpAuthForm({
         >
           <FieldGroup>
             <PhoneNumberField />
-            <FieldError errors={sendOtp.error ? [sendOtp.error] : undefined} />
+            <FieldError
+              errors={
+                sendOtp.error && !unconfirmedError ? [sendOtp.error] : undefined
+              }
+            />
             <Button
               className="w-full rounded-full"
               disabled={sendOtp.isPending}
@@ -96,12 +137,12 @@ function VerificationCodeForm({
   callbackUrl,
   onUseDifferentNumber,
   phoneNumber,
-  provider,
+  unconfirmed,
 }: {
   readonly callbackUrl: string;
   readonly onUseDifferentNumber: () => void;
   readonly phoneNumber: string;
-  readonly provider: "linq" | "sendblue";
+  readonly unconfirmed: boolean;
 }) {
   const router = useRouter();
   const verifyCode = useMutation({
@@ -135,7 +176,7 @@ function VerificationCodeForm({
         submit(event);
       }}
     >
-      {provider === "sendblue" ? <SendBlueVerificationWarning /> : null}
+      {unconfirmed ? <SendBlueUnconfirmedWarning /> : null}
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="code">Verification Code</FieldLabel>
@@ -190,15 +231,14 @@ function SendBlueSetupInfo() {
   );
 }
 
-function SendBlueVerificationWarning() {
+function SendBlueUnconfirmedWarning() {
   return (
     <Alert className="mb-6" variant="warning">
       <AlertTriangleIcon />
-      <AlertTitle>Message accepted, not confirmed delivered</AlertTitle>
+      <AlertTitle>Code submission could not be confirmed</AlertTitle>
       <AlertDescription>
-        SendBlue accepted the message, which is not the same as delivery. Enter
-        the six-digit code once your phone receives it. If it does not arrive,
-        use a different number.
+        The request may have reached SendBlue. Enter the six-digit code if it
+        arrives, or use a different number.
       </AlertDescription>
     </Alert>
   );

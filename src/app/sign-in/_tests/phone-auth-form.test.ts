@@ -126,5 +126,25 @@ describe("phone OTP errors", () => {
         message: "secret-key-value",
       })
     ).toBe("secret-key-value");
+
+    expect(
+      phoneOtpErrorMessage({
+        code: "SENDBLUE_SUBMISSION_UNCONFIRMED",
+        message: "The submission could not be confirmed.",
+      })
+    ).toBe("The submission could not be confirmed.");
+  });
+
+  it("does not show an unconfirmed warning before a SendBlue request", () => {
+    const html = renderForm(
+      createElement(PhoneOtpAuthForm, {
+        callbackUrl: "/",
+        provider: "sendblue",
+      })
+    );
+
+    expect(html).toContain("SendBlue sends your code");
+    expect(html).not.toContain("Code submission could not be confirmed");
+    expect(html).not.toContain("First time signing in?");
   });
 });

@@ -4,6 +4,17 @@ import { isE164PhoneNumber } from "./phone-number";
 
 const SENDBLUE_SEND_MESSAGE_URL = "https://api.sendblue.co/api/send-message";
 
+const acceptedStatuses = new Set([
+  "QUEUED",
+  "SENT",
+  "DELIVERED",
+  "REGISTERED",
+  "PENDING",
+  "ACCEPTED",
+]);
+
+const failureStatuses = new Set(["ERROR", "DECLINED"]);
+
 const sendblueResponseSchema = z.object({
   message_handle: z.string().optional(),
   status: z.string().optional(),
@@ -14,25 +25,11 @@ export type SendBlueSubmissionOutcome = "submitted" | "uncertain";
 
 export class SendBlueDeliveryError extends Error {
   readonly status: number;
-  readonly sendBlueStatus?: string;
-  readonly errorCode?: number;
 
-  constructor({
-    status,
-    sendBlueStatus,
-    errorCode,
-    message,
-  }: {
-    status: number;
-    sendBlueStatus?: string;
-    errorCode?: number;
-    message: string;
-  }) {
+  constructor({ status, message }: { status: number; message: string }) {
     super(message);
     this.name = "SendBlueDeliveryError";
     this.status = status;
-    this.sendBlueStatus = sendBlueStatus;
-    this.errorCode = errorCode;
   }
 }
 
@@ -72,14 +69,15 @@ function sendBlueFailureMessage(error: SendBlueDeliveryError): SendBlueFailure {
   };
 }
 
-const acceptedStatuses = new Set([
-  "QUEUED",
-  "SENT",
-  "DELIVERED",
-  "REGISTERED",
-  "PENDING",
-  "ACCEPTED",
-]);
+function isTerminalFailure(parsed: {
+  error_code?: number | null;
+  status?: string;
+}) {
+  return (
+    (parsed.error_code !== undefined && parsed.error_code !== 0) ||
+    (parsed.status !== undefined && failureStatuses.has(parsed.status))
+  );
+}
 
 export async function sendBlueOtp({
   apiKeyId,
@@ -124,10 +122,11 @@ export async function sendBlueOtp({
 
   if (!response.ok) {
     const parsed = await parseSendblueResponse(response).catch(() => undefined);
+    if (response.status >= 500 && !isTerminalFailure(parsed ?? {})) {
+      return { outcome: "uncertain" };
+    }
     throw new SendBlueDeliveryError({
       status: response.status,
-      sendBlueStatus: parsed?.status,
-      errorCode: parsed?.error_code ?? undefined,
       message: "SendBlue request failed.",
     });
   }
@@ -137,23 +136,9 @@ export async function sendBlueOtp({
     return { outcome: "uncertain" };
   }
 
-  if (parsed.error_code && parsed.error_code !== 0) {
+  if (isTerminalFailure(parsed)) {
     throw new SendBlueDeliveryError({
       status: response.status,
-      sendBlueStatus: parsed.status,
-      errorCode: parsed.error_code,
-      message: "SendBlue request failed.",
-    });
-  }
-
-  if (
-    parsed.status &&
-    (parsed.status === "ERROR" || parsed.status === "DECLINED")
-  ) {
-    throw new SendBlueDeliveryError({
-      status: response.status,
-      sendBlueStatus: parsed.status,
-      errorCode: parsed.error_code ?? undefined,
       message: "SendBlue request failed.",
     });
   }

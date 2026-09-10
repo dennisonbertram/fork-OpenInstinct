@@ -1,6 +1,7 @@
 import type { KnipConfig } from "knip";
 
 export default {
+  ignore: ["playwright.sendblue.config.ts"],
   workspaces: {
     ".": {
       entry: [

@@ -1,7 +1,7 @@
 import { env } from "@/env";
 import { isE164PhoneNumber } from "./phone-number";
 
-export type PhoneOtpProvider = "linq" | "sendblue";
+export type PhoneOtpProvider = typeof env.PHONE_OTP_PROVIDER;
 
 export function phoneOtpProvider(): PhoneOtpProvider {
   return env.PHONE_OTP_PROVIDER;

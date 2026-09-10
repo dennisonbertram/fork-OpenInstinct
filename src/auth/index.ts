@@ -182,8 +182,9 @@ export async function sendPhoneCode({
     });
   }
 
+  let outcome: { outcome: "submitted" | "uncertain" };
   try {
-    await sendBlueOtp({
+    outcome = await sendBlueOtp({
       apiKeyId: config.apiKeyId,
       apiSecretKey: config.apiSecretKey,
       code,
@@ -199,6 +200,14 @@ export async function sendPhoneCode({
       code: "SENDBLUE_DELIVERY_FAILED",
       message:
         "SendBlue could not send a sign-in code. Check the credentials, from number, and recipient eligibility, then try again.",
+    });
+  }
+
+  if (outcome.outcome === "uncertain") {
+    throw new APIError("BAD_GATEWAY", {
+      code: "SENDBLUE_SUBMISSION_UNCONFIRMED",
+      message:
+        "The SendBlue submission could not be confirmed. The request may have reached SendBlue. Enter the code if it arrives, or use a different number.",
     });
   }
 }
