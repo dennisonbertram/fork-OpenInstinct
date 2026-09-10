@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { authClient } from "@/app/_lib/auth-client";
 import type { ChatUsage } from "@/lib/chat";
 import type { TraceView } from "../_lib/trace-view";
 import { SubagentPanel } from "./activity";
@@ -20,6 +21,7 @@ export function ChatSession({
 }) {
   const [traceView, setTraceView] = useState<TraceView>("imessage");
   const agent = useSessionAgent(sessionId);
+  const { data: session } = authClient.useSession();
 
   return (
     <div className="relative flex h-full min-h-0 overflow-hidden bg-background text-foreground">
@@ -35,6 +37,8 @@ export function ChatSession({
           }}
           sessionId={sessionId}
           traceView={traceView}
+          userAvatarUrl={session?.user.image}
+          userId={session?.user.id}
         />
         <PendingSubagentActions events={agent.events} />
         <ChatInput agent={agent} sessionId={sessionId} />

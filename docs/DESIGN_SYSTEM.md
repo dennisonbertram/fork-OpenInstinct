@@ -296,6 +296,11 @@ also defines the `code-card` command and argument colors.
 | `tool.tsx`           | Collapsible tool call with status icons                                                                                                                                                                |
 | `shimmer.tsx`        | Text shimmer for streaming, uses `motion/react`                                                                                                                                                        |
 
+The routed message avatar owner is
+`src/app/(authenticated)/chat/[sessionId]/_components/conversation/message`.
+It places a 36px Jory local head or the current user's photo beside the routed
+message, with a deterministic local fallback for the user photo.
+
 `src/components/browser/activity-duration-breakdown.tsx` is the color legend
 for browser worker activity kinds; it reads the nine `activity-*` tokens.
 

@@ -5,6 +5,33 @@ import { AgentMessage } from ".";
 import { InputRequestActions } from "./input-request";
 
 describe("agent messages", () => {
+  it("renders a user avatar beside the user bubble", () => {
+    const message = {
+      id: "user-message",
+      metadata: { status: "complete" },
+      parts: [
+        {
+          state: "done",
+          text: "Hello from the user.",
+          type: "text",
+        },
+      ],
+      role: "user",
+    } satisfies EveMessage;
+
+    const markup = renderToStaticMarkup(
+      <AgentMessage
+        canRespond
+        isStreaming={false}
+        message={message}
+        onInputResponses={() => undefined}
+      />
+    );
+
+    expect(markup).toContain('data-slot="message-avatar"');
+    expect(markup).toContain('aria-label="You"');
+  });
+
   it("renders ordinary assistant text without a delivery tool result", () => {
     const message = {
       id: "assistant-message",
@@ -29,6 +56,95 @@ describe("agent messages", () => {
     );
 
     expect(markup).toContain("Hello from ordinary assistant output.");
+    expect(markup).toContain('data-slot="message-avatar"');
+    expect(markup).toContain('aria-label="Jory"');
+  });
+
+  it("uses the current profile image when it is a secure URL", () => {
+    const message = {
+      id: "user-with-image",
+      metadata: { status: "complete" },
+      parts: [
+        {
+          state: "done",
+          text: "A user with a profile image.",
+          type: "text",
+        },
+      ],
+      role: "user",
+    } satisfies EveMessage;
+
+    const markup = renderToStaticMarkup(
+      <AgentMessage
+        canRespond
+        isStreaming={false}
+        message={message}
+        onInputResponses={() => undefined}
+        userAvatarUrl="https://lh3.googleusercontent.com/profile-photo"
+        userId="opaque-user-id"
+      />
+    );
+
+    expect(markup).toContain(
+      'src="https://lh3.googleusercontent.com/profile-photo"'
+    );
+    expect(markup).toContain('aria-label="You"');
+  });
+
+  it("keeps an invalid profile image on the local fallback avatar", () => {
+    const message = {
+      id: "user-with-invalid-image",
+      metadata: { status: "complete" },
+      parts: [
+        {
+          state: "done",
+          text: "A user without a usable profile image.",
+          type: "text",
+        },
+      ],
+      role: "user",
+    } satisfies EveMessage;
+
+    const markup = renderToStaticMarkup(
+      <AgentMessage
+        canRespond
+        isStreaming={false}
+        message={message}
+        onInputResponses={() => undefined}
+        userAvatarUrl="javascript:alert('unsafe')"
+        userId="opaque-user-id"
+      />
+    );
+
+    expect(markup).not.toContain("javascript:alert");
+    expect(markup).toContain('aria-label="You"');
+  });
+
+  it("does not add a Jory avatar to a reasoning-only trace row", () => {
+    const message = {
+      id: "assistant-reasoning-only",
+      metadata: { status: "complete" },
+      parts: [
+        {
+          state: "done",
+          text: "Private reasoning.",
+          type: "reasoning",
+        },
+      ],
+      role: "assistant",
+    } satisfies EveMessage;
+
+    const markup = renderToStaticMarkup(
+      <AgentMessage
+        canRespond
+        isStreaming={false}
+        message={message}
+        onInputResponses={() => undefined}
+      />
+    );
+
+    expect(markup).not.toContain('aria-label="Jory"');
+    expect(markup).toContain("Private reasoning.");
   });
 
   it("renders only Linq-delivered content in the iMessage view", () => {
