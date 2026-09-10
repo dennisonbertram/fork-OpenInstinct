@@ -82,6 +82,68 @@ describe("Linq image artifact delivery", () => {
     expect(result.text).toBe("");
   });
 
+  it.each([
+    ["missing manifest", undefined, undefined],
+    [
+      "hash mismatch",
+      {
+        byteSize: 3,
+        contentHash: "not-the-actual-hash",
+        filename: "product.png",
+        id: firstId,
+        mediaType: "image/png",
+        storagePathname: "artifacts/first",
+      },
+      { contentType: "image/png", size: 3 },
+    ],
+    [
+      "byte-size mismatch",
+      {
+        byteSize: 4,
+        contentHash:
+          "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
+        filename: "product.png",
+        id: firstId,
+        mediaType: "image/png",
+        storagePathname: "artifacts/first",
+      },
+      { contentType: "image/png", size: 3 },
+    ],
+    [
+      "media-type mismatch",
+      {
+        byteSize: 3,
+        contentHash:
+          "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
+        filename: "product.png",
+        id: firstId,
+        mediaType: "image/png",
+        storagePathname: "artifacts/first",
+      },
+      { contentType: "image/jpeg", size: 3 },
+    ],
+  ])(
+    "does not expose a private artifact with a %s",
+    async (_name, artifact, blob) => {
+      mocks.readArtifact.mockResolvedValueOnce(artifact);
+      if (blob) {
+        mocks.getBlob.mockResolvedValueOnce({
+          blob,
+          statusCode: 200,
+          stream: new Response(new Uint8Array([1, 2, 3])).body,
+        });
+      }
+
+      const result = await prepareLinqImageArtifactDelivery(
+        `![Product](/artifacts/${firstId})`,
+        { rootSessionId: "root-session", scope }
+      );
+
+      expect(result.files).toEqual([]);
+      expect(result.failedArtifactIds).toEqual([firstId]);
+    }
+  );
+
   it("leaves ordinary markdown untouched without storage reads", async () => {
     const markdown = "See ![external](https://example.com/product.png).";
 
