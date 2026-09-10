@@ -169,6 +169,129 @@ describe("Eve scheduled report delivery", () => {
   });
 });
 
+describe("Eve reaction delivery", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delivery.finalize.mockResolvedValue(true);
+    delivery.release.mockResolvedValue(true);
+    completion.request.mockReset();
+  });
+
+  it("requests completion for an interactive accepted reaction add", async () => {
+    await handleActionResult(
+      reactToMessageResult({ operation: "add", type: "heart" }),
+      {},
+      interactiveSession()
+    );
+
+    expect(completion.request).toHaveBeenCalledExactlyOnceWith(
+      "call-react-to-message",
+      "turn-1",
+      0
+    );
+    expect(delivery.finalize).not.toHaveBeenCalled();
+  });
+
+  it("does not request completion for reaction remove", async () => {
+    await handleActionResult(
+      reactToMessageResult({ operation: "remove", type: "heart" }),
+      {},
+      interactiveSession()
+    );
+
+    expect(completion.request).not.toHaveBeenCalled();
+    expect(delivery.finalize).not.toHaveBeenCalled();
+  });
+
+  it("does not request completion for a failed reaction action", async () => {
+    await handleActionResult(
+      reactToMessageResult(
+        { operation: "add", type: "heart" },
+        "failed"
+      ),
+      {},
+      interactiveSession()
+    );
+
+    expect(completion.request).not.toHaveBeenCalled();
+  });
+
+  it("does not request completion for a malformed reaction result", async () => {
+    await handleActionResult(
+      {
+        result: {
+          callId: "call-react-to-message",
+          kind: "tool-result",
+          output: { operation: "add" },
+          toolName: "react_to_message",
+        },
+        sequence: 0,
+        status: "completed",
+        stepIndex: 0,
+        turnId: "turn-1",
+      },
+      {},
+      interactiveSession()
+    );
+
+    expect(completion.request).not.toHaveBeenCalled();
+  });
+
+  it("does not request completion for an arbitrary tool result", async () => {
+    await handleActionResult(
+      {
+        result: {
+          callId: "call-other",
+          kind: "tool-result",
+          output: {},
+          toolName: "load_skill",
+        },
+        sequence: 0,
+        status: "completed",
+        stepIndex: 0,
+        turnId: "turn-1",
+      },
+      {},
+      interactiveSession()
+    );
+
+    expect(completion.request).not.toHaveBeenCalled();
+  });
+
+  it("finalizes a report and does not request completion for a scheduled reaction", async () => {
+    await handleActionResult(
+      reactToMessageResult({ operation: "add", type: "heart" }),
+      {},
+      scheduledReportSession()
+    );
+
+    expect(delivery.finalize).toHaveBeenCalledExactlyOnceWith(
+      "00000000-0000-4000-8000-000000000002",
+      "00000000-0000-4000-8000-000000000004",
+      "delivered"
+    );
+    expect(completion.request).not.toHaveBeenCalled();
+  });
+});
+
+function reactToMessageResult(
+  output: { operation: "add" | "remove"; type: string },
+  status: "completed" | "failed" = "completed"
+): ActionParameters[0] {
+  return {
+    result: {
+      callId: "call-react-to-message",
+      kind: "tool-result",
+      output,
+      toolName: "react_to_message",
+    },
+    sequence: 0,
+    status,
+    stepIndex: 0,
+    turnId: "turn-1",
+  };
+}
+
 function scheduledReportSession() {
   return {
     async getSandbox() {

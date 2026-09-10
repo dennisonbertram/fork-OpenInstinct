@@ -84,6 +84,14 @@ export function contractFixtureResponse(
     return { text: "DELIVERY_COMPLETE" };
   }
 
+  if (command === "final-reaction-timeout" && deliveredThisTurn) {
+    throw new Error("contract fixture late model timeout after final delivery");
+  }
+
+  if (command === "final-reaction-normal" && deliveredThisTurn) {
+    return { text: "DELIVERY_COMPLETE" };
+  }
+
   if (command === "silent") return { text: "DELIVERY_COMPLETE" };
   if (command === "wait") return { text: "WAIT_COMPLETE" };
 
@@ -100,6 +108,17 @@ export function contractFixtureResponse(
                 : "fixture final normal",
           },
           name: "send_message",
+        },
+      ],
+    };
+  }
+
+  if (command === "final-reaction-timeout" || command === "final-reaction-normal") {
+    return {
+      toolCalls: [
+        {
+          input: { operation: "add", type: "heart" },
+          name: "react_to_message",
         },
       ],
     };

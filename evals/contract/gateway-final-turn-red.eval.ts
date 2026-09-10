@@ -62,6 +62,47 @@ export default defineEval({
     ]);
     t.check(first.sessionId === second.sessionId, equals(true));
     t.check(distinctTurnAndCallIds(first.events, second.events), equals(true));
+
+    const reactionFirst = await t.send("final-reaction-timeout");
+    writeSafeEvents("reaction-first", reactionFirst.events);
+    reactionFirst
+      .succeeded()
+      .label("accepted reaction final delivery completes the first turn");
+    reactionFirst.calledTool("react_to_message", {
+      count: 1,
+      status: "completed",
+    });
+    reactionFirst.notCalledTool("send_message");
+    reactionFirst.notEvent("turn.failed");
+    reactionFirst.notEvent("step.started", { data: { stepIndex: 1 } });
+    reactionFirst.eventOrder([
+      { type: "action.result" },
+      { type: "turn.completed" },
+      { type: "session.waiting" },
+    ]);
+
+    const reactionSecond = await t.send("final-reaction-normal");
+    writeSafeEvents("reaction-second", reactionSecond.events);
+    reactionSecond
+      .succeeded()
+      .label("a normal reaction final delivery completes the next turn");
+    reactionSecond.calledTool("react_to_message", {
+      count: 1,
+      status: "completed",
+    });
+    reactionSecond.notCalledTool("send_message");
+    reactionSecond.notEvent("turn.failed");
+    reactionSecond.notEvent("step.started", { data: { stepIndex: 1 } });
+    reactionSecond.eventOrder([
+      { type: "action.result" },
+      { type: "turn.completed" },
+      { type: "session.waiting" },
+    ]);
+    t.check(reactionFirst.sessionId === reactionSecond.sessionId, equals(true));
+    t.check(
+      distinctTurnAndCallIds(reactionFirst.events, reactionSecond.events),
+      equals(true)
+    );
   },
 });
 

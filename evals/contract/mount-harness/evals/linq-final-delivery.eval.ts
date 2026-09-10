@@ -289,7 +289,7 @@ async function pollForSession(
   return pollForSession(t, address, attempt + 1);
 }
 
-interface ProviderState {
+export interface ProviderState {
   readonly counts: {
     readonly aborted: number;
     readonly acknowledged: number;
@@ -368,7 +368,7 @@ async function providerState(sessionId: string): Promise<ProviderState> {
   return providerStateSchema.parse(await response.json());
 }
 
-function matchesProviderState(
+export function matchesProviderState(
   state: ProviderState,
   expected: ProviderExpectation
 ) {
@@ -400,7 +400,7 @@ function matchesProviderState(
   );
 }
 
-function assertProviderState(
+export function assertProviderState(
   state: ProviderState,
   expected: ProviderExpectation
 ) {
