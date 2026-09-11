@@ -378,10 +378,10 @@ describe("the logical part, not the call", () => {
   });
 
   it("treats each physical effect of one report as its own part", async () => {
-    expect(await dispatchOnce({ owner: "owner-a", part: "media-upload" })).toBe(
-      "accepted"
-    );
-    expect(await dispatchOnce({ owner: "owner-a", part: "media-send" })).toBe(
+    expect(
+      await dispatchOnce({ owner: "owner-a", part: "media-upload:0" })
+    ).toBe("accepted");
+    expect(await dispatchOnce({ owner: "owner-a", part: "media-send:0" })).toBe(
       "accepted"
     );
     expect(adapter.send).toHaveBeenCalledTimes(2);

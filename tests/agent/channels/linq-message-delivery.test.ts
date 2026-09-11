@@ -220,12 +220,201 @@ vi.mock("@vercel/blob", async (importOriginal) => {
     },
   };
 });
+/**
+ * A faithful in-memory replica of `db/services/completion-report-attempts.ts`,
+ * standing in for Postgres so this suite can observe real claim/attempt/accept
+ * transitions without a database. Real contention and restart behaviour is
+ * covered in `tests/integration/real-postgres.test.ts`; what this proves is
+ * that the channel calls the real seam correctly against actual Linq
+ * provider-call counts.
+ */
+interface StoredReportPart {
+  id: string;
+  state: "claimed" | "attempted" | "accepted" | "unconfirmed";
+  leaseOwner: string;
+  version: number;
+  providerHandle: string | null;
+  leaseExpiresAt: Date;
+}
+interface ReportPartKey {
+  readonly workspaceId: string;
+  readonly rootSessionId: string;
+  readonly cohortId: string;
+  readonly reportRevision: number;
+  readonly part: string;
+}
+function reportPartKeyOf(key: ReportPartKey) {
+  return JSON.stringify([
+    key.workspaceId,
+    key.rootSessionId,
+    key.cohortId,
+    key.reportRevision,
+    key.part,
+  ]);
+}
+function projectReportPart(row: StoredReportPart) {
+  return {
+    id: row.id,
+    leaseOwner: row.leaseOwner,
+    providerHandle: row.providerHandle,
+    state: row.state,
+    version: row.version,
+  };
+}
+const reportAttempts = vi.hoisted(() => {
+  const durable = new Map<string, StoredReportPart>();
+  const byId = (id: string) => {
+    for (const row of durable.values()) if (row.id === id) return row;
+    return undefined;
+  };
+  return {
+    durable,
+    claimCompletionReportPart: (input: {
+      key: ReportPartKey;
+      id: string;
+      leaseOwner: string;
+      leaseExpiresAt: Date;
+      now?: Date;
+    }) => {
+      const now = input.now ?? new Date();
+      const existing = durable.get(reportPartKeyOf(input.key));
+      if (!existing) {
+        const created: StoredReportPart = {
+          id: input.id,
+          leaseExpiresAt: input.leaseExpiresAt,
+          leaseOwner: input.leaseOwner,
+          providerHandle: null,
+          state: "claimed",
+          version: 1,
+        };
+        durable.set(reportPartKeyOf(input.key), created);
+        return Promise.resolve({
+          claim: projectReportPart(created),
+          kind: "claimed",
+        });
+      }
+      if (existing.state === "accepted")
+        return Promise.resolve({
+          claim: projectReportPart(existing),
+          kind: "settled",
+        });
+      if (existing.state === "attempted" || existing.state === "unconfirmed")
+        return Promise.resolve({
+          claim: projectReportPart(existing),
+          kind: "uncertain",
+        });
+      if (existing.leaseExpiresAt > now)
+        return Promise.resolve({
+          claim: projectReportPart(existing),
+          kind: "uncertain",
+        });
+      existing.leaseExpiresAt = input.leaseExpiresAt;
+      existing.leaseOwner = input.leaseOwner;
+      existing.version += 1;
+      return Promise.resolve({
+        claim: projectReportPart(existing),
+        kind: "claimed",
+      });
+    },
+    markProviderAttempted: (input: {
+      id: string;
+      leaseOwner: string;
+      version: number;
+    }) => {
+      const row = byId(input.id);
+      if (
+        row?.state !== "claimed" ||
+        row.leaseOwner !== input.leaseOwner ||
+        row.version !== input.version
+      )
+        return Promise.resolve(undefined);
+      row.state = "attempted";
+      row.version += 1;
+      return Promise.resolve(projectReportPart(row));
+    },
+    markAccepted: (input: {
+      id: string;
+      leaseOwner: string;
+      version: number;
+      providerHandle?: string;
+    }) => {
+      const row = byId(input.id);
+      if (
+        row?.state !== "attempted" ||
+        row.leaseOwner !== input.leaseOwner ||
+        row.version !== input.version
+      )
+        return Promise.resolve(undefined);
+      row.state = "accepted";
+      row.version += 1;
+      if (input.providerHandle !== undefined)
+        row.providerHandle = input.providerHandle;
+      return Promise.resolve(projectReportPart(row));
+    },
+    markUnconfirmed: (input: {
+      id: string;
+      leaseOwner: string;
+      version: number;
+    }) => {
+      const row = byId(input.id);
+      if (
+        row?.state !== "attempted" ||
+        row.leaseOwner !== input.leaseOwner ||
+        row.version !== input.version
+      )
+        return Promise.resolve(undefined);
+      row.state = "unconfirmed";
+      row.version += 1;
+      return Promise.resolve(projectReportPart(row));
+    },
+    reset: () => {
+      durable.clear();
+    },
+  };
+});
+vi.mock("@/db/services/completion-report-attempts", () => ({
+  claimCompletionReportPart: reportAttempts.claimCompletionReportPart,
+  markAccepted: reportAttempts.markAccepted,
+  markProviderAttempted: reportAttempts.markProviderAttempted,
+  markUnconfirmed: reportAttempts.markUnconfirmed,
+}));
+
 const { linqChannelConfig } = await import("@/agent/channels/linq");
 const handleActionResult = linqChannelConfig.events["action.result"];
 const deliverInputRequest = linqChannelConfig.events["input.requested"];
 const handleAuthorizationRequired =
   linqChannelConfig.events["authorization.required"];
 const handleTurnFailed = linqChannelConfig.events["turn.failed"];
+
+const { admitTask, beginCohortReport, recordTerminal } =
+  await import("@/agent/lib/completion-obligations");
+
+/**
+ * Binds the completion-report obligation for one turn/call, the way the
+ * `send_message` tool does in production, without going through the tool: an
+ * admitted, terminal, must-report cohort is what makes `reportPartIdentityFor`
+ * resolve an identity for this exact turn and call.
+ */
+function bindReportObligation(turnId: string, callId: string) {
+  const cohortId = `cohort-${turnId}`;
+  admitTask({
+    objectiveRevision: `objective-${turnId}`,
+    parentTurnId: cohortId,
+    taskId: `task-${callId}`,
+  });
+  recordTerminal(
+    {
+      childSessionId: `${callId}-worker-session`,
+      parentTurnId: cohortId,
+      status: "completed",
+      taskId: `task-${callId}`,
+      workerName: "worker",
+    },
+    [{ claim: "The worker finished.", evidence: "observed" }]
+  );
+  beginCohortReport(cohortId, { callId, turnId });
+  return cohortId;
+}
 
 type ActionHandlerParameters = Parameters<typeof handleActionResult>;
 
@@ -248,6 +437,7 @@ describe("Linq message delivery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     for (const reset of deliveryStateFixture.resets) reset();
+    reportAttempts.reset();
     linqChannelCapture.connectState.mockResolvedValue(undefined);
     linqChannelCapture.deleteState.mockResolvedValue(undefined);
     linqChannelCapture.getState.mockResolvedValue(null);
@@ -1344,6 +1534,87 @@ describe("Linq message delivery", () => {
     );
     expect(post).not.toHaveBeenCalled();
     expect(completionCapture.request).not.toHaveBeenCalled();
+  });
+
+  describe("completion report parts (#157)", () => {
+    it("CS-01: an accepted text report claims once and dispatches once", async () => {
+      bindReportObligation("turn-1", "call-send-message");
+      const { context, post } = handlerContext();
+
+      await handleActionResult(
+        sendMessageResult({ kind: "message", text: "All done." }),
+        context,
+        sessionContext()
+      );
+
+      expect(post).toHaveBeenCalledTimes(1);
+      const claims = [...reportAttempts.durable.values()];
+      expect(claims).toHaveLength(1);
+      expect(claims[0]?.state).toBe("accepted");
+    });
+
+    it("CS-04: a known pre-dispatch rejection leaves no attempted part and no provider call", async () => {
+      bindReportObligation("turn-1", "call-send-message");
+      const { context, post } = handlerContext(undefined, false);
+
+      await expect(
+        handleActionResult(
+          sendMessageResult({ kind: "message", text: "All done." }),
+          context,
+          sessionContext()
+        )
+      ).rejects.toThrow(/active Linq conversation thread/iu);
+
+      expect(reportAttempts.durable.size).toBe(0);
+      expect(post).not.toHaveBeenCalled();
+      expect(linqChannelCapture.postMessage).not.toHaveBeenCalled();
+    });
+
+    it("CS-05: a send that never confirms is left attempted and unconfirmed, with no retry", async () => {
+      bindReportObligation("turn-1", "call-send-message");
+      const { context, post } = handlerContext();
+      post.mockRejectedValueOnce(new Error("timed out"));
+
+      await expect(
+        handleActionResult(
+          sendMessageResult({ kind: "message", text: "All done." }),
+          context,
+          sessionContext()
+        )
+      ).rejects.toThrow("timed out");
+
+      const [claim] = [...reportAttempts.durable.values()];
+      expect(claim?.state).toBe("unconfirmed");
+      expect(post).toHaveBeenCalledTimes(1);
+
+      // A second delivery of the same event -- a replayed callback -- must not
+      // call the provider again: the part is already terminal.
+      await handleActionResult(
+        sendMessageResult({ kind: "message", text: "All done." }),
+        context,
+        sessionContext()
+      );
+      expect(post).toHaveBeenCalledTimes(1);
+    });
+
+    it("CS-06: a replayed callback for an already-accepted report does not dispatch again", async () => {
+      bindReportObligation("turn-1", "call-send-message");
+      const { context, post } = handlerContext();
+
+      await handleActionResult(
+        sendMessageResult({ kind: "message", text: "All done." }),
+        context,
+        sessionContext()
+      );
+      expect(post).toHaveBeenCalledTimes(1);
+
+      await handleActionResult(
+        sendMessageResult({ kind: "message", text: "All done." }),
+        context,
+        sessionContext()
+      );
+      expect(post).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

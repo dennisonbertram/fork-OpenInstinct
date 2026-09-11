@@ -157,6 +157,195 @@ vi.mock("@/agent/lib/browser-image-artifact/delivery", () => ({
     capture.prepareBrowserImageArtifactDelivery,
 }));
 
+/**
+ * A faithful in-memory replica of `db/services/completion-report-attempts.ts`,
+ * standing in for Postgres so this suite can observe real claim/attempt/accept
+ * transitions without a database. Real contention and restart behaviour is
+ * covered in `tests/integration/real-postgres.test.ts`; what this proves is
+ * that the channel calls the real seam correctly -- once per part, claimed
+ * before dispatched -- against actual SendBlue provider-call counts.
+ */
+interface StoredReportPart {
+  id: string;
+  state: "claimed" | "attempted" | "accepted" | "unconfirmed";
+  leaseOwner: string;
+  version: number;
+  providerHandle: string | null;
+  leaseExpiresAt: Date;
+}
+interface ReportPartKey {
+  readonly workspaceId: string;
+  readonly rootSessionId: string;
+  readonly cohortId: string;
+  readonly reportRevision: number;
+  readonly part: string;
+}
+function reportPartKeyOf(key: ReportPartKey) {
+  return JSON.stringify([
+    key.workspaceId,
+    key.rootSessionId,
+    key.cohortId,
+    key.reportRevision,
+    key.part,
+  ]);
+}
+function projectReportPart(row: StoredReportPart) {
+  return {
+    id: row.id,
+    leaseOwner: row.leaseOwner,
+    providerHandle: row.providerHandle,
+    state: row.state,
+    version: row.version,
+  };
+}
+const reportAttempts = vi.hoisted(() => {
+  const durable = new Map<string, StoredReportPart>();
+  const byId = (id: string) => {
+    for (const row of durable.values()) if (row.id === id) return row;
+    return undefined;
+  };
+  return {
+    durable,
+    claimCompletionReportPart: (input: {
+      key: ReportPartKey;
+      id: string;
+      leaseOwner: string;
+      leaseExpiresAt: Date;
+      now?: Date;
+    }) => {
+      const now = input.now ?? new Date();
+      const existing = durable.get(reportPartKeyOf(input.key));
+      if (!existing) {
+        const created: StoredReportPart = {
+          id: input.id,
+          leaseExpiresAt: input.leaseExpiresAt,
+          leaseOwner: input.leaseOwner,
+          providerHandle: null,
+          state: "claimed",
+          version: 1,
+        };
+        durable.set(reportPartKeyOf(input.key), created);
+        return Promise.resolve({
+          claim: projectReportPart(created),
+          kind: "claimed",
+        });
+      }
+      if (existing.state === "accepted")
+        return Promise.resolve({
+          claim: projectReportPart(existing),
+          kind: "settled",
+        });
+      if (existing.state === "attempted" || existing.state === "unconfirmed")
+        return Promise.resolve({
+          claim: projectReportPart(existing),
+          kind: "uncertain",
+        });
+      if (existing.leaseExpiresAt > now)
+        return Promise.resolve({
+          claim: projectReportPart(existing),
+          kind: "uncertain",
+        });
+      existing.leaseExpiresAt = input.leaseExpiresAt;
+      existing.leaseOwner = input.leaseOwner;
+      existing.version += 1;
+      return Promise.resolve({
+        claim: projectReportPart(existing),
+        kind: "claimed",
+      });
+    },
+    markProviderAttempted: (input: {
+      id: string;
+      leaseOwner: string;
+      version: number;
+    }) => {
+      const row = byId(input.id);
+      if (
+        row?.state !== "claimed" ||
+        row.leaseOwner !== input.leaseOwner ||
+        row.version !== input.version
+      )
+        return Promise.resolve(undefined);
+      row.state = "attempted";
+      row.version += 1;
+      return Promise.resolve(projectReportPart(row));
+    },
+    markAccepted: (input: {
+      id: string;
+      leaseOwner: string;
+      version: number;
+      providerHandle?: string;
+    }) => {
+      const row = byId(input.id);
+      if (
+        row?.state !== "attempted" ||
+        row.leaseOwner !== input.leaseOwner ||
+        row.version !== input.version
+      )
+        return Promise.resolve(undefined);
+      row.state = "accepted";
+      row.version += 1;
+      if (input.providerHandle !== undefined)
+        row.providerHandle = input.providerHandle;
+      return Promise.resolve(projectReportPart(row));
+    },
+    markUnconfirmed: (input: {
+      id: string;
+      leaseOwner: string;
+      version: number;
+    }) => {
+      const row = byId(input.id);
+      if (
+        row?.state !== "attempted" ||
+        row.leaseOwner !== input.leaseOwner ||
+        row.version !== input.version
+      )
+        return Promise.resolve(undefined);
+      row.state = "unconfirmed";
+      row.version += 1;
+      return Promise.resolve(projectReportPart(row));
+    },
+    reset: () => {
+      durable.clear();
+    },
+  };
+});
+vi.mock("@/db/services/completion-report-attempts", () => ({
+  claimCompletionReportPart: reportAttempts.claimCompletionReportPart,
+  markAccepted: reportAttempts.markAccepted,
+  markProviderAttempted: reportAttempts.markProviderAttempted,
+  markUnconfirmed: reportAttempts.markUnconfirmed,
+}));
+
+const { admitTask, beginCohortReport, recordTerminal } =
+  await import("@/agent/lib/completion-obligations");
+
+/**
+ * Binds the completion-report obligation for one turn/call, the way the
+ * `send_message` tool does in production, without going through the tool: an
+ * admitted, terminal, must-report cohort is what makes `reportPartIdentityFor`
+ * resolve an identity for this exact turn and call.
+ */
+function bindReportObligation(turnId: string, callId: string) {
+  const cohortId = `cohort-${turnId}`;
+  admitTask({
+    objectiveRevision: `objective-${turnId}`,
+    parentTurnId: cohortId,
+    taskId: `task-${callId}`,
+  });
+  recordTerminal(
+    {
+      childSessionId: `${callId}-worker-session`,
+      parentTurnId: cohortId,
+      status: "completed",
+      taskId: `task-${callId}`,
+      workerName: "worker",
+    },
+    [{ claim: "The worker finished.", evidence: "observed" }]
+  );
+  beginCohortReport(cohortId, { callId, turnId });
+  return cohortId;
+}
+
 const { dispatchSendblueMessage } = await import("@/agent/channels/sendblue");
 const sendblueEvents = (
   capture.events as {
@@ -198,6 +387,7 @@ interface StoredPendingInput {
 
 beforeEach(() => {
   deliveryState.reset();
+  reportAttempts.reset();
   vi.clearAllMocks();
   capture.findOne.mockResolvedValue({ id: "alice", phoneNumberVerified: true });
   capture.findIdentity.mockResolvedValue({
@@ -1436,6 +1626,234 @@ describe("SendBlue channel", () => {
     ).rejects.toThrow(/did not accept/iu);
     await getSendblueEvent("turn.failed")({ turnId: "turn-1" }, { thread });
     expect(capture.post).not.toHaveBeenCalled();
+  });
+
+  describe("completion report parts (#157)", () => {
+    it("CS-01: an accepted text report claims once and dispatches once", async () => {
+      bindReportObligation("turn-1", "call-1");
+      capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+        failedArtifactIds: [],
+        files: [],
+        text: "All done.",
+      });
+
+      await getSendblueEvent("action.result")(
+        action({ output: { kind: "message", text: "All done." } }),
+        { thread },
+        sessionContext()
+      );
+
+      expect(capture.post).toHaveBeenCalledTimes(1);
+      const claims = [...reportAttempts.durable.values()];
+      expect(claims).toHaveLength(1);
+      expect(claims[0]?.state).toBe("accepted");
+    });
+
+    it("CS-02/CS-03: each media item's upload and send is its own claimed part, with the provider handle retained", async () => {
+      bindReportObligation("turn-1", "call-1");
+      capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+        failedArtifactIds: [],
+        files: [
+          {
+            data: Buffer.from([1]),
+            filename: "one.png",
+            mimeType: "image/png",
+          },
+          {
+            data: Buffer.from([2]),
+            filename: "two.png",
+            mimeType: "image/png",
+          },
+        ],
+        text: "Two shots.",
+      });
+      capture.fetch
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              media_url: "https://sendblue.example/media/one.png",
+              status: "OK",
+            }),
+            { headers: { "content-type": "application/json" }, status: 201 }
+          )
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              media_url: "https://sendblue.example/media/two.png",
+              status: "OK",
+            }),
+            { headers: { "content-type": "application/json" }, status: 201 }
+          )
+        );
+      capture.mediaSend
+        .mockResolvedValueOnce({ message_handle: "handle-one" })
+        .mockResolvedValueOnce({ message_handle: "handle-two" });
+
+      await getSendblueEvent("action.result")(
+        action({ output: { kind: "message", text: "Two shots." } }),
+        { thread },
+        sessionContext()
+      );
+
+      expect(capture.fetch).toHaveBeenCalledTimes(2);
+      expect(capture.mediaSend).toHaveBeenCalledTimes(2);
+      const claims = [...reportAttempts.durable.entries()];
+      const parts = claims.map(([key]) => (JSON.parse(key) as string[]).at(-1));
+      expect(new Set(parts)).toEqual(
+        new Set([
+          "media-upload:0",
+          "media-send:0",
+          "media-upload:1",
+          "media-send:1",
+        ])
+      );
+      expect(claims.every(([, row]) => row.state === "accepted")).toBe(true);
+      const sendClaims = new Map(
+        claims
+          .filter(
+            ([key]) => (JSON.parse(key) as string[]).at(-1) === "media-send:0"
+          )
+          .map(([key, row]) => [key, row])
+      );
+      const [sendZero] = sendClaims.values();
+      expect(sendZero?.providerHandle).toBe("handle-one");
+    });
+
+    it("blocks a media send whose owned upload part was not accepted", async () => {
+      const cohortId = bindReportObligation("turn-1", "call-1");
+      // Simulate a crashed prior attempt: the upload part is durably
+      // `attempted`, so recovery must classify it uncertain and never
+      // reupload -- and, per #157, the matching send must never begin either.
+      reportAttempts.durable.set(
+        JSON.stringify([
+          workspaceId,
+          "root-session-1",
+          cohortId,
+          0,
+          "media-upload:0",
+        ]),
+        {
+          id: "stuck-upload",
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+          leaseOwner: "owner-that-died",
+          providerHandle: null,
+          state: "attempted",
+          version: 2,
+        }
+      );
+      capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+        failedArtifactIds: [],
+        files: [
+          {
+            data: Buffer.from([1]),
+            filename: "one.png",
+            mimeType: "image/png",
+          },
+        ],
+        text: "One shot.",
+      });
+
+      await getSendblueEvent("action.result")(
+        action({ output: { kind: "message", text: "One shot." } }),
+        { thread },
+        sessionContext()
+      );
+
+      expect(capture.fetch).not.toHaveBeenCalled();
+      expect(capture.mediaSend).not.toHaveBeenCalled();
+    });
+
+    it("CS-04: a known pre-dispatch rejection leaves no attempted part and no provider call", async () => {
+      bindReportObligation("turn-1", "call-1");
+      capture.decodeThreadId.mockReturnValueOnce({
+        contactNumber: undefined,
+        fromNumber: "+12025550123",
+      });
+      capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+        failedArtifactIds: [],
+        files: [
+          {
+            data: Buffer.from([1]),
+            filename: "one.png",
+            mimeType: "image/png",
+          },
+        ],
+        text: "One shot.",
+      });
+
+      await expect(
+        getSendblueEvent("action.result")(
+          action({ output: { kind: "message", text: "One shot." } }),
+          { thread },
+          sessionContext()
+        )
+      ).rejects.toThrow(/configured 1:1 sender line/iu);
+
+      expect(reportAttempts.durable.size).toBe(0);
+      expect(capture.fetch).not.toHaveBeenCalled();
+      expect(capture.mediaSend).not.toHaveBeenCalled();
+      expect(capture.post).not.toHaveBeenCalled();
+    });
+
+    it("CS-05: a send that never confirms is left attempted and unconfirmed, with no retry", async () => {
+      bindReportObligation("turn-1", "call-1");
+      capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+        failedArtifactIds: [],
+        files: [],
+        text: "All done.",
+      });
+      capture.post.mockRejectedValueOnce(new Error("timed out"));
+
+      await expect(
+        getSendblueEvent("action.result")(
+          action({ output: { kind: "message", text: "All done." } }),
+          { thread },
+          sessionContext()
+        )
+      ).rejects.toThrow("timed out");
+
+      const [claim] = [...reportAttempts.durable.values()];
+      expect(claim?.state).toBe("unconfirmed");
+      expect(capture.post).toHaveBeenCalledTimes(1);
+
+      // A second delivery of the same event -- a replayed callback -- must not
+      // call the provider again: the part is already terminal.
+      capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+        failedArtifactIds: [],
+        files: [],
+        text: "All done.",
+      });
+      await getSendblueEvent("action.result")(
+        action({ output: { kind: "message", text: "All done." } }),
+        { thread },
+        sessionContext()
+      );
+      expect(capture.post).toHaveBeenCalledTimes(1);
+    });
+
+    it("CS-06: a replayed callback for an already-accepted report does not dispatch again", async () => {
+      bindReportObligation("turn-1", "call-1");
+      capture.prepareBrowserImageArtifactDelivery.mockResolvedValue({
+        failedArtifactIds: [],
+        files: [],
+        text: "All done.",
+      });
+
+      await getSendblueEvent("action.result")(
+        action({ output: { kind: "message", text: "All done." } }),
+        { thread },
+        sessionContext()
+      );
+      expect(capture.post).toHaveBeenCalledTimes(1);
+
+      await getSendblueEvent("action.result")(
+        action({ output: { kind: "message", text: "All done." } }),
+        { thread },
+        sessionContext()
+      );
+      expect(capture.post).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
