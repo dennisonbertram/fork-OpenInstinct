@@ -1,4 +1,7 @@
-import { readBackgroundTaskTerminals } from "eve/context";
+import {
+  readBackgroundTaskMembers,
+  readBackgroundTaskTerminals,
+} from "eve/context";
 import { z } from "zod";
 
 export interface BackgroundTaskTerminalRecord {
@@ -84,6 +87,13 @@ export interface BackgroundTaskMember {
   settled: boolean;
 }
 
+const backgroundTaskMemberSchema = z.object({
+  taskId: z.string().min(1),
+  parentTurnId: z.string().min(1),
+  workerName: z.string().min(1),
+  settled: z.boolean(),
+});
+
 /**
  * Every background task this root session owns, settled or still running.
  *
@@ -95,10 +105,24 @@ export interface BackgroundTaskMember {
 export function backgroundTaskMembers(expect?: {
   parentTurnId?: string;
 }): readonly BackgroundTaskMember[] {
-  return backgroundTaskTerminals(expect).map((terminal) => ({
-    taskId: terminal.taskId,
-    parentTurnId: terminal.parentTurnId,
-    workerName: terminal.workerName,
-    settled: true,
-  }));
+  const seen = new Set<string>();
+  const members: BackgroundTaskMember[] = [];
+
+  for (const raw of readBackgroundTaskMembers()) {
+    const parsed = backgroundTaskMemberSchema.safeParse(raw);
+    if (!parsed.success) continue;
+    const member = parsed.data;
+
+    if (
+      expect?.parentTurnId !== undefined &&
+      member.parentTurnId !== expect.parentTurnId
+    )
+      continue;
+    if (seen.has(member.taskId)) continue;
+    seen.add(member.taskId);
+
+    members.push(member);
+  }
+
+  return members;
 }
