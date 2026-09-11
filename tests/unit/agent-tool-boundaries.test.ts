@@ -71,6 +71,37 @@ describe("root and worker capability boundaries", () => {
     );
   });
 
+  it("AR-07: the authored instructions send preparation to the native approval, not to a second question", () => {
+    // Plan 008 step 4 would remove a duplicate prose confirmation if one
+    // existed. It does not: the instructions already direct preparation
+    // straight to the native gate, in three places. So there is nothing to
+    // remove, and this case guards those directives against silent removal
+    // instead -- which is the regression that would reintroduce the duplicate
+    // question the plan is about.
+    const safety = readFileSync(
+      "agent/instructions/content/execution-safety.md",
+      "utf8"
+    );
+    const interactive = readFileSync(
+      "agent/instructions/content/role/interactive.md",
+      "utf8"
+    );
+
+    expect(safety).toContain(
+      "without exposing internals or asking a duplicate permission question"
+    );
+    expect(safety).toContain("so the native approval gate can park it safely");
+    expect(interactive).toContain(
+      "Do not expose the tool or ask a duplicate permission question"
+    );
+    expect(interactive).toContain(
+      "after approval, fill from the vault and submit without another confirmation"
+    );
+    expect(interactive).toContain(
+      "do not duplicate them as prose unless the user needs an explanation"
+    );
+  });
+
   it("keeps durable memory scoped to the authenticated root user", () => {
     const memory = readFileSync(rootMemory, "utf8");
 
