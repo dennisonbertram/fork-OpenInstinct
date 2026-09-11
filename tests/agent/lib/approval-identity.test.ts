@@ -87,6 +87,54 @@ describe("materialTermsFingerprint", () => {
   });
 });
 
+describe("materialTermsFingerprint collision resistance", () => {
+  // Each of these was a real collision in the delimiter-joined encoding this
+  // replaced, found by an outside review of that version.
+
+  it("AP-08: a term value cannot forge a field boundary", () => {
+    // Under a separator-joined encoding, a value containing the separator made
+    // these two different actions hash identically.
+    for (const separator of ["\u0000", "\u0001", "|", ","]) {
+      const forged = authorized({
+        terms: { item: `Brake pads${separator}merchant${separator}Evil Co` },
+      });
+      const honest = authorized({
+        terms: { item: "Brake pads", merchant: "Evil Co" },
+      });
+
+      expect(forged).not.toBe(honest);
+    }
+  });
+
+  it("AP-09: an absent target token differs from an empty one", () => {
+    expect(authorized({ target_token: undefined })).not.toBe(
+      authorized({ target_token: "" })
+    );
+  });
+
+  it("AP-10: a count differs from the same digits as text", () => {
+    expect(authorized({ terms: { ...orderTerms, quantity: 2 } })).not.toBe(
+      authorized({ terms: { ...orderTerms, quantity: "2" } })
+    );
+  });
+
+  it("AP-11: a lone surrogate is not folded onto the replacement character", () => {
+    // UTF-8 encoding turns an unpaired surrogate into U+FFFD, so a raw
+    // hash of the string would collide these two distinct values.
+    expect(authorized({ terms: { item: "\uD800" } })).not.toBe(
+      authorized({ terms: { item: "\uFFFD" } })
+    );
+  });
+
+  it("AP-12: swapping which key holds which value changes the fingerprint", () => {
+    expect(
+      authorized({ terms: { item: "Brake pads", merchant: "Parts Co" } })
+    ).not.toBe(
+      authorized({ terms: { item: "Parts Co", merchant: "Brake pads" } })
+    );
+  });
+});
+
 describe("resolveApprovalResume", () => {
   it("AP-04: authorises only the matching request with unchanged terms", () => {
     const fingerprint = authorized();

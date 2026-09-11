@@ -32,16 +32,30 @@ export interface MaterialActionTerms {
 }
 
 /**
- * Canonical form: terms sorted by key, so two structurally equal sets hash
- * identically regardless of the order a model happened to emit them. A NUL
- * separator cannot appear in an authored term, so no value can impersonate a
- * field boundary.
+ * Canonical form: the outer fields and the terms as sorted key/value pairs,
+ * serialised as JSON.
+ *
+ * JSON rather than a delimiter-joined string, deliberately. A term value is
+ * free text — a message body, a merchant name — so any separator character
+ * could appear inside a value and forge a field boundary, making two different
+ * actions hash alike. Quoting removes that whole class of ambiguity. It also
+ * keeps a count distinct from the same digits as text, and it escapes lone
+ * surrogates rather than letting UTF-8 fold them onto the replacement
+ * character, which would collide two genuinely different values.
+ *
+ * An absent target token encodes as null, which no supplied token can produce,
+ * so absence is not the same as an empty one.
  */
-function canonicalTerms(terms: Readonly<Record<string, MaterialTermValue>>) {
-  return Object.entries(terms)
-    .toSorted(([left], [right]) => (left < right ? -1 : 1))
-    .map(([key, value]) => `${key}\u0000${String(value)}`)
-    .join("\u0000");
+function canonicalForm(input: MaterialActionTerms): string {
+  return JSON.stringify([
+    input.action,
+    input.origin,
+    input.target_ref,
+    input.target_token ?? null,
+    Object.entries(input.terms).toSorted(([left], [right]) =>
+      left < right ? -1 : 1
+    ),
+  ]);
 }
 
 /**
@@ -54,17 +68,7 @@ function canonicalTerms(terms: Readonly<Record<string, MaterialTermValue>>) {
  * declared fields, a caller passing extra properties cannot widen the hash.
  */
 export function materialTermsFingerprint(input: MaterialActionTerms): string {
-  return createHash("sha256")
-    .update(
-      [
-        input.action,
-        input.origin,
-        input.target_ref,
-        input.target_token ?? "",
-        canonicalTerms(input.terms),
-      ].join("\u0001")
-    )
-    .digest("hex");
+  return createHash("sha256").update(canonicalForm(input)).digest("hex");
 }
 
 export interface PendingApproval {
