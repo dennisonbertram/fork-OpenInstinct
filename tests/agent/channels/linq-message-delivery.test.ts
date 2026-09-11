@@ -1553,6 +1553,63 @@ describe("Linq message delivery", () => {
       expect(claims[0]?.state).toBe("accepted");
     });
 
+    it("CS-05b: a refused text part is not posted and not reported as delivered", async () => {
+      // A previous owner already recorded an attempt for this exact part, so
+      // permission comes back refused. Without a case here, removing the
+      // channel's check on that refusal passes every other test.
+      bindReportObligation("turn-1", "call-send-message");
+      reportAttempts.durable.set(
+        reportPartKeyOf({
+          cohortId: "cohort-turn-1",
+          part: "text",
+          reportRevision: 0,
+          rootSessionId: "session-1",
+          workspaceId: "workspace-1",
+        }),
+        {
+          id: "text-prior-attempt",
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+          leaseOwner: "an-owner-that-crashed",
+          providerHandle: null,
+          state: "attempted",
+          version: 2,
+        }
+      );
+      const { context, post } = handlerContext();
+
+      await handleActionResult(
+        sendMessageResult({ kind: "message", text: "All done." }),
+        context,
+        sessionContext()
+      );
+
+      // The message may already have reached the provider, so nothing is posted.
+      expect(post).not.toHaveBeenCalled();
+      // And the consequence that matters more: the turn is not completed as
+      // though a report had gone out. Asserting only the absent post is not
+      // enough, because the dispatch refuses itself inside postLinqReply -- it
+      // is the caller's early return that stops delivery being declared done.
+      expect(completionCapture.request).not.toHaveBeenCalled();
+    });
+
+    it("CS-12: a scheduled report is never bound to the durable claim", async () => {
+      // Plan 007 step 4. A scheduled report has its own idempotency key, lease
+      // and sequence; this record is for the interactive obligation only.
+      bindReportObligation("turn-1", "call-send-message");
+      const { context } = handlerContext();
+
+      await handleActionResult(
+        sendMessageResult({ kind: "message", text: "Scheduled summary." }),
+        context,
+        sessionContext("scheduled-result")
+      );
+
+      // A scheduled report goes out through the channel's own idempotent path,
+      // which is why it must not also take a durable report claim.
+      expect(linqChannelCapture.postMessage).toHaveBeenCalledTimes(1);
+      expect(reportAttempts.durable.size).toBe(0);
+    });
+
     it("CS-04: a known pre-dispatch rejection leaves no attempted part and no provider call", async () => {
       bindReportObligation("turn-1", "call-send-message");
       const { context, post } = handlerContext(undefined, false);

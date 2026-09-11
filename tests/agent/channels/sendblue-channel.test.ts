@@ -1764,6 +1764,87 @@ describe("SendBlue channel", () => {
       expect(capture.mediaSend).not.toHaveBeenCalled();
     });
 
+    /**
+     * Seeds a part that a previous owner already attempted, so permission comes
+     * back refused. That is the only way to reach the channel's refusal
+     * branches, and without it a mutation removing them survives.
+     */
+    function seedUncertainPart(part: string, turnId = "turn-1") {
+      reportAttempts.durable.set(
+        reportPartKeyOf({
+          cohortId: `cohort-${turnId}`,
+          part,
+          reportRevision: 0,
+          rootSessionId: "root-session-1",
+          workspaceId,
+        }),
+        {
+          id: `${part}-prior-attempt`,
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+          leaseOwner: "an-owner-that-crashed",
+          providerHandle: null,
+          state: "attempted",
+          version: 2,
+        }
+      );
+    }
+
+    it("CS-05b: a refused media send is not treated as sent", async () => {
+      bindReportObligation("turn-1", "call-1");
+      capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+        failedArtifactIds: [],
+        files: [],
+        text: "Here it is.",
+      });
+      seedUncertainPart("media-send:0");
+
+      await getSendblueEvent("action.result")(
+        action({
+          output: {
+            attachments: [
+              { kind: "image", url: "https://media.example/one.png" },
+            ],
+            kind: "message",
+            text: "Here it is.",
+          },
+        }),
+        { thread },
+        sessionContext()
+      );
+
+      // The send may already have reached the provider under the prior owner,
+      // so this call must not send and must not ledger usage as though it had.
+      expect(capture.mediaSend).not.toHaveBeenCalled();
+      expect(capture.recordUsageEvent).not.toHaveBeenCalled();
+    });
+
+    it("CS-11b: a refused upload stops before its media send", async () => {
+      bindReportObligation("turn-1", "call-1");
+      capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+        failedArtifactIds: [],
+        files: [
+          {
+            data: Buffer.from([1]),
+            filename: "one.png",
+            mimeType: "image/png",
+          },
+        ],
+        text: "Here it is.",
+      });
+      seedUncertainPart("media-upload:0");
+
+      await getSendblueEvent("action.result")(
+        action({ output: { kind: "message", text: "Here it is." } }),
+        { thread },
+        sessionContext()
+      );
+
+      // An upload that may already have happened is never repeated, and with no
+      // media URL in hand there is nothing to send.
+      expect(capture.fetch).not.toHaveBeenCalled();
+      expect(capture.mediaSend).not.toHaveBeenCalled();
+    });
+
     it("CS-04: a known pre-dispatch rejection leaves no attempted part and no provider call", async () => {
       bindReportObligation("turn-1", "call-1");
       capture.decodeThreadId.mockReturnValueOnce({
