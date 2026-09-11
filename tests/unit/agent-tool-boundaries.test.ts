@@ -102,6 +102,38 @@ describe("root and worker capability boundaries", () => {
     );
   });
 
+  it("AR-08: nothing tells the root to read verification out of the worker's own wording", () => {
+    // Observed on 2026-09-11 in session wrun_01M298YHXQMDK0J8RY2H471FKX. A
+    // worker's uncorroborated claim was reported honestly on the turn that owed
+    // a summary -- "(reported by the worker, not confirmed)" -- and then, one
+    // turn later, described as "successfully opened example.com and verified the
+    // page heading", with the qualification gone.
+    //
+    // The instructions were pointing at the worker's phrasing as the test for
+    // verification: "Treat `success` as achieved only when its message includes a
+    // verified outcome." That sits two sentences from the rule that a worker's
+    // message is never established fact "however confident its wording", and the
+    // two cannot both be followed. Confident phrasing is the thing a worker
+    // controls and the thing that must not count.
+    const coordination = readFileSync(
+      "agent/instructions/content/worker-coordination.md",
+      "utf8"
+    );
+
+    // The contradiction must be gone.
+    expect(coordination).not.toContain(
+      "Treat `success` as achieved only when its message includes a verified outcome"
+    );
+    // And what replaces it must name the record, not the wording.
+    expect(coordination).toContain(
+      "a corroborating record this session owns, never the confidence of the worker's wording"
+    );
+    // The rule it contradicted stays.
+    expect(coordination).toContain(
+      "never as established fact, however confident its wording"
+    );
+  });
+
   it("keeps durable memory scoped to the authenticated root user", () => {
     const memory = readFileSync(rootMemory, "utf8");
 
