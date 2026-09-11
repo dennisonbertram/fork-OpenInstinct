@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const patchUrl = new URL("../../patches/eve@0.49.0.patch", import.meta.url);
 
 describe("Eve patch boundary", () => {
-  it("contains only the registered compatibility and final-delivery completion hunks", async () => {
+  it("contains only the registered compatibility, final-delivery completion, and task-terminal projection hunks", async () => {
     const patch = await readFile(patchUrl, "utf8");
     const paths = [...patch.matchAll(/^diff --git a\/(\S+) b\/(\S+)$/gmu)];
 
@@ -38,12 +38,24 @@ describe("Eve patch boundary", () => {
         "dist/src/context/turn-completion.js",
       ],
       ["dist/src/eve-channel/index.js", "dist/src/eve-channel/index.js"],
+      [
+        "dist/src/execution/workflow-steps.js",
+        "dist/src/execution/workflow-steps.js",
+      ],
       ["dist/src/harness/tool-loop.js", "dist/src/harness/tool-loop.js"],
       [
         "dist/src/public/context/index.d.ts",
         "dist/src/public/context/index.d.ts",
       ],
       ["dist/src/public/context/index.js", "dist/src/public/context/index.js"],
+      [
+        "dist/src/tasks/terminal-projection.d.ts",
+        "dist/src/tasks/terminal-projection.d.ts",
+      ],
+      [
+        "dist/src/tasks/terminal-projection.js",
+        "dist/src/tasks/terminal-projection.js",
+      ],
     ]);
     expect(patch).toContain(
       'export { createLinqAdapter } from "@linqapp/chat-sdk-adapter"'
@@ -58,6 +70,21 @@ describe("Eve patch boundary", () => {
     expect(patch).toContain("u.has(e.resolverSlug)");
     expect(patch).toContain("requestTurnCompletion");
     expect(patch).toContain("consumeTurnCompletionRequest");
+    expect(patch).toContain("readBackgroundTaskTerminals");
+    expect(patch).toContain("setSessionTaskTerminals(l,c.state)");
     expect(patch).not.toContain("diff --git a/package.json");
+  });
+
+  it("keeps the task-terminal projection read-only", async () => {
+    const patch = await readFile(patchUrl, "utf8");
+    const projection = patch.slice(
+      patch.indexOf("b/dist/src/tasks/terminal-projection.js")
+    );
+
+    // The projection must never publish the private task inbox routing
+    // credential, and it must not rewrite the runtime's cohort instructions.
+    expect(projection).not.toContain("taskInboxToken");
+    expect(patch).not.toContain("TASK_DELIVERY_SETTLED_INSTRUCTION");
+    expect(patch).not.toContain("TASK_DELIVERY_PENDING_INSTRUCTION");
   });
 });
