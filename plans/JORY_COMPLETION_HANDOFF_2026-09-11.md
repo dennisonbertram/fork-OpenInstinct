@@ -125,9 +125,21 @@ all?** If it does not, cohorts can never form from browser work, and the
 completion mechanism applies only to whatever path produced cohorts `turn_0`,
 `turn_1` and `turn_4` — which exist, so some path does produce them.
 
-Two checks settle it. Read child session `wrun_41M294QYSS0GKVQ6KG6BW7BDZ2` and see
-what it returned. Then watch whether any task-triggered parent turn ever fires on
-its own; none did here, across twenty minutes and four subsequent turns.
+One plausible cause is already eliminated: the dispatch mode is not something the
+instructions choose. `agent/instructions/content/worker-coordination.md` specifies
+the assignment format, the required `outputSchema`, and how the result will be
+recorded, and says nothing about background versus blocking. The root simply calls
+the tool and Eve decides.
+
+That leaves the observable fact, which is worth stating exactly as it stands: with
+`experimental.tasks: true`, the `browser-agent` call in turn 16 produced **no task
+index entry**. `reconcileBackgroundTasks()` runs at every root step and admits
+whatever `backgroundTaskMembers()` returns; turn 18 ran it and admitted nothing, so
+that projection was empty.
+
+Two checks settle the cause. Read child session `wrun_41M294QYSS0GKVQ6KG6BW7BDZ2`
+and see what it returned. Then watch whether any task-triggered parent turn ever
+fires on its own; none did here, across twenty minutes and four subsequent turns.
 
 None of this is caused by the completion mechanism, and the mechanism behaved
 correctly throughout: with nothing settled, nothing was owed, and turns 18 and 19
