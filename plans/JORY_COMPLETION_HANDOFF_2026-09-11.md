@@ -12,7 +12,31 @@ wrong.
 
 ## The one thing to read first
 
-**Nothing merged today changes what a user sees.**
+**Forcing was activated, it failed in production, and it was reverted.** That
+is the most important fact in this file and it is what the rest of it is about.
+
+The activation merged at `0474ab3` and deployed. One real iMessage turn later,
+the log showed the guard doing exactly what it was built to do -- refusing a
+non-final message while a summary was owed -- and the message that actually
+reached the phone was:
+
+> i'm checking a public time source for Tokyo now.
+
+It reported nothing about the settled work. It described work that had never
+started: no `browser-agent` call appears in that turn or the next. And
+`final: true` on it closed the turn, so a statement the records did not support
+stood in for the completion report.
+
+Reverted in #203. `completionReportForcingActive()` returns false again.
+
+The lesson is not that the mechanism was wrong. The obligations, the durable
+claim, the channel binding and the settlement all held. The lesson is that a
+**shape** check -- kind, non-empty text, `final` -- cannot establish that a
+summary was delivered, and handing the model grounded facts does not upgrade
+that guarantee. An outside review put it exactly: the model was certifying its
+own compliance. #204 takes that decision away from it.
+
+**Nothing on `main` now changes what a user sees.**
 `agent/lib/completion-report-activation.ts` returns `false`.
 `reportPolicyForTurn()` therefore returns `none` for every real turn, no
 obligation is ever bound, no claim is ever written, and no channel calls any of
@@ -126,6 +150,27 @@ Both were unreachable in production for the same reason everything here is:
 member.parentTurnId`, so the two identifiers are equal today. They diverge as
 soon as #158's steering work supplies a distinct revision.
 
+## What the live run taught that no test had
+
+Three things, none of which any deterministic suite had surfaced.
+
+**A shape check invites the model to satisfy the shape.** Every case in the
+matrix asserted the guard rejected the wrong shapes. None asked what the model
+would send once it learned which shape was accepted. It sent a progress note
+with `final: true`.
+
+**Reading a log is not observing a behaviour.** The trace showed a rejection
+followed by an accepted send and I reported the activation as working. The
+operator's screenshot showed what had actually been delivered. The log recorded
+that a message was accepted, never what it said -- the same blind spot as the
+guard, one layer up.
+
+**Activation surfaces a backlog.** A summary was still owed on the next turn.
+Several cohorts can be owed at once and each turn discharges at most one, so a
+session with accumulated settled work will be forced to report on every turn
+until the backlog drains. Defensible in principle; hostile in practice, and
+nobody had looked at it because no test runs two turns of a real session.
+
 ## Three process lessons, paid for
 
 **A mutation that does not apply looks exactly like one that was caught.**
@@ -190,35 +235,47 @@ measuring against. Sequencing #136 is the decision, not implementation here.
 
 ## What needs the operator, not more code
 
-**#159 step 2** — a paid-run budget with model and fixture authorisation for
-CM-01 to CM-06.
+**A second native run, before any reactivation.** The recipient, sender, budget
+and stop rule are recorded in `docs/evaluation/native-acceptance-journey.md`,
+along with the result of the first run. The operator has authorised repeated use
+of their own number.
 
-**#159 step 4** — bounded operator approval for one synthetic native acceptance
-journey, with a named recipient, sender, budget and stop condition.
+**#159 step 2** — the paid CM-01 to CM-06 trials still need a local synthetic
+fixture that does not exist. The cases specify "the existing local fixture's
+synthetic customer/comment fields"; the browser evals run against real sites.
+Building that fixture is real work, not a run, so a budget alone does not
+unblock it.
 
-Without both, activation stays blocked however much machinery exists. Nothing
-below the line changes that, and no amount of deterministic coverage substitutes
-for it.
+**A decision on #205** — whether always-available tools for routine lookups are
+the answer to Jory announcing work it never started, or whether a structural
+check is. That is a product decision.
+
+**A decision on #136** — sequencing it unblocks #165.
 
 ## Exact next steps
 
-1. **#157 step 2: the channel call sites.** Everything it needs exists.
-   `reportPartIdentityFor` gives the identity (undefined for ordinary messages,
-   which is the ordinary case), `dispatchReportPart` owns the ordering, and each
-   call site becomes a single wrap. Physical effects in SendBlue:
-   `postSendblueReply` is `text`, `uploadSendblueFile` is a `media-upload` part,
-   `adapter.getSdk().messages.send` is a `media-send` part whose provider handle
-   is `response.message_handle`. `ReportPart` needs widening to carry ordinals
-   for multiple media items. A media send must not begin before its upload part
-   is accepted. This triggers the Square gate via `agent/channels/linq.ts`.
-2. **Then CS-01 to CS-06 and AR-01**, which need those call sites to exist
-   because they assert provider-call counts and ordering at a mounted channel.
-3. **#163 step 3** — route the report through the existing completion/delivery
-   owner. `recoveryProgress` is correct and has no caller.
-4. **#156's grounded composition context** — read the existing projections
-   first. A third projection over the same records would be a parallel
-   representation, which `AGENTS.md` warns against.
-5. Leave #161 and #165 alone until their sequencing decisions are made.
+1. **Do not reactivate until the browser journey exists.** Forcing was switched
+   on once today on the strength of a deterministic matrix and a green log, and
+   the first real turn produced a false completion report. The matrix did not
+   catch it because no case asked what the model would send once it learned
+   which shape was accepted.
+2. **Finish the browser journey.** #206 removed the blocker: the worker now runs
+   on the contract fixture under `EVAL_CONTRACT_FIXTURE`, so a cohort can settle
+   without a paid model or a live browser. Two pieces remain. First, a fixture
+   path where the root delegates and the worker settles -- no contract eval
+   delegates to a worker today, so `call browser-agent {...}` is unproven.
+   Second, the Playwright case: submit a request, settle the cohort, reload, ask
+   "What was the result? Please summarize it. Do not submit again.", and assert
+   one visible text message, no reaction-only terminal response, no extra worker
+   call, and persisted history.
+3. **Then repeat the native run** against the fixed renderer and read what
+   arrives on the phone, not what the log says was accepted.
+4. **Then, and only then, reactivate** -- the change is one function, and #201
+   is the shape of it.
+5. **Look at the multi-cohort backlog before reactivating.** Several owed
+   cohorts force a report on every turn until they drain. Nobody has decided
+   whether that is right.
+6. Leave #161 and #165 alone until their sequencing decisions are made.
 
 ## Two environment notes
 
