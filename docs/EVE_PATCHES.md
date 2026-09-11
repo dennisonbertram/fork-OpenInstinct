@@ -14,10 +14,13 @@ not the normal way this fork adds product behavior.
 | `eve@0.49.0`                  | Dynamic callback rebind before a new turn                                              | An opted-in memory callback rebind validated unrelated prior turn callbacks before their normal `turn.started` resolvers had registered them in a fresh process. The first attempt restored memory, then threw; the retry bypassed rebind validation and reached the ordinary resolver boundary.                                                                                                                                                                                                                                                                                                                                                                             | `tests/unit/eve-dynamic-rebind.test.ts`                                                                                                                                                                                   | Remove when a fresh unpatched Eve version passes the mixed opted-in and ordinary callback lifecycle test while retaining the missing opted-in callback failure.                                                                                                                              | repository maintainers |
 | `eve@0.49.0`                  | Durable final-delivery completion request and tool-loop terminal seam                  | Eve otherwise advances to another model step after a channel confirms the final user-visible delivery. The opt-in request is exact to the active session, turn, step, and call; it is absent by default and only reaches the ordinary conversation terminal path after the current stream and tool work settle successfully.                                                                                                                                                                                                                                                                                                                                                 | `tests/unit/eve-turn-completion.test.ts` and the gateway final-delivery contract eval                                                                                                                                     | Remove when an unpatched Eve release offers this exact durable, failure-preserving completion seam and the focused runtime tests remain green without this hunk.                                                                                                                             | repository maintainers |
 
-The patch covers eleven generated files: the Linq adapter JavaScript and
+| `eve@0.49.0` | Read-only typed background-task terminal projection | A root session cannot read an authenticated terminal task result from the public surface. The typed task index lives on `HarnessSession.state` under the framework-reserved `eve.tasks` key, and `defineState` refuses any `eve.` name, so the only public signal is the runtime's rendered `[Task state]` prose. The hunk adds a read-only projection of the existing index — task id, terminal identity, parent turn, child session and turn, worker name, terminal status, and structured output — seeded where the turn already derives its task-delivery context, and exported from `eve/context`. It publishes no `taskInboxToken`, no child stream history, and changes no task delivery prompt or retry semantics. | `tests/unit/background-task-terminal-adapter.test.ts` and `tests/unit/eve-patch-boundary.test.ts` | Remove when an unpatched Eve release exposes an authenticated typed terminal accessor to authored code, and TA-01 through TA-06 stay green without this hunk. | repository maintainers |
+
+The patch covers fourteen generated files: the Linq adapter JavaScript and
 declaration exports, the Chat SDK declaration export, and
 `dist/src/eve-channel/index.js`, `dist/src/context/dynamic-tool-lifecycle.js`, plus the Workflow bundle
-`dist/src/compiled/_chunks/workflow/wait-until-BtySPYD0.js`, and the final-delivery context, public export, and tool-loop seam. The security fix
+`dist/src/compiled/_chunks/workflow/wait-until-BtySPYD0.js`, the final-delivery context, public export, and tool-loop seam, and the
+task-terminal projection module with its `dist/src/execution/workflow-steps.js` seed. The security fix
 should be disclosed to Eve's maintainers through a private channel before an
 upgrade. Do not publish exploit details in a public issue.
 
@@ -64,4 +67,22 @@ A new hunk requires all of:
 5. a removal test that can prove the upstream release made it obsolete.
 
 `tests/unit/eve-patch-boundary.test.ts` fails if the patch grows beyond the
-eleven registered files or reintroduces the removed package exports.
+fourteen registered files or reintroduces the removed package exports. It also
+fails if the task-terminal projection starts publishing the private task inbox
+token or rewrites a task delivery instruction.
+
+The task-terminal projection's RED was recorded on 2026-09-11 against a clean
+`npm pack eve@0.49.0` extraction: the unpatched `eve/context` surface exports
+only `defineState`, no public module mentions task terminal state, and
+`defineState("eve.tasks")` throws on the reserved prefix, so zero typed terminal
+records are reachable from authored code. No upstream fix or contact is claimed;
+track a release that exposes an authenticated terminal accessor.
+
+The projection is a durable context key, registered when its module loads, the
+same arrangement as the final-delivery completion request. Any process that
+loads authored code registers it, because `eve/context` re-exports the reader.
+A framework-only process that deserializes a context without loading authored
+code logs Eve's "dropping unknown context key" warning and loses that copy of
+the projection; the next turn re-derives it from the task index, so the value is
+self-healing rather than authoritative storage. Treat it as a per-turn
+projection, never as the record of a task.
