@@ -300,3 +300,86 @@ describe("recoveryProgress", () => {
     expect(progress.tasksSpent).toBe(0);
   });
 });
+
+describe("a cancelled objective, as Plan 008 step 3 requires it to read", () => {
+  /**
+   * The dispositions for these cases already existed. What was missing was any
+   * assertion about the words -- specifically that no account of a cancellation
+   * claims the action was undone, or claims it was prevented.
+   *
+   * An earlier attempt at this slice added a cohort-phase branch that decided
+   * "cancelled" before the per-task rules ran. RP-02 and RP-02b rejected it, and
+   * they were right to: the per-task judgement is the more careful one, and the
+   * coarse branch would have relabelled work that finished before the
+   * cancellation arrived. The change was dropped rather than forced through.
+   */
+
+  it("RP-10: a cancellation after a dispatch never says the action was undone", () => {
+    admit("task_a", "turn_1");
+    settle("task_a", "turn_1", "cancelled", [
+      { claim: "Dispatched the submission", evidence: "executor_receipt" },
+    ]);
+    cancelCohort("turn_1");
+
+    const progress = recoveryProgress({ turnId: "turn_1" });
+
+    expect(progress.disposition).toBe("uncertain_effect");
+    expect(progress.nextStep).toBe("report_uncertain");
+    // The receipt survives the cancellation: it is the only thing saying an
+    // effect may exist in the world.
+    expect(progress.verifiedCheckpoints).toEqual(["Dispatched the submission"]);
+    // The part no case asserted before. Cancelling a request does not unsend
+    // what was already sent, so the account must not suggest it did.
+    expect(progress.unknownRemainder.join(" ")).not.toMatch(
+      /rolled back|reversed|undone|cancelled successfully|did not go through/iu
+    );
+  });
+
+  it("RP-11: a cancellation with nothing corroborated does not claim the action was prevented", () => {
+    admit("task_a", "turn_1");
+    settle("task_a", "turn_1", "cancelled", []);
+    cancelCohort("turn_1");
+
+    const progress = recoveryProgress({ turnId: "turn_1" });
+
+    expect(progress.disposition).toBe("stopped_incomplete");
+    // An absent receipt is not proof that nothing was dispatched, and the
+    // account says so in those terms rather than claiming prevention.
+    expect(progress.unknownRemainder.join(" ")).toMatch(
+      /not the same as proof that nothing was dispatched/iu
+    );
+    expect(progress.unknownRemainder.join(" ")).not.toMatch(
+      /prevented|nothing happened|rolled back|never reached/iu
+    );
+  });
+
+  it("RP-12: a cancellation cannot erase an outcome the records establish", () => {
+    // Work that finished and was corroborated before the cancellation arrived
+    // keeps that outcome. This is RP-02b's rule, asserted here against the
+    // wording too: reporting it is correct, and claiming rollback is not.
+    admit("task_a", "turn_1");
+    settle("task_a", "turn_1", "completed", [
+      { claim: "Submitted the order", evidence: "observed" },
+    ]);
+    cancelCohort("turn_1");
+
+    const progress = recoveryProgress({ turnId: "turn_1" });
+
+    expect(progress.disposition).toBe("verified_success");
+    expect(progress.verifiedCheckpoints).toEqual(["Submitted the order"]);
+    expect(progress.unknownRemainder.join(" ")).not.toMatch(
+      /rolled back|reversed|undone/iu
+    );
+  });
+
+  it("RP-13: a cohort that was never cancelled is unaffected", () => {
+    admit("task_a", "turn_1");
+    settle("task_a", "turn_1", "completed", [
+      { claim: "Submitted the order", evidence: "observed" },
+    ]);
+
+    expect(recoveryProgress({ turnId: "turn_1" }).disposition).toBe(
+      "verified_success"
+    );
+  });
+});
