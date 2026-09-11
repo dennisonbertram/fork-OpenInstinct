@@ -37,6 +37,7 @@ import {
   recordTerminal,
   reportableCohorts,
 } from "@/agent/lib/completion-obligations";
+import { bindReportAttempt } from "@/agent/lib/completion-report-policy";
 import type { completionReportForcingActive } from "@/agent/lib/completion-report-activation";
 /** The shape a message-kind send_message call returns. */
 const deliveredMessageSchema = z.object({
@@ -387,27 +388,33 @@ describe("the policy follows what is actually owed, not only the switch", () => 
     expect(cohortFor("turn_1")?.report).toBeUndefined();
   });
 
-  it("RP-12: one send answers one cohort, and the other stays owed", async () => {
+  it("RP-12: one send answers every owed cohort, and carries all of their records", async () => {
     policy.owed.mockReturnValue(true);
     owedCohort("turn_1", "task_a");
     owedCohort("turn_2", "task_b");
 
     const group = await tools(providerContext);
-    await group.send_message.execute(
-      {
-        final: true,
-        kind: "message",
-        text: "The first request finished; the log confirms it.",
-      },
-      executorContext()
+    const delivered = deliveredMessageSchema.parse(
+      await group.send_message.execute(
+        {
+          final: true,
+          kind: "message",
+          text: "The first request finished; the log confirms it.",
+        },
+        executorContext()
+      )
     );
 
-    // A written summary accounts for one cohort. The second is still owed, so
-    // the obligation survives into the next turn rather than being absorbed.
+    // One message accounts for the whole backlog. Answering one cohort per turn
+    // forced a summary on every turn until the backlog drained, which is how
+    // turns 13 and 14 both came out as forced reports in the live session.
     expect(cohortFor("turn_1")?.phase).toBe("delivery_pending");
-    expect(reportableCohorts().map((cohort) => cohort.cohortId)).toEqual([
-      "turn_2",
-    ]);
+    expect(cohortFor("turn_2")?.phase).toBe("delivery_pending");
+    expect(reportableCohorts()).toEqual([]);
+    // And binding without reporting would be worse than leaving it owed, so the
+    // message names both.
+    expect(delivered.text).toContain("task_a");
+    expect(delivered.text).toContain("task_b");
   });
 });
 
@@ -645,5 +652,58 @@ describe("a backlog is answered once, not once per turn", () => {
     expect(cohortFor("turn_b")?.phase).toBe("unconfirmed");
     // And none of them goes back to owed: the send may have landed.
     expect(reportableCohorts()).toEqual([]);
+  });
+});
+
+describe("binding the whole backlog, or none of it", () => {
+  it("RP-27: a cohort that refuses leaves none of the others bound", () => {
+    owedCohort("turn_a", "task_a");
+    owedCohort("turn_b", "task_b");
+    // Another call in this turn already holds turn_b.
+    expect(
+      bindReportAttempt({
+        callId: "other-call",
+        cohortIds: ["turn_b"],
+        turnId: "turn_1",
+      })
+    ).toEqual(["turn_b"]);
+
+    const bound = bindReportAttempt({
+      callId: "test-call",
+      cohortIds: ["turn_a", "turn_b"],
+      turnId: "turn_1",
+    });
+
+    // Nothing taken, and said so. A partial bind would leave turn_a discharged
+    // by a message this call is about to refuse to send -- settled work with no
+    // report and no obligation left to produce one.
+    expect(bound).toEqual([]);
+    expect(cohortFor("turn_a")?.phase).toBe("must_report");
+    expect(cohortFor("turn_a")?.report).toBeUndefined();
+    expect(reportableCohorts().map((cohort) => cohort.cohortId)).toEqual([
+      "turn_a",
+    ]);
+  });
+
+  it("RP-28: releasing what it took does not disturb the cohort another call holds", () => {
+    owedCohort("turn_a", "task_a");
+    owedCohort("turn_b", "task_b");
+    bindReportAttempt({
+      callId: "other-call",
+      cohortIds: ["turn_b"],
+      turnId: "turn_1",
+    });
+
+    bindReportAttempt({
+      callId: "test-call",
+      cohortIds: ["turn_a", "turn_b"],
+      turnId: "turn_1",
+    });
+
+    // The other call's attempt is still live and still its own: releasing a
+    // partial bind must not hand it someone else's obligation or reopen one
+    // that is already being delivered.
+    expect(cohortFor("turn_b")?.phase).toBe("delivery_pending");
+    expect(cohortFor("turn_b")?.report?.callId).toBe("other-call");
   });
 });

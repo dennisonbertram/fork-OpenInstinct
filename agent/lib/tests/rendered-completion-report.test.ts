@@ -38,6 +38,7 @@ import {
   completionReportText,
   reportWithRecordedFacts,
 } from "@/agent/lib/completion-report-text";
+import { completionCapacity } from "@/agent/lib/completion-obligations";
 import { stripImageArtifactMarkdownReferences } from "@/agent/lib/browser-image-artifact/markdown";
 
 function settle(
@@ -77,7 +78,7 @@ describe("the report the records can vouch for", () => {
     // The earlier design produced this text only as a fallback after a failed
     // composition. That left the ordinary path with nothing the records vouch
     // for, which is how a progress note came to stand in for a summary.
-    const report = completionReportText("turn_1");
+    const report = completionReportText(["turn_1"]);
 
     expect(report).toBeDefined();
     expect(report).toContain("Submitted the order form");
@@ -91,7 +92,7 @@ describe("the report the records can vouch for", () => {
     // The exact text that reached a real phone in production and was accepted
     // as a completion summary.
     const delivered = reportWithRecordedFacts(
-      "turn_1",
+      ["turn_1"],
       "i'm checking a public time source for Tokyo now."
     );
 
@@ -106,9 +107,9 @@ describe("the report the records can vouch for", () => {
     settle("task_a", "turn_1", [
       { claim: "Submitted the order form", evidence: "observed" },
     ]);
-    const report = completionReportText("turn_1") ?? "";
+    const report = completionReportText(["turn_1"]) ?? "";
 
-    const delivered = reportWithRecordedFacts("turn_1", report);
+    const delivered = reportWithRecordedFacts(["turn_1"], report);
 
     expect(delivered).toBe(report);
   });
@@ -118,7 +119,7 @@ describe("the report the records can vouch for", () => {
       { claim: "I completed the purchase", evidence: "worker_assertion" },
     ]);
 
-    const delivered = reportWithRecordedFacts("turn_1", "All done!");
+    const delivered = reportWithRecordedFacts(["turn_1"], "All done!");
 
     expect(delivered).toContain("I completed the purchase");
     expect(delivered).toMatch(/worker/iu);
@@ -129,7 +130,7 @@ describe("the report the records can vouch for", () => {
       { claim: "Something happened on the page", evidence: "unknown" },
     ]);
 
-    const delivered = reportWithRecordedFacts("turn_1", "Done.");
+    const delivered = reportWithRecordedFacts(["turn_1"], "Done.");
 
     // Unknown provenance does not establish who said it. Naming a source this
     // does not know would invent one, which is the same mistake as inventing a
@@ -156,7 +157,7 @@ describe("the report the records can vouch for", () => {
       []
     );
 
-    const delivered = reportWithRecordedFacts("turn_empty", "All sorted.");
+    const delivered = reportWithRecordedFacts(["turn_empty"], "All sorted.");
 
     expect(delivered).toContain("All sorted.");
     expect(delivered).toContain(
@@ -169,9 +170,9 @@ describe("the report the records can vouch for", () => {
     // summary is the policy's question, and the executor asks it before calling
     // in -- so an ordinary turn never reaches this function at all. That call
     // site is pinned by RP-22 in the messaging suite.
-    expect(reportWithRecordedFacts("turn_never_admitted", "Hello.")).toContain(
-      "Hello."
-    );
+    expect(
+      reportWithRecordedFacts(["turn_never_admitted"], "Hello.")
+    ).toContain("Hello.");
   });
 });
 
@@ -187,7 +188,7 @@ describe("what an outside review found the renderer still hid", () => {
       "failed"
     );
 
-    const delivered = reportWithRecordedFacts("turn_1", "All done.");
+    const delivered = reportWithRecordedFacts(["turn_1"], "All done.");
 
     expect(delivered).toMatch(/failed|did not finish|unsuccessful/iu);
   });
@@ -205,7 +206,7 @@ describe("what an outside review found the renderer still hid", () => {
       "failed"
     );
 
-    const delivered = reportWithRecordedFacts("turn_1", "Finished.");
+    const delivered = reportWithRecordedFacts(["turn_1"], "Finished.");
 
     expect(delivered).toMatch(/failed|did not finish|unsuccessful/iu);
   });
@@ -221,7 +222,7 @@ describe("what an outside review found the renderer still hid", () => {
     settle("task_a", "turn_1", [{ claim, evidence: "observed" }]);
 
     const delivered = reportWithRecordedFacts(
-      "turn_1",
+      ["turn_1"],
       "Here is where it got to."
     );
 
@@ -240,7 +241,7 @@ describe("what an outside review found the renderer still hid", () => {
       { claim: "Five", evidence: "observed" },
     ]);
 
-    const delivered = reportWithRecordedFacts("turn_1", "Done.");
+    const delivered = reportWithRecordedFacts(["turn_1"], "Done.");
 
     // Saying how many were left out is what stops the shown list being read as
     // the whole of what the records hold.
@@ -254,10 +255,10 @@ describe("what an outside review found the renderer still hid", () => {
     settle("task_a", "turn_1", [
       { claim: "Submitted the order form", evidence: "observed" },
     ]);
-    const report = completionReportText("turn_1") ?? "";
+    const report = completionReportText(["turn_1"]) ?? "";
 
     const delivered = reportWithRecordedFacts(
-      "turn_1",
+      ["turn_1"],
       `i'm checking now. ![${report}](/artifacts/00000000-0000-4000-8000-000000000000)`
     );
 
@@ -274,7 +275,7 @@ describe("what an outside review found the renderer still hid", () => {
       { claim: "Submitted the order form", evidence: "observed" },
     ]);
 
-    const delivered = reportWithRecordedFacts("turn_1", "x".repeat(20_000));
+    const delivered = reportWithRecordedFacts(["turn_1"], "x".repeat(20_000));
 
     expect(delivered.length).toBeLessThanOrEqual(20_000);
     expect(delivered).toContain("Submitted the order form");
@@ -296,7 +297,7 @@ describe("the uncertainty the report has to carry", () => {
     );
 
     const delivered = reportWithRecordedFacts(
-      "turn_1",
+      ["turn_1"],
       "Here's where it got to."
     );
 
@@ -316,7 +317,7 @@ describe("the uncertainty the report has to carry", () => {
       "failed"
     );
 
-    const delivered = reportWithRecordedFacts("turn_1", "Partly there.");
+    const delivered = reportWithRecordedFacts(["turn_1"], "Partly there.");
 
     expect(delivered).toMatch(
       /stopped before finishing|not the same as proof/iu
@@ -328,7 +329,7 @@ describe("the uncertainty the report has to carry", () => {
       { claim: "Submitted the order form", evidence: "observed" },
     ]);
 
-    const delivered = reportWithRecordedFacts("turn_1", "Done.");
+    const delivered = reportWithRecordedFacts(["turn_1"], "Done.");
 
     // Nothing is unresolved here, and saying otherwise would be its own untruth.
     expect(delivered).not.toMatch(/never confirmed|stopped before finishing/iu);
@@ -346,7 +347,7 @@ describe("what a second review found still wrong with shortening", () => {
     const claim = `${head}not${tail}`;
     settle("task_a", "turn_1", [{ claim, evidence: "observed" }]);
 
-    const delivered = reportWithRecordedFacts("turn_1", "Here it is.");
+    const delivered = reportWithRecordedFacts(["turn_1"], "Here it is.");
 
     // Either the claim appears exactly as recorded, or it does not appear at
     // all and is counted as omitted. A partial claim is the one thing that must
@@ -361,7 +362,7 @@ describe("what a second review found still wrong with shortening", () => {
     const claim = "😀".repeat(200);
     settle("task_a", "turn_1", [{ claim, evidence: "observed" }]);
 
-    const delivered = reportWithRecordedFacts("turn_1", "Done.");
+    const delivered = reportWithRecordedFacts(["turn_1"], "Done.");
 
     // Lone surrogates render as replacement symbols. Slicing UTF-16 code units
     // produces them whenever a cut lands inside a pair.
@@ -387,7 +388,7 @@ describe("what a second review found still wrong with shortening", () => {
     );
 
     const delivered = reportWithRecordedFacts(
-      "turn_1",
+      ["turn_1"],
       "Here is where it got to."
     );
 
@@ -405,7 +406,7 @@ describe("the rules that mutation showed were not actually pinned", () => {
     const claim = `${"a".repeat(2500)}not${"b".repeat(2500)}`;
     settle("task_a", "turn_1", [{ claim, evidence: "observed" }]);
 
-    const delivered = reportWithRecordedFacts("turn_1", "Here it is.");
+    const delivered = reportWithRecordedFacts(["turn_1"], "Here it is.");
 
     expect(delivered).toContain("1 further recorded claims are not shown");
     // No fragment of it appears. A reader cannot tell a fragment was shortened,
@@ -424,7 +425,7 @@ describe("the rules that mutation showed were not actually pinned", () => {
       "failed"
     );
 
-    const delivered = reportWithRecordedFacts("turn_1", "Here it is.");
+    const delivered = reportWithRecordedFacts(["turn_1"], "Here it is.");
 
     // Order is what keeps a failure safe from any length limit: bad news first
     // survives a cut, bad news last does not.
@@ -439,12 +440,138 @@ describe("the rules that mutation showed were not actually pinned", () => {
     ]);
     const written = `START-OF-MODEL-TEXT ${"x".repeat(20_000)}`;
 
-    const delivered = reportWithRecordedFacts("turn_1", written);
+    const delivered = reportWithRecordedFacts(["turn_1"], written);
 
     expect(delivered.length).toBeLessThanOrEqual(20_000);
     expect(delivered).toContain("Submitted the order form");
     // Dropped rather than cut, for the same reason a claim is: half a sentence
     // reads as a whole one.
     expect(delivered).not.toContain("START-OF-MODEL-TEXT");
+  });
+});
+
+describe("one message answering several owed cohorts", () => {
+  /** The largest backlog the records allow: capacity cohorts, each full. */
+  function fullBacklog() {
+    const ids: string[] = [];
+    for (let cohort = 0; cohort < completionCapacity.openCohorts; cohort += 1) {
+      const turnId = `turn_${String(cohort)}`;
+      ids.push(turnId);
+      for (let task = 0; task < completionCapacity.tasksPerCohort; task += 1) {
+        settle(`task_${String(cohort)}_${String(task)}`, turnId, [
+          {
+            claim: `${"padding ".repeat(80)}cohort ${String(cohort)} task ${String(task)}`,
+            evidence: "observed",
+          },
+        ]);
+      }
+    }
+    return ids;
+  }
+
+  it("RR-23: the largest possible backlog still fits the channel", () => {
+    // Rendering each cohort separately and joining them produced 35,462
+    // characters against a 20,000 limit, which the channel rejects outright --
+    // after the obligations were already bound. The budget has to be one budget
+    // for the whole message, not one per cohort.
+    const ids = fullBacklog();
+
+    const delivered = reportWithRecordedFacts(
+      ids,
+      "Here is where things got to."
+    );
+
+    expect(delivered.length).toBeLessThanOrEqual(20_000);
+  });
+
+  it("RR-24: no cohort is dropped to make the message fit", () => {
+    // Appending cohort by cohort kept only the last four and discarded the
+    // earlier reports as though they were expendable model text. An obligation
+    // discharged by a message that never mentions it is worse than one left
+    // owed.
+    const ids = fullBacklog();
+
+    const delivered = reportWithRecordedFacts(ids, "Done.");
+
+    for (const turnId of ids) {
+      expect(delivered).toContain(turnId);
+    }
+  });
+
+  it("RR-25: a failure anywhere in the batch outranks every success", () => {
+    settle("task_ok", "turn_early", [
+      { claim: "Checked the first page", evidence: "observed" },
+    ]);
+    settle(
+      "task_bad",
+      "turn_late",
+      [{ claim: "The checkout never loaded", evidence: "observed" }],
+      "failed"
+    );
+
+    const delivered = reportWithRecordedFacts(
+      ["turn_early", "turn_late"],
+      "Here it is."
+    );
+
+    // Across the whole batch, not within each cohort: bad news last is bad news
+    // a length limit can remove.
+    expect(delivered.indexOf("task_bad")).toBeLessThan(
+      delivered.indexOf("task_ok")
+    );
+  });
+
+  it("RR-26: every outcome says which request it belongs to", () => {
+    settle("task_one", "turn_first", [
+      { claim: "Ordered the part", evidence: "observed" },
+    ]);
+    settle("task_two", "turn_second", [
+      { claim: "Cancelled the other", evidence: "observed" },
+    ]);
+
+    const delivered = reportWithRecordedFacts(
+      ["turn_first", "turn_second"],
+      "Both done."
+    );
+
+    // One message about two requests is only useful if a reader can tell which
+    // outcome belongs to which.
+    expect(delivered).toContain("turn_first");
+    expect(delivered).toContain("turn_second");
+  });
+
+  it("RR-27: an empty batch leaves the model's message alone", () => {
+    expect(reportWithRecordedFacts([], "Sure, on it.")).toBe("Sure, on it.");
+  });
+});
+
+/** A claim large enough that a few of them overrun the message budget. */
+function longClaim(label: string) {
+  return `${label}: ${"detail ".repeat(280)}`;
+}
+
+describe("the claim budget is spent once for the whole message", () => {
+  it("RR-28: claims that are each small enough but too large together are counted, not crammed in", () => {
+    // Three claims of 2,000 characters each pass any per-claim limit and still
+    // overrun a 4,000-character budget together. A budget checked per claim
+    // rather than against what has already been spent lets the message grow
+    // with the number of requests, which is the failure this whole batch change
+    // exists to prevent.
+    settle("task_a", "turn_a", [
+      { claim: longClaim("first"), evidence: "observed" },
+    ]);
+    settle("task_b", "turn_b", [
+      { claim: longClaim("second"), evidence: "observed" },
+    ]);
+    settle("task_c", "turn_c", [
+      { claim: longClaim("third"), evidence: "observed" },
+    ]);
+
+    const report = completionReportText(["turn_a", "turn_b", "turn_c"]);
+
+    // Whatever did not fit is counted rather than silently absent, and the
+    // claims section stays inside its budget.
+    expect(report).toContain("further recorded claims are not shown here");
+    expect(report?.length ?? 0).toBeLessThan(6_000);
   });
 });

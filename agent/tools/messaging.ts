@@ -137,17 +137,18 @@ function resolveMessaging(
       // Bound before delivery begins, so a channel result always has a cohort
       // to settle. A refusal means another call in this turn already holds the
       // obligation, and this call must not pass for the summary.
-      if (policy.kind === "must_report") {
-        const bound = bindReportAttempt({
-          callId: toolContext.callId,
-          cohortId: policy.cohortId,
-          turnId: toolContext.session.turn.id,
-        });
-        if (!bound) {
-          throw new Error(
-            "Another call in this turn already holds the owed completion summary. Do not send it again; finish the turn."
-          );
-        }
+      const bound =
+        policy.kind === "must_report"
+          ? bindReportAttempt({
+              callId: toolContext.callId,
+              cohortIds: policy.cohortIds,
+              turnId: toolContext.session.turn.id,
+            })
+          : [];
+      if (policy.kind === "must_report" && bound.length === 0) {
+        throw new Error(
+          "Another call in this turn already holds the owed completion summary. Do not send it again; finish the turn."
+        );
       }
       if (final)
         beginFinalDelivery(
@@ -160,10 +161,12 @@ function resolveMessaging(
       // cooperation is what let a progress note stand in for a summary in
       // production. Nothing is owed on an ordinary turn, and then this returns
       // the model's message exactly as written.
-      return policy.kind === "must_report" && message.kind === "message"
+      // Exactly the cohorts this call took, which on success is every cohort
+      // that was owed.
+      return bound.length > 0 && message.kind === "message"
         ? {
             ...message,
-            text: reportWithRecordedFacts(policy.cohortId, message.text ?? ""),
+            text: reportWithRecordedFacts(bound, message.text ?? ""),
           }
         : message;
     },

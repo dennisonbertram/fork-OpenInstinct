@@ -1,6 +1,7 @@
 import {
   beginCohortReport,
   cohortForReportAttempt,
+  releaseCohortReport,
   reportableCohorts,
 } from "@/agent/lib/completion-obligations";
 import type {
@@ -26,36 +27,56 @@ import { completionReportForcingActive } from "@/agent/lib/completion-report-act
 export type ReportPolicy =
   /** Nothing is owed, or enforcement is off. An ordinary turn. */
   | { readonly kind: "none" }
-  /** This cohort owes a written summary and only a final text send can give it. */
-  | { readonly kind: "must_report"; readonly cohortId: string };
+  /**
+   * These cohorts owe a written summary, and only a final text send can give
+   * it. Every owed cohort, not just the oldest: one message accounts for all of
+   * them, so a backlog is answered once rather than on every turn until it
+   * drains. Reporting fewer would leave an obligation discharged by a message
+   * that never mentioned it.
+   */
+  | { readonly kind: "must_report"; readonly cohortIds: readonly string[] };
 
 export function reportPolicyForTurn(): ReportPolicy {
   if (!completionReportForcingActive()) return { kind: "none" };
-  // The oldest owed cohort first. One written summary accounts for one cohort,
-  // so any others stay owed and are answered in a later turn rather than being
-  // absorbed silently into this one.
-  const [owed] = reportableCohorts();
-  return owed === undefined
+  const owed = reportableCohorts();
+  return owed.length === 0
     ? { kind: "none" }
-    : { cohortId: owed.cohortId, kind: "must_report" };
+    : { cohortIds: owed.map((cohort) => cohort.cohortId), kind: "must_report" };
 }
 
 /**
- * Records that this exact call is the attempt at the owed summary.
+ * Records that this exact call is the attempt at every owed summary, and
+ * returns the cohorts it now owns.
  *
- * Returns false when the obligation could not be bound: another call in this
- * turn already holds it, or what was owed when the policy was read is no longer
- * owed now. The caller must not treat a false as a delivered summary.
+ * All or none. A partial bind would leave some cohorts waiting on a message
+ * that reports the others, which is the state this whole design exists to
+ * prevent -- so if any cohort refuses, the ones already bound are released and
+ * the caller is told nothing was taken.
+ *
+ * An empty result means the caller must not treat this send as a summary.
  */
 export function bindReportAttempt(input: {
-  readonly cohortId: string;
+  readonly cohortIds: readonly string[];
   readonly turnId: string;
   readonly callId: string;
-}): boolean {
-  return beginCohortReport(input.cohortId, {
-    callId: input.callId,
-    turnId: input.turnId,
-  });
+}): readonly string[] {
+  const bound: string[] = [];
+  for (const cohortId of input.cohortIds) {
+    if (
+      beginCohortReport(cohortId, {
+        callId: input.callId,
+        turnId: input.turnId,
+      })
+    ) {
+      bound.push(cohortId);
+      continue;
+    }
+    // Release what was taken. releaseCohortReport only moves a cohort this
+    // exact call holds, so nothing else in the session is disturbed.
+    for (const taken of bound) releaseCohortReport(taken, input.callId);
+    return [];
+  }
+  return bound;
 }
 
 /**

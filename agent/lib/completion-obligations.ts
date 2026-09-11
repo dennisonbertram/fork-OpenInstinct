@@ -404,17 +404,39 @@ export function cohortForReportAttempt(
 }
 
 /**
- * The cohort whose report attempt holds this call.
+ * Every cohort whose report attempt holds this call.
  *
- * A call id identifies one tool call, so it identifies one attempt on its own.
+ * A call id identifies one tool call, and one call can answer several owed
+ * cohorts at once, so this returns all of them.
  * This exists because the per-turn delivery record holds only the most recent
  * attempt: once a later turn replaces it, an earlier turn's provider result can
  * no longer find the obligation it owns through that record.
  */
-export function cohortForReportCall(callId: string): CohortRecord | undefined {
+export function cohortsForReportCall(callId: string): readonly CohortRecord[] {
   return completion
     .get()
-    .cohorts.find((candidate) => candidate.report?.callId === callId);
+    .cohorts.filter((candidate) => candidate.report?.callId === callId);
+}
+
+/**
+ * Puts a cohort back to owing its report, undoing one binding.
+ *
+ * Only a cohort this exact call holds, and only while it is still pending: a
+ * settled report is never reopened, and another call's obligation is never
+ * touched. This exists so a partial bind can be released whole rather than
+ * leaving some cohorts waiting on a message about others.
+ */
+export function releaseCohortReport(cohortId: string, callId: string): void {
+  completion.update((current) => ({
+    ...current,
+    cohorts: current.cohorts.map((candidate) =>
+      candidate.cohortId === cohortId &&
+      candidate.phase === "delivery_pending" &&
+      candidate.report?.callId === callId
+        ? { ...candidate, phase: "must_report" as const, report: undefined }
+        : candidate
+    ),
+  }));
 }
 
 /** Records whether the channel accepted the bound report attempt. */

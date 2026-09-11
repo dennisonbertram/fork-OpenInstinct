@@ -1,6 +1,6 @@
 import { defineState, requestTurnCompletion } from "eve/context";
 import {
-  cohortForReportCall,
+  cohortsForReportCall,
   settleCohortReport,
 } from "@/agent/lib/completion-obligations";
 
@@ -55,8 +55,11 @@ export function beginFinalDelivery(
  * delivery cannot forget the obligation behind it.
  */
 function settleBoundReport(callId: string, accepted: boolean) {
-  const cohort = cohortForReportCall(callId);
-  if (cohort !== undefined) settleCohortReport(cohort.cohortId, accepted);
+  // Every cohort this call bound, not just the first. Settling one and leaving
+  // the rest pending is how a backlog becomes invisible.
+  for (const cohort of cohortsForReportCall(callId)) {
+    settleCohortReport(cohort.cohortId, accepted);
+  }
 }
 
 export function settleFinalDelivery(callId: string, accepted: boolean) {
