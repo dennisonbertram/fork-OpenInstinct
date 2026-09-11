@@ -304,6 +304,22 @@ describe("backgroundTaskTerminals", () => {
     ).toEqual([]);
   });
 
+  it("detaches the returned output from the session state it came from", () => {
+    const output = { message: "captured 2 screenshots", status: "done" };
+    const state = {
+      "eve.tasks": {
+        tasks: [indexEntry({ terminalView: completedView("task_a", output) })],
+      },
+    };
+
+    const records = runWithState(state);
+
+    // Equal in value, but not the same object: a caller holding this record
+    // cannot reach back into the session state that produced it.
+    expect(records[0]?.output).toEqual(output);
+    expect(records[0]?.output).not.toBe(output);
+  });
+
   it("drops an entry that fails validation and keeps its valid sibling", () => {
     const context = new ContextContainer();
     // The first two entries satisfy the declared projection type but fail the

@@ -58,6 +58,9 @@ export function backgroundTaskTerminals(expect?: {
     if (seen.has(entry.taskId)) continue;
     seen.add(entry.taskId);
 
+    // The projection hands out the framework's own output object. Detach it,
+    // so a caller cannot reach through this evidence into the durable session
+    // state that produced it.
     records.push({
       taskId: entry.taskId,
       parentTurnId: entry.parentTurnId,
@@ -65,7 +68,8 @@ export function backgroundTaskTerminals(expect?: {
       childTurnId: entry.childTurnId,
       workerName: entry.workerName,
       status: entry.status,
-      output: entry.output,
+      output:
+        entry.output === undefined ? undefined : structuredClone(entry.output),
     });
   }
 
