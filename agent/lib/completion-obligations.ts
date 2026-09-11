@@ -50,10 +50,15 @@ type CohortPhase =
 
 export interface TaskRecord {
   readonly taskId: string;
-  readonly workerCallId: string;
-  readonly workerSessionId: string;
   readonly parentTurnId: string;
   readonly objectiveRevision: string;
+  /**
+   * The child session and turn that ran this task. Unknown until it settles:
+   * a pending task index entry carries no child identity, so these are
+   * recorded from the terminal rather than expected in advance.
+   */
+  readonly workerSessionId?: string;
+  readonly workerTurnId?: string;
   readonly terminal?: TaskTerminal;
 }
 
@@ -115,8 +120,6 @@ function isOpen(cohort: CohortRecord) {
  */
 export function admitTask(input: {
   taskId: string;
-  workerCallId: string;
-  workerSessionId: string;
   parentTurnId: string;
   objectiveRevision: string;
 }): AdmissionResult {
@@ -154,8 +157,6 @@ export function admitTask(input: {
       ...current.tasks,
       {
         taskId: input.taskId,
-        workerCallId: input.workerCallId,
-        workerSessionId: input.workerSessionId,
         parentTurnId: input.parentTurnId,
         objectiveRevision: input.objectiveRevision,
       },
@@ -210,17 +211,24 @@ export function recordTerminal(
     const cohort = current.cohorts.find(
       (candidate) => candidate.cohortId === task?.parentTurnId
     );
+    // Identity is task plus parent turn, the two things known at admission.
+    // The child session is not a third check: it does not exist until the task
+    // settles, so it arrives here as evidence and is recorded below. Eve's own
+    // index schema already refines that a cached terminal view matches its
+    // entry, and the adapter rejects a terminal whose identity disagrees with
+    // the task that owns it.
     if (
       task === undefined ||
       cohort === undefined ||
-      task.parentTurnId !== terminal.parentTurnId ||
-      task.workerSessionId !== terminal.childSessionId
+      task.parentTurnId !== terminal.parentTurnId
     ) {
       return current;
     }
 
     const settled = {
       ...task,
+      workerSessionId: terminal.childSessionId,
+      workerTurnId: terminal.childTurnId,
       terminal: { status: terminal.status, ...bound(facts) },
     };
     const tasks = current.tasks.map((candidate) =>

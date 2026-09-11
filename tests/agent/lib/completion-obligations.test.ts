@@ -69,16 +69,16 @@ function fact(overrides: Partial<BoundedFact> = {}): BoundedFact {
 
 function admit(input: {
   taskId: string;
-  workerCallId?: string;
-  workerSessionId?: string;
   parentTurnId: string;
   objectiveRevision?: string;
+  /** Accepted so existing cases read naturally; the child session is learned
+   * from the terminal, never supplied at admission. */
+  workerSessionId?: string;
 }) {
   return admitTask({
-    workerCallId: `${input.taskId}_call`,
-    workerSessionId: `${input.taskId}_session`,
-    objectiveRevision: "rev_1",
-    ...input,
+    taskId: input.taskId,
+    parentTurnId: input.parentTurnId,
+    objectiveRevision: input.objectiveRevision ?? "rev_1",
   });
 }
 
@@ -313,20 +313,23 @@ describe("recordTerminal", () => {
     expect(taskRecords("turn_1")).toEqual(before);
     expect(cohortFor("turn_1")).toEqual(beforeCohort);
 
-    const wrongChildSession = recordTerminal(
+    // A differing child session is NOT a rejection case: the root never knew
+    // one to begin with, so the terminal's child identity is recorded as
+    // evidence. What must not happen is a silent mismatch being treated as
+    // authority over task or turn identity, which the two cases above cover.
+    const learnedChildSession = recordTerminal(
       terminal({
         taskId: "task_1",
         parentTurnId: "turn_1",
-        childSessionId: "wrong_session",
+        childSessionId: "whatever_the_runtime_used",
       }),
       [fact()]
     );
-    expect(wrongChildSession).toEqual({
-      matched: false,
-      cohortBecameReportable: false,
-    });
-    expect(taskRecords("turn_1")).toEqual(before);
-    expect(cohortFor("turn_1")).toEqual(beforeCohort);
+    expect(learnedChildSession.matched).toBe(true);
+    expect(
+      taskRecords("turn_1").find((task) => task.taskId === "task_1")
+        ?.workerSessionId
+    ).toBe("whatever_the_runtime_used");
   });
 
   it("CO-06: a cancelled cohort with a retained executor_receipt stays reportable; one with only assertions does not", () => {
