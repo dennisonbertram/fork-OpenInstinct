@@ -1,3 +1,4 @@
+import { parkedApprovals } from "@/agent/lib/approval-identity";
 import {
   allCohorts,
   cohortFor,
@@ -66,6 +67,21 @@ export interface SituationView {
   readonly priorEvidence: readonly SituationEvidence[];
   /** Whether a written summary is owed, and for which cohort. */
   readonly reportOwedFor: readonly string[];
+  /**
+   * Native approvals this turn's work is waiting on: which task is parked and
+   * which request it is parked on, and nothing else.
+   *
+   * Deliberately not what was asked. The approval's material terms are held as
+   * a compared fingerprint elsewhere, and neither the terms nor the fingerprint
+   * belong in a plan-guiding projection -- an approval cannot originate here.
+   */
+  readonly pendingInput: readonly PendingInputReference[];
+}
+
+/** One outstanding native question, named but not described. */
+interface PendingInputReference {
+  readonly requestId: string;
+  readonly taskId: string;
 }
 
 /** Every cohort this session holds other than the current turn's. */
@@ -122,6 +138,14 @@ export function situationView(input: {
     priorEvidence: otherCohorts(input.turnId).flatMap((candidate) =>
       evidenceFrom(candidate.cohortId)
     ),
+    // Scoped to this turn's cohort. Another turn's parked question is that
+    // turn's business, and presenting it here would invite answering it.
+    pendingInput: parkedApprovals()
+      .filter((approval) => approval.cohortId === input.turnId)
+      .map((approval) => ({
+        requestId: approval.requestId,
+        taskId: approval.taskId,
+      })),
     reportOwedFor: owed.map((candidate) => candidate.cohortId),
   };
   return cohort === undefined ? current : { ...current, cohort };

@@ -159,16 +159,49 @@ describe("parking a native approval", () => {
     expect(parkedApprovals()).toHaveLength(0);
   });
 
+  it("PA-11: with two requests parked, an answer resolves against its own", () => {
+    // One parked request makes almost any lookup look right. Two is what shows
+    // the answer is matched to the request it names rather than to whichever
+    // happens to be first.
+    park();
+    park({ requestId: "request_2", taskId: "task_b" });
+
+    expect(
+      resumeParkedApproval({
+        fingerprint: materialTermsFingerprint(terms),
+        requestId: "request_2",
+        taskId: "task_b",
+      }).kind
+    ).toBe("authorized");
+
+    expect(parkedApprovalFor("task_b")).toBeUndefined();
+    expect(parkedApprovalFor("task_a")?.requestId).toBe("request_1");
+  });
+
+  it("PA-12: clearing a request that was never parked reports no removal", () => {
+    park();
+
+    // Saying it removed something it never held would let a caller believe a
+    // question had been retired when it is still outstanding somewhere.
+    expect(clearParkedApproval("request_never_parked")).toBe(false);
+    expect(parkedApprovals()).toHaveLength(1);
+  });
+
   it("PA-10: the number of parked requests is bounded", () => {
     for (let index = 0; index < approvalCapacity.parked; index += 1) {
       expect(
-        park({ requestId: `request_${String(index)}`, taskId: `task_${String(index)}` })
+        park({
+          requestId: `request_${String(index)}`,
+          taskId: `task_${String(index)}`,
+        })
       ).toBe(true);
     }
 
     // Refused rather than evicting an older one: dropping a parked request
     // silently would lose the record of something a person was asked.
-    expect(park({ requestId: "request_over", taskId: "task_over" })).toBe(false);
+    expect(park({ requestId: "request_over", taskId: "task_over" })).toBe(
+      false
+    );
     expect(parkedApprovals()).toHaveLength(approvalCapacity.parked);
   });
 });

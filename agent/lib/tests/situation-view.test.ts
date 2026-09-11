@@ -28,6 +28,10 @@ import {
   recordTerminal,
   supersedeCohort,
 } from "@/agent/lib/completion-obligations";
+import {
+  materialTermsFingerprint,
+  parkApproval,
+} from "@/agent/lib/approval-identity";
 import { situationView } from "@/agent/lib/situation-view";
 
 beforeEach(() => {
@@ -258,5 +262,93 @@ describe("situationView", () => {
     });
 
     expect(view.objectiveRevision).toBe("obj_1");
+  });
+});
+
+describe("what the current turn is waiting on", () => {
+  const terms = {
+    action: "submit_form",
+    origin: "https://example.com",
+    target_ref: "snapshot-1#form",
+    terms: { message: "Two tickets please" },
+  };
+
+  it("SV-11: a parked approval is reported as pending input for this turn", () => {
+    settle("task_a", "turn_1", "obj_1", [
+      { claim: "Prepared the order", evidence: "observed" },
+    ]);
+    parkApproval({
+      cohortId: "turn_1",
+      fingerprint: materialTermsFingerprint(terms),
+      objectiveRevision: "obj_1",
+      requestId: "request_1",
+      taskId: "task_a",
+    });
+
+    const view = situationView({
+      objectiveRevision: "obj_1",
+      turnId: "turn_1",
+    });
+
+    expect(view.pendingInput).toEqual([
+      { requestId: "request_1", taskId: "task_a" },
+    ]);
+  });
+
+  it("SV-12: pending input carries no authorised content, not even its digest", () => {
+    settle("task_a", "turn_1", "obj_1", [
+      { claim: "Prepared the order", evidence: "observed" },
+    ]);
+    const fingerprint = materialTermsFingerprint(terms);
+    parkApproval({
+      cohortId: "turn_1",
+      fingerprint,
+      objectiveRevision: "obj_1",
+      requestId: "request_1",
+      taskId: "task_a",
+    });
+
+    const rendered = JSON.stringify(
+      situationView({ objectiveRevision: "obj_1", turnId: "turn_1" })
+    );
+
+    // The projection says a question is outstanding and which task is waiting.
+    // It must not carry what was asked: this is a plan-guiding view, and an
+    // approval cannot originate here.
+    expect(rendered).not.toContain(fingerprint);
+    expect(rendered).not.toContain("Two tickets");
+    expect(rendered).not.toContain("submit_form");
+  });
+
+  it("SV-13: another turn's parked approval is not this turn's pending input", () => {
+    settle("task_a", "turn_1", "obj_1", [
+      { claim: "Prepared the order", evidence: "observed" },
+    ]);
+    settle("task_b", "turn_2", "obj_2", [
+      { claim: "Prepared the other order", evidence: "observed" },
+    ]);
+    parkApproval({
+      cohortId: "turn_2",
+      fingerprint: materialTermsFingerprint(terms),
+      objectiveRevision: "obj_2",
+      requestId: "request_2",
+      taskId: "task_b",
+    });
+
+    expect(
+      situationView({ objectiveRevision: "obj_1", turnId: "turn_1" })
+        .pendingInput
+    ).toEqual([]);
+  });
+
+  it("SV-14: a turn waiting on nothing reports no pending input", () => {
+    settle("task_a", "turn_1", "obj_1", [
+      { claim: "Prepared the order", evidence: "observed" },
+    ]);
+
+    expect(
+      situationView({ objectiveRevision: "obj_1", turnId: "turn_1" })
+        .pendingInput
+    ).toEqual([]);
   });
 });

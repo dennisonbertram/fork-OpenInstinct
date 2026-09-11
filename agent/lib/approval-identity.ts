@@ -129,14 +129,12 @@ const parked = defineState<readonly PendingApproval[]>(
 
 /** Every request this session is waiting on an answer for. */
 export function parkedApprovals(): readonly PendingApproval[] {
-  throw new Error("not implemented");
+  return parked.get();
 }
 
 /** The request the given task is waiting on, if it is waiting on one. */
-export function parkedApprovalFor(
-  _taskId: string
-): PendingApproval | undefined {
-  throw new Error("not implemented");
+export function parkedApprovalFor(taskId: string): PendingApproval | undefined {
+  return parked.get().find((candidate) => candidate.taskId === taskId);
 }
 
 /**
@@ -145,9 +143,19 @@ export function parkedApprovalFor(
  * Returns false when it could not be parked: the task already has a request
  * outstanding, or the session is holding as many as it will.
  */
-export function parkApproval(_pending: PendingApproval): boolean {
-  void parked;
-  throw new Error("not implemented");
+export function parkApproval(pending: PendingApproval): boolean {
+  let didPark = false;
+  parked.update((current) => {
+    // One outstanding request per task. Two would make an answer ambiguous
+    // about which question it is answering.
+    if (current.some((candidate) => candidate.taskId === pending.taskId)) {
+      return current;
+    }
+    if (current.length >= approvalCapacity.parked) return current;
+    didPark = true;
+    return [...current, pending];
+  });
+  return didPark;
 }
 
 /**
@@ -158,15 +166,33 @@ export function parkApproval(_pending: PendingApproval): boolean {
  * parked, because the person did authorise something, and the changed action
  * needs its own approval rather than inheriting this one's absence.
  */
-export function resumeParkedApproval(_answer: {
+export function resumeParkedApproval(answer: {
   readonly requestId: string;
   readonly taskId: string;
   readonly fingerprint: string;
 }): ApprovalResumeOutcome {
-  throw new Error("not implemented");
+  const pending = parked
+    .get()
+    .find((candidate) => candidate.requestId === answer.requestId);
+  const outcome = resolveApprovalResume(pending, answer);
+  if (outcome.kind === "authorized") {
+    // Retired on use, so one approval cannot authorise a second attempt.
+    parked.update((current) =>
+      current.filter((candidate) => candidate.requestId !== answer.requestId)
+    );
+  }
+  return outcome;
 }
 
 /** Removes a request without authorising it, for a cancelled or abandoned task. */
-export function clearParkedApproval(_requestId: string): boolean {
-  throw new Error("not implemented");
+export function clearParkedApproval(requestId: string): boolean {
+  let didClear = false;
+  parked.update((current) => {
+    if (!current.some((candidate) => candidate.requestId === requestId)) {
+      return current;
+    }
+    didClear = true;
+    return current.filter((candidate) => candidate.requestId !== requestId);
+  });
+  return didClear;
 }
