@@ -80,7 +80,10 @@ describe("a later summary request", () => {
 
     // The user now asks: "What was the result? Please summarize it. Do not
     // submit again." That is a new turn reading old evidence.
-    const view = situationView({ objectiveRevision: "turn_1" });
+    const view = situationView({
+      turnId: "turn_1",
+      objectiveRevision: "turn_1",
+    });
 
     expect(view.evidence.map((item) => item.claim)).toEqual([
       "Submitted the demo comment",
@@ -103,7 +106,8 @@ describe("a later summary request", () => {
     for (let ask = 0; ask < 3; ask += 1) {
       expect(reportableCohorts()).toEqual([]);
       expect(
-        situationView({ objectiveRevision: "turn_1" }).reportOwedFor
+        situationView({ turnId: "turn_1", objectiveRevision: "turn_1" })
+          .reportOwedFor
       ).toEqual([]);
     }
   });

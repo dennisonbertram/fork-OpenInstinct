@@ -46,7 +46,13 @@ interface SituationEvidence {
 }
 
 export interface SituationView {
-  /** The objective this turn is working on, as the completion records label it. */
+  /**
+   * The objective this turn is working on, as the completion records label
+   * it. Taken from the cohort record when one exists, since the record is the
+   * thing completion-obligations itself stamped; the caller's own label is
+   * used only as a fallback when this turn started no work and there is no
+   * record to defer to.
+   */
   readonly objectiveRevision: string;
   /** The cohort for that objective, absent when this turn started no work. */
   readonly cohort?: CohortRecord;
@@ -62,11 +68,9 @@ export interface SituationView {
   readonly reportOwedFor: readonly string[];
 }
 
-/** Every cohort this session holds other than the current objective's. */
-function otherCohorts(objectiveRevision: string): readonly CohortRecord[] {
-  return allCohorts().filter(
-    (candidate) => candidate.cohortId !== objectiveRevision
-  );
+/** Every cohort this session holds other than the current turn's. */
+function otherCohorts(turnId: string): readonly CohortRecord[] {
+  return allCohorts().filter((candidate) => candidate.cohortId !== turnId);
 }
 
 /** The most claim text a projection will carry for one fact. */
@@ -99,20 +103,23 @@ function evidenceFrom(cohortId: string): readonly SituationEvidence[] {
  * of truth.
  */
 export function situationView(input: {
+  readonly turnId: string;
   readonly objectiveRevision: string;
   readonly constraints?: readonly SituationConstraint[];
 }): SituationView {
-  const cohort = cohortFor(input.objectiveRevision);
+  const cohort = cohortFor(input.turnId);
   const owed = reportableCohorts();
   const current = {
     constraints: input.constraints ?? [],
-    // Current evidence is exactly the cohort this objective owns. A record from
-    // another objective cannot reach this list, however recently it arrived.
+    // Current evidence is exactly the cohort this turn owns. A record from
+    // another turn cannot reach this list, however recently it arrived.
     evidence: cohort === undefined ? [] : evidenceFrom(cohort.cohortId),
-    objectiveRevision: input.objectiveRevision,
+    // The record's own label wins when a record exists; the caller's label is
+    // used only when this turn started no work and there is no record.
+    objectiveRevision: cohort?.objectiveRevision ?? input.objectiveRevision,
     // Everything else, kept so a later question can still be answered, and kept
     // separate so it can never be mistaken for this objective's outcome.
-    priorEvidence: otherCohorts(input.objectiveRevision).flatMap((candidate) =>
+    priorEvidence: otherCohorts(input.turnId).flatMap((candidate) =>
       evidenceFrom(candidate.cohortId)
     ),
     reportOwedFor: owed.map((candidate) => candidate.cohortId),
