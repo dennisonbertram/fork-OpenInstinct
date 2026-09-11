@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { defineState } from "eve/context";
 
 /**
  * Binds a parked native approval to the exact thing it authorised.
@@ -110,4 +111,62 @@ export function resolveApprovalResume(
     return { kind: "terms_changed" };
   }
   return { approval: pending, kind: "authorized" };
+}
+
+/**
+ * How many native approvals this session will hold parked at once.
+ *
+ * A parked request is a question a person was actually asked, so the limit
+ * refuses a new one rather than evicting an old one: losing that record
+ * silently is worse than declining to park another.
+ */
+export const approvalCapacity = { parked: 8 } as const;
+
+const parked = defineState<readonly PendingApproval[]>(
+  "completion.parked-approvals",
+  () => []
+);
+
+/** Every request this session is waiting on an answer for. */
+export function parkedApprovals(): readonly PendingApproval[] {
+  throw new Error("not implemented");
+}
+
+/** The request the given task is waiting on, if it is waiting on one. */
+export function parkedApprovalFor(
+  _taskId: string
+): PendingApproval | undefined {
+  throw new Error("not implemented");
+}
+
+/**
+ * Records that this task is waiting on a native approval.
+ *
+ * Returns false when it could not be parked: the task already has a request
+ * outstanding, or the session is holding as many as it will.
+ */
+export function parkApproval(_pending: PendingApproval): boolean {
+  void parked;
+  throw new Error("not implemented");
+}
+
+/**
+ * Decides whether a structured answer authorises the request it names, and
+ * retires that request when it does.
+ *
+ * Only an authorised answer retires it. A changed action leaves the request
+ * parked, because the person did authorise something, and the changed action
+ * needs its own approval rather than inheriting this one's absence.
+ */
+export function resumeParkedApproval(_answer: {
+  readonly requestId: string;
+  readonly taskId: string;
+  readonly fingerprint: string;
+}): ApprovalResumeOutcome {
+  throw new Error("not implemented");
+}
+
+/** Removes a request without authorising it, for a cancelled or abandoned task. */
+export function clearParkedApproval(_requestId: string): boolean {
+  throw new Error("not implemented");
 }
