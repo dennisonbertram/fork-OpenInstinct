@@ -31,17 +31,19 @@ import { recoveryProgress } from "@/agent/lib/recovery-progress";
  * a fourth task's failure could be squeezed out by three earlier successes. A
  * report that can hide a failure is worse than no report.
  *
- * What this honestly guarantees is narrow, and worth stating plainly. It
- * guarantees every settled task's outcome, and as many supporting claims as fit,
- * reach the user with their provenance. It does not make the model's own
+ * What this honestly guarantees is narrow, and worth stating plainly. Every
+ * settled task's outcome reaches the user, with anything that did not complete
+ * named first so a length limit cannot hide it. Supporting claims are carried
+ * whole or not at all, and the ones that did not fit are counted rather than
+ * shortened -- a shortened claim can say the opposite of what was recorded. It does not make the model's own
  * sentences true, and it does not make the records true -- a worker's claim
  * carried here is reproduced, not verified.
  */
 
-/** The most claim text one report will carry for a single fact. */
-const maximumClaimLength = 240;
 /** The most supporting claims one report will name, across the whole message. */
 const maximumClaims = 3;
+/** The most room supporting claims may take, leaving space for the rest. */
+const maximumClaimBudget = 4_000;
 /** What the channel accepts, so a carried report can never make a send invalid. */
 const maximumMessageLength = 20_000;
 
@@ -49,17 +51,9 @@ function corroborated(fact: BoundedFact) {
   return fact.evidence === "observed" || fact.evidence === "executor_receipt";
 }
 
-/**
- * Shortens a claim from the middle, never from the end.
- *
- * A worker's message tends to put the outcome last: "…reviewed the basket. The
- * payment failed and no order was placed." Cutting the tail keeps the setup and
- * loses the decision, which is the opposite of what a summary is for.
- */
-function bound(claim: string) {
-  if (claim.length <= maximumClaimLength) return claim;
-  const half = Math.floor((maximumClaimLength - 1) / 2);
-  return `${claim.slice(0, half)}…${claim.slice(claim.length - half)}`;
+/** Sorts anything that did not complete ahead of anything that did. */
+function completedLast(task: TaskRecord) {
+  return task.terminal?.status === "completed" ? 1 : 0;
 }
 
 function outcomeOf(task: TaskRecord) {
@@ -94,9 +88,11 @@ export function completionReportText(cohortId: string): string | undefined {
   const tasks = taskRecords(cohortId);
   if (tasks.length === 0) return undefined;
 
-  // Every task's outcome, always. This is the part that may never be trimmed:
-  // trimming it is how a failure disappears behind an earlier success.
+  // Every task's outcome, always, and anything that did not complete comes
+  // first. Trimming this is how a failure disappears behind an earlier success,
+  // and ordering it this way means even a truncated report keeps the bad news.
   const outcomes = tasks
+    .toSorted((left, right) => completedLast(left) - completedLast(right))
     .map((task) => `${task.taskId} ${outcomeOf(task)}`)
     .join("; ");
 
@@ -107,11 +103,21 @@ export function completionReportText(cohortId: string): string | undefined {
     ...facts.filter((fact) => fact.evidence === "worker_assertion"),
     ...facts.filter((fact) => fact.evidence === "unknown"),
   ];
-  const shown = ordered.slice(0, maximumClaims);
+  // Whole or not at all. Shortening a claim can reverse it -- a sentence whose
+  // middle holds "not" becomes its own opposite, and a reader cannot tell it was
+  // shortened. Omission is visible; mutation is not.
+  const shown: BoundedFact[] = [];
+  let spent = 0;
+  for (const fact of ordered) {
+    if (shown.length >= maximumClaims) break;
+    if (spent + fact.claim.length > maximumClaimBudget) continue;
+    shown.push(fact);
+    spent += fact.claim.length;
+  }
 
   const lines = [`What the records hold: ${outcomes}.`];
   for (const fact of shown) {
-    lines.push(`${bound(fact.claim)} (${provenanceOf(fact)}).`);
+    lines.push(`${fact.claim} (${provenanceOf(fact)}).`);
   }
   if (ordered.length > shown.length) {
     // Said rather than silently dropped, so nobody reads the list as complete.
@@ -157,16 +163,13 @@ export function reportWithRecordedFacts(
   if (stripImageArtifactMarkdownReferences(written).includes(report)) {
     return modelText;
   }
-  if (written.length === 0) return report.slice(0, maximumMessageLength);
+  if (written.length === 0) return report;
 
   const separator = "\n\n";
   const room = maximumMessageLength - report.length - separator.length;
-  if (room <= 0) {
-    // The records alone fill the message. Carrying them is the obligation; the
-    // model's words are what gives way.
-    return report.slice(0, maximumMessageLength);
-  }
-  const kept =
-    written.length <= room ? written : `${written.slice(0, room - 1)}…`;
-  return `${kept}${separator}${report}`;
+  // The records alone may fill the message. Carrying them is the obligation, so
+  // the model's words are what gives way -- and they are dropped whole rather
+  // than cut, for the same reason a claim is.
+  if (room <= 0) return report;
+  return written.length <= room ? `${written}${separator}${report}` : report;
 }

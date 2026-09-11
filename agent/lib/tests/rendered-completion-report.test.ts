@@ -334,3 +334,117 @@ describe("the uncertainty the report has to carry", () => {
     expect(delivered).not.toMatch(/never confirmed|stopped before finishing/iu);
   });
 });
+
+describe("what a second review found still wrong with shortening", () => {
+  it("RR-17: a claim is never altered, because altering it can reverse it", () => {
+    // Codex Astra's reproduction. Middle truncation removed exactly the middle
+    // three characters of a 241-character claim, and a natural sentence with
+    // "not" there became its own opposite -- "The order was not submitted"
+    // rendered as "The order was … submitted", still labelled confirmed.
+    const head = "a".repeat(119);
+    const tail = "b".repeat(119);
+    const claim = `${head}not${tail}`;
+    settle("task_a", "turn_1", [{ claim, evidence: "observed" }]);
+
+    const delivered = reportWithRecordedFacts("turn_1", "Here it is.");
+
+    // Either the claim appears exactly as recorded, or it does not appear at
+    // all and is counted as omitted. A partial claim is the one thing that must
+    // never happen, because a reader cannot tell it was shortened.
+    const whole = delivered.includes(claim);
+    const counted = /further recorded claims are not shown/u.test(delivered);
+    expect(whole || counted).toBe(true);
+    expect(delivered).not.toContain(`${head}…${tail}`);
+  });
+
+  it("RR-18: shortening never splits a character in half", () => {
+    const claim = "😀".repeat(200);
+    settle("task_a", "turn_1", [{ claim, evidence: "observed" }]);
+
+    const delivered = reportWithRecordedFacts("turn_1", "Done.");
+
+    // Lone surrogates render as replacement symbols. Slicing UTF-16 code units
+    // produces them whenever a cut lands inside a pair.
+    expect(delivered.isWellFormed()).toBe(true);
+  });
+
+  it("RR-19: a failure is never the outcome that gets cut off", () => {
+    // A report that outgrows the channel's limit was sliced from the end, so a
+    // failure recorded last vanished while the successes stayed.
+    for (let index = 0; index < 7; index += 1) {
+      settle(`task_ok_${String(index)}`, "turn_1", [
+        {
+          claim: `${"padding ".repeat(400)}step ${String(index)}`,
+          evidence: "observed",
+        },
+      ]);
+    }
+    settle(
+      "task_late_failure",
+      "turn_1",
+      [{ claim: "The checkout never loaded", evidence: "observed" }],
+      "failed"
+    );
+
+    const delivered = reportWithRecordedFacts(
+      "turn_1",
+      "Here is where it got to."
+    );
+
+    expect(delivered.length).toBeLessThanOrEqual(20_000);
+    expect(delivered).toContain("task_late_failure");
+    expect(delivered).toMatch(/failed/iu);
+  });
+});
+
+describe("the rules that mutation showed were not actually pinned", () => {
+  it("RR-20: a claim too long for the budget is omitted whole, never shortened", () => {
+    // Over the claim budget on purpose. The earlier version of this case used a
+    // 241-character claim, which fits, so nothing was ever omitted and a
+    // mutation that shortened claims survived.
+    const claim = `${"a".repeat(2500)}not${"b".repeat(2500)}`;
+    settle("task_a", "turn_1", [{ claim, evidence: "observed" }]);
+
+    const delivered = reportWithRecordedFacts("turn_1", "Here it is.");
+
+    expect(delivered).toContain("1 further recorded claims are not shown");
+    // No fragment of it appears. A reader cannot tell a fragment was shortened,
+    // and a fragment can say the opposite of what was recorded.
+    expect(delivered).not.toContain("a".repeat(200));
+  });
+
+  it("RR-21: a task that did not complete is named before the ones that did", () => {
+    settle("task_first_ok", "turn_1", [
+      { claim: "Step one", evidence: "observed" },
+    ]);
+    settle(
+      "task_late_fail",
+      "turn_1",
+      [{ claim: "The checkout never loaded", evidence: "observed" }],
+      "failed"
+    );
+
+    const delivered = reportWithRecordedFacts("turn_1", "Here it is.");
+
+    // Order is what keeps a failure safe from any length limit: bad news first
+    // survives a cut, bad news last does not.
+    expect(delivered.indexOf("task_late_fail")).toBeLessThan(
+      delivered.indexOf("task_first_ok")
+    );
+  });
+
+  it("RR-22: a model message that cannot fit is dropped whole, not cut", () => {
+    settle("task_a", "turn_1", [
+      { claim: "Submitted the order form", evidence: "observed" },
+    ]);
+    const written = `START-OF-MODEL-TEXT ${"x".repeat(20_000)}`;
+
+    const delivered = reportWithRecordedFacts("turn_1", written);
+
+    expect(delivered.length).toBeLessThanOrEqual(20_000);
+    expect(delivered).toContain("Submitted the order form");
+    // Dropped rather than cut, for the same reason a claim is: half a sentence
+    // reads as a whole one.
+    expect(delivered).not.toContain("START-OF-MODEL-TEXT");
+  });
+});

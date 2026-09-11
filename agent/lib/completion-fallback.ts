@@ -1,7 +1,4 @@
-import {
-  taskRecords,
-  type BoundedFact,
-} from "@/agent/lib/completion-obligations";
+import { completionReportText } from "@/agent/lib/completion-report-text";
 import { reportPolicyForTurn } from "@/agent/lib/completion-report-policy";
 import { hasUnconfirmedProviderAttempt } from "@/agent/lib/message-delivery";
 
@@ -29,25 +26,6 @@ import { hasUnconfirmedProviderAttempt } from "@/agent/lib/message-delivery";
  * channel that own them.
  */
 
-/** The most claim text one fallback will carry for a single fact. */
-const maximumClaimLength = 120;
-/** The most facts one fallback will name, across the whole message. */
-const maximumClaims = 3;
-
-function corroborated(fact: BoundedFact) {
-  return fact.evidence === "observed" || fact.evidence === "executor_receipt";
-}
-
-function bound(claim: string) {
-  return claim.length <= maximumClaimLength
-    ? claim
-    : `${claim.slice(0, maximumClaimLength)}…`;
-}
-
-function list(facts: readonly BoundedFact[]) {
-  return facts.map((fact) => bound(fact.claim)).join("; ");
-}
-
 export function completionFallbackText(turnId: string): string | undefined {
   const policy = reportPolicyForTurn();
   if (policy.kind !== "must_report") return undefined;
@@ -55,42 +33,12 @@ export function completionFallbackText(turnId: string): string | undefined {
   // message, whatever this one would have said.
   if (hasUnconfirmedProviderAttempt(turnId)) return undefined;
 
-  const facts = taskRecords(policy.cohortId).flatMap(
-    (task) => task.terminal?.facts ?? []
-  );
-  // One budget for the message, not one per section. Corroborated facts are the
-  // most useful, so they are taken first.
-  const confirmed = facts
-    .filter((fact) => corroborated(fact))
-    .slice(0, maximumClaims);
-  const remaining = maximumClaims - confirmed.length;
-  const asserted = facts
-    .filter((fact) => fact.evidence === "worker_assertion")
-    .slice(0, remaining);
-  const unattributed = facts
-    .filter((fact) => fact.evidence === "unknown")
-    .slice(0, remaining - asserted.length);
-
-  const lines = [
+  const records = completionReportText(policy.cohortId);
+  return [
     "I could not prepare a summary of the background work, so this is what the records hold.",
-  ];
-  if (confirmed.length > 0) lines.push(`Confirmed: ${list(confirmed)}.`);
-  if (asserted.length > 0) {
-    // Attributed, never stated flatly. A worker's own word reported as a
-    // finding is how an unverified claim becomes something the user believes.
-    lines.push(`Reported by the worker but not confirmed: ${list(asserted)}.`);
-  }
-  if (unattributed.length > 0) {
-    // Separate from the worker's claims on purpose. Unknown provenance does not
-    // establish who said it, and naming a source this does not know would
-    // invent one — the same mistake as inventing a fact.
-    lines.push(`Recorded with no stated source: ${list(unattributed)}.`);
-  }
-  if (facts.length === 0) {
-    lines.push("There is no recorded evidence of what the work achieved.");
-  }
-  // Only what the records establish. An earlier version added "I have not tried
-  // again", which asserts a retry history nothing here inspects.
-  lines.push("This is not a claim that the work succeeded.");
-  return lines.join(" ");
+    records,
+    "This is not a claim that the work succeeded.",
+  ]
+    .filter((line) => line !== undefined && line.length > 0)
+    .join(" ");
 }
