@@ -52,19 +52,50 @@ Where each deterministic ID is actually exercised, as of `main` after the
 completion and operating-model slices landed. A row marked **not yet** names what
 it waits on; none is marked covered on the strength of an authored-but-unrun case.
 
-| ID                  | Covered by                                                                                        | Status                                                                                                                                                                                                                      |
-| ------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TA-01, TA-03, TA-05 | `tests/unit/background-task-terminal-adapter.test.ts`                                             | covered                                                                                                                                                                                                                     |
-| CO-01, CO-02, CO-04 | `tests/agent/lib/completion-obligations.test.ts`                                                  | covered                                                                                                                                                                                                                     |
-| CO-06               | same file, cancelled cohort retaining an `executor_receipt`                                       | covered                                                                                                                                                                                                                     |
-| CO-07               | same file, superseded cohort with a late terminal                                                 | covered                                                                                                                                                                                                                     |
-| RP-01               | `tests/agent/tools/messaging-report-policy.test.ts`                                               | covered — the guard names `send_message` and the executor rejects a reaction                                                                                                                                                |
-| RP-06               | `agent/lib/tests/later-summary-request.test.ts`                                                   | covered at the unit layer                                                                                                                                                                                                   |
-| AR-03               | `tests/agent/lib/approval-identity.test.ts`, stale answer against changed terms                   | covered                                                                                                                                                                                                                     |
-| AR-05               | `agent/lib/tests/later-summary-request.test.ts`, plus `agent/lib/tests/recovery-progress.test.ts` | covered at the unit layer                                                                                                                                                                                                   |
-| RP-05               | —                                                                                                 | **not yet**: the pre-provider composition fallback is Plan 006 step 3, which needs grounded composition context                                                                                                             |
-| CS-03, CS-05, CS-06 | —                                                                                                 | **not yet**: these assert mounted provider-call ordering and counts, which needs Plan 007's channel binding. The durable claim record exists and is proven in the real-Postgres lane, but nothing binds it to a channel yet |
-| AR-01               | —                                                                                                 | **not yet**: one approval and one attempt end to end needs the same channel binding                                                                                                                                         |
+| ID                  | Covered by                                                                                        | Status                                                                                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TA-01, TA-03, TA-05 | `tests/unit/background-task-terminal-adapter.test.ts`                                             | covered                                                                                                                                                                             |
+| CO-01, CO-02, CO-04 | `tests/agent/lib/completion-obligations.test.ts`                                                  | covered                                                                                                                                                                             |
+| CO-06               | same file, cancelled cohort retaining an `executor_receipt`                                       | covered                                                                                                                                                                             |
+| CO-07               | same file, superseded cohort with a late terminal                                                 | covered                                                                                                                                                                             |
+| RP-01               | `tests/agent/tools/messaging-report-policy.test.ts`                                               | covered — the guard names `send_message` and the executor rejects a reaction                                                                                                        |
+| RP-06               | `agent/lib/tests/later-summary-request.test.ts`                                                   | covered at the unit layer                                                                                                                                                           |
+| AR-03               | `tests/agent/lib/approval-identity.test.ts`, stale answer against changed terms                   | covered                                                                                                                                                                             |
+| AR-05               | `agent/lib/tests/later-summary-request.test.ts`, plus `agent/lib/tests/recovery-progress.test.ts` | covered at the unit layer                                                                                                                                                           |
+| RP-05               | —                                                                                                 | **not yet**: the pre-provider composition fallback is Plan 006 step 3, which needs grounded composition context                                                                     |
+| CS-03, CS-05, CS-06 | —                                                                                                 | **not yet**: these assert mounted provider-call ordering and counts. Every piece between the records and a provider now exists (see below), but no channel calls it yet             |
+| AR-01               | —                                                                                                 | **not yet**: one approval and one attempt end to end needs the same channel call sites. The parked-approval record now exists, so the missing half is the attempt, not the approval |
+
+### What exists between the records and a provider
+
+The rows above are about acceptance IDs. This is about mechanism, recorded
+separately because having the parts is not the same as having the behaviour.
+
+Working outward from the database:
+
+| Piece                                                    | Where                                                           | Proven by                                                                                                                          |
+| -------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| durable claim with a transactional compare-and-swap      | `db/services/completion-report-attempts.ts`                     | the supervised Real Postgres lane, including contention and restart readback                                                       |
+| claim-then-record-then-dispatch ordering                 | `agent/lib/completion-report-attempts.ts`                       | `agent/lib/tests/completion-report-attempts.test.ts`                                                                               |
+| the crash window at each fault point                     | —                                                               | `tests/unit/completion-report-dispatch-boundary.test.ts`, through a synthetic adapter, with the adapter's call count as the oracle |
+| which cohort a final message answers, and its settlement | `agent/tools/messaging.ts`, `agent/lib/message-delivery.ts`     | `tests/agent/tools/messaging-report-policy.test.ts`                                                                                |
+| which attempt, as a revision the claim can key on        | `agent/lib/completion-obligations.ts`                           | `tests/agent/lib/completion-obligations.test.ts`                                                                                   |
+| the durable identity of one physical effect              | `agent/lib/completion-report-policy.ts`                         | `agent/lib/tests/completion-report-policy.test.ts`                                                                                 |
+| one report part wrapped in its claim                     | `agent/lib/report-part-dispatch.ts`                             | `agent/lib/tests/report-part-dispatch.test.ts`                                                                                     |
+| a parked native approval, and this turn's pending input  | `agent/lib/approval-identity.ts`, `agent/lib/situation-view.ts` | `agent/lib/tests/parked-approval.test.ts`, `agent/lib/tests/situation-view.test.ts`                                                |
+
+What is missing is the last link: **no channel calls any of it.** `agent/channels/sendblue.ts` and
+`agent/channels/linq.ts` still dispatch exactly as they did before. That is Plan
+007 step 2, and it is what CS-03, CS-05, CS-06 and AR-01 wait on, because those
+four assert provider-call counts and ordering at a mounted channel.
+
+Two latent defects found and fixed while assembling this, both of the same kind
+and worth recording so the pattern is recognised if it recurs: `situationView`
+and `recoveryProgress` each looked a cohort up by `objectiveRevision` when
+cohorts are keyed by parent turn. Both test fixtures set the two identifiers to
+the same string, so neither suite could see it. In `recoveryProgress` the effect
+was that every disposition collapsed to "awaiting", meaning a root whose work had
+finished and gone wrong would have been told to keep waiting.
 
 ### What the covered rows do not prove
 
