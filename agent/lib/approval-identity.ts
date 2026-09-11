@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { z } from "zod";
+import { defineState } from "eve/context";
 
 /**
  * Binds a parked native approval to the exact thing it authorised.
@@ -46,13 +48,40 @@ export interface MaterialActionTerms {
  * An absent target token encodes as null, which no supplied token can produce,
  * so absence is not the same as an empty one.
  */
+/**
+ * What may be hashed, parsed rather than assumed.
+ *
+ * Numbers must be finite, which `z.number()` already requires: JSON encodes
+ * NaN, Infinity and -Infinity all as null, so three different terms would share
+ * one digest. Fingerprint equality is the whole basis for deciding an action is
+ * unchanged, so a digest that cannot tell them apart must not be produced at
+ * all.
+ *
+ * Parsing here also drops anything beyond the declared outer fields, which is
+ * what makes "a caller cannot widen the hash" true at runtime and not only in
+ * the type.
+ */
+const hashableTermsSchema = z.object({
+  action: z.string(),
+  origin: z.string(),
+  target_ref: z.string(),
+  target_token: z.string().optional(),
+  terms: z.record(z.string(), z.union([z.string(), z.number()])),
+});
+
 function canonicalForm(input: MaterialActionTerms): string {
+  const parsed = hashableTermsSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error(
+      "A material term must be a string or a finite number, and the action, origin and target must be strings."
+    );
+  }
   return JSON.stringify([
-    input.action,
-    input.origin,
-    input.target_ref,
-    input.target_token ?? null,
-    Object.entries(input.terms).toSorted(([left], [right]) =>
+    parsed.data.action,
+    parsed.data.origin,
+    parsed.data.target_ref,
+    parsed.data.target_token ?? null,
+    Object.entries(parsed.data.terms).toSorted(([left], [right]) =>
       left < right ? -1 : 1
     ),
   ]);
@@ -62,10 +91,13 @@ function canonicalForm(input: MaterialActionTerms): string {
  * Fingerprints exactly what a person authorised.
  *
  * Derived only from the action, its material terms, the origin, and the
- * snapshot-scoped target. Payment and vault references are not inputs: they are
- * not what the approval question is about, and including them would put
- * secret-adjacent material into a stored value. Because this reads only the
- * declared fields, a caller passing extra properties cannot widen the hash.
+ * snapshot-scoped target. Payment and vault references are not declared fields,
+ * so a caller passing them as extra top-level properties cannot widen the hash.
+ *
+ * That is the limit of what this enforces, and the distinction matters. Every
+ * entry inside `terms` is hashed, so keeping secret material out of `terms` is
+ * the caller's precondition, not a guarantee made here. `commit_browser_action`
+ * is where the allowed term fields are decided.
  */
 export function materialTermsFingerprint(input: MaterialActionTerms): string {
   return createHash("sha256").update(canonicalForm(input)).digest("hex");
@@ -110,4 +142,114 @@ export function resolveApprovalResume(
     return { kind: "terms_changed" };
   }
   return { approval: pending, kind: "authorized" };
+}
+
+/**
+ * How many native approvals this session will hold parked at once.
+ *
+ * A parked request is a question a person was actually asked, so the limit
+ * refuses a new one rather than evicting an old one: losing that record
+ * silently is worse than declining to park another.
+ */
+export const approvalCapacity = { parked: 8 } as const;
+
+const parked = defineState<readonly PendingApproval[]>(
+  "completion.parked-approvals",
+  () => []
+);
+
+/** Every request this session is waiting on an answer for. */
+export function parkedApprovals(): readonly PendingApproval[] {
+  return parked.get();
+}
+
+/** The request the given task is waiting on, if it is waiting on one. */
+export function parkedApprovalFor(taskId: string): PendingApproval | undefined {
+  return parked.get().find((candidate) => candidate.taskId === taskId);
+}
+
+/**
+ * Records that this task is waiting on a native approval.
+ *
+ * Returns false when it could not be parked: the task already has a request
+ * outstanding, or the session is holding as many as it will.
+ */
+export function parkApproval(pending: PendingApproval): boolean {
+  // Copied field by field rather than kept by reference. `readonly` is a
+  // compile-time promise about this parameter's type, not a runtime one about
+  // the caller's object, so keeping the reference would let a caller change
+  // which action is authorised after a person was asked about a different one.
+  // Rebuilding it also drops any extra properties, which a TypeScript interface
+  // does not strip at runtime -- an object carrying a secret alongside the
+  // declared fields would otherwise put it into session state.
+  const record: PendingApproval = {
+    cohortId: pending.cohortId,
+    fingerprint: pending.fingerprint,
+    objectiveRevision: pending.objectiveRevision,
+    requestId: pending.requestId,
+    taskId: pending.taskId,
+  };
+  let didPark = false;
+  parked.update((current) => {
+    // One outstanding request per task, and one task per request id. Either
+    // duplicate makes an answer ambiguous about which question it answers.
+    if (
+      current.some(
+        (candidate) =>
+          candidate.taskId === record.taskId ||
+          candidate.requestId === record.requestId
+      )
+    ) {
+      return current;
+    }
+    if (current.length >= approvalCapacity.parked) return current;
+    didPark = true;
+    return [...current, record];
+  });
+  return didPark;
+}
+
+/**
+ * Decides whether a structured answer authorises the request it names, and
+ * retires that request when it does.
+ *
+ * Only an authorised answer retires it. A changed action leaves the request
+ * parked, because the person did authorise something, and the changed action
+ * needs its own approval rather than inheriting this one's absence.
+ */
+export function resumeParkedApproval(answer: {
+  readonly requestId: string;
+  readonly taskId: string;
+  readonly fingerprint: string;
+}): ApprovalResumeOutcome {
+  const pending = parked
+    .get()
+    .find((candidate) => candidate.requestId === answer.requestId);
+  const outcome = resolveApprovalResume(pending, answer);
+  if (outcome.kind === "authorized") {
+    // Retired on use, so one approval cannot authorise a second attempt. Matched
+    // on both halves of the identity so retirement cannot reach past the record
+    // that was actually resolved.
+    parked.update((current) =>
+      current.filter(
+        (candidate) =>
+          candidate.requestId !== answer.requestId ||
+          candidate.taskId !== answer.taskId
+      )
+    );
+  }
+  return outcome;
+}
+
+/** Removes a request without authorising it, for a cancelled or abandoned task. */
+export function clearParkedApproval(requestId: string): boolean {
+  let didClear = false;
+  parked.update((current) => {
+    if (!current.some((candidate) => candidate.requestId === requestId)) {
+      return current;
+    }
+    didClear = true;
+    return current.filter((candidate) => candidate.requestId !== requestId);
+  });
+  return didClear;
 }

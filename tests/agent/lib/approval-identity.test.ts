@@ -135,6 +135,40 @@ describe("materialTermsFingerprint collision resistance", () => {
   });
 });
 
+describe("materialTermsFingerprint input validation", () => {
+  it("AP-13: a non-finite count is refused rather than hashed", () => {
+    // JSON encodes NaN, Infinity and -Infinity all as null, so three different
+    // terms would share one fingerprint. A digest that cannot tell them apart
+    // must not be produced at all: fingerprint equality is the whole basis for
+    // deciding an action is unchanged.
+    for (const count of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ]) {
+      expect(() =>
+        materialTermsFingerprint({
+          action: "submit_form",
+          origin: "https://example.com",
+          target_ref: "snapshot-1#form",
+          terms: { count },
+        })
+      ).toThrow(/finite/i);
+    }
+  });
+
+  it("AP-14: an ordinary count is still accepted", () => {
+    expect(
+      materialTermsFingerprint({
+        action: "submit_form",
+        origin: "https://example.com",
+        target_ref: "snapshot-1#form",
+        terms: { count: 2 },
+      })
+    ).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
 describe("resolveApprovalResume", () => {
   it("AP-04: authorises only the matching request with unchanged terms", () => {
     const fingerprint = authorized();
