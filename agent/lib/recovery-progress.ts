@@ -6,11 +6,15 @@ import {
 /**
  * What a root may legally do next after background work stopped short.
  *
- * The rule worth stating first, because it is the one that protects a user: a
- * read may be retried, because repeating it only adds evidence. A write whose
- * effect is uncertain may never be retried, because the first attempt may
- * already have landed. Everything else here exists to tell those two apart
- * from the evidence actually recorded.
+ * The rule worth stating first, because it is the one that protects a user: an
+ * action that was dispatched but never confirmed must not be repeated
+ * automatically. Repeating it is safe only if it changed nothing, and that is
+ * precisely what is unknown.
+ *
+ * These records do not say whether a dispatched action read or wrote, so this
+ * does not claim to know. Treating an unconfirmed effect as unrepeatable is the
+ * conservative reading, and it is stated as uncertainty about the effect rather
+ * than as a finding that a write occurred.
  *
  * This reads the completion records and decides. It does not retry anything,
  * re-deliver anything, or invent a taxonomy of errors: a disposition is only
@@ -23,8 +27,11 @@ type RecoveryDisposition =
   | "verified_success"
   /** Members settled, but nothing stronger than the worker's own word. */
   | "settled_unverified"
-  /** An effect may already have reached the world. Never retry. */
-  | "uncertain_write"
+  /**
+   * A dispatched action whose outcome this session cannot confirm. Not called a
+   * write: the records show a receipt, not whether repeating it is safe.
+   */
+  | "uncertain_effect"
   /** It stopped without evidence that anything was dispatched. */
   | "stopped_without_dispatch"
   /** Still running; there is nothing to recover yet. */
@@ -62,7 +69,7 @@ const nextStepFor: Readonly<Record<RecoveryDisposition, RecoveryNextStep>> = {
   settled_unverified: "report",
   stopped_without_dispatch: "ask_user",
   // Never "retry". The first attempt may already have reached the world.
-  uncertain_write: "report_uncertain",
+  uncertain_effect: "report_uncertain",
   verified_success: "report",
 };
 
@@ -83,20 +90,21 @@ export function recoveryProgress(input: {
     if (tasks.length === 0 || settled.length !== tasks.length)
       return "awaiting";
 
-    const dispatched = facts.some(
-      (fact) => fact.evidence === "executor_receipt"
+    // Judged per task, then aggregated. Comparing a receipt against the whole
+    // cohort's status let one task's failure relabel another task's completed,
+    // corroborated dispatch as uncertain.
+    const uncertain = settled.some(
+      (task) =>
+        task.terminal?.status !== "completed" &&
+        (task.terminal?.facts ?? []).some(
+          (fact) => fact.evidence === "executor_receipt"
+        )
     );
+    if (uncertain) return "uncertain_effect";
+
     const allCompleted = settled.every(
       (task) => task.terminal?.status === "completed"
     );
-
-    // A dispatch receipt without a clean completion leaves the world in a state
-    // this session cannot confirm, and cancelling does not unsend it.
-    //
-    // A *completed* dispatch is not made uncertain by a later cancellation: the
-    // work finished before the cancel arrived, and calling that "uncertain"
-    // would be its own untruth. What cancellation forbids is claiming rollback.
-    if (dispatched && !allCompleted) return "uncertain_write";
     if (allCompleted) {
       return verifiedCheckpoints.length > 0
         ? "verified_success"
@@ -107,9 +115,9 @@ export function recoveryProgress(input: {
 
   const unknownRemainder = ((): readonly string[] => {
     switch (disposition) {
-      case "uncertain_write":
+      case "uncertain_effect":
         return [
-          "Whether the dispatched action took effect is unknown; it was not confirmed and must not be repeated.",
+          "An action was dispatched and its outcome was never confirmed. This session cannot establish what it changed, so it must not be repeated automatically: repeating it is safe only if it changed nothing, and that is exactly what is unknown.",
         ];
       case "settled_unverified":
         return [

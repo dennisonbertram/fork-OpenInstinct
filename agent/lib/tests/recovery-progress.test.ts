@@ -72,7 +72,7 @@ describe("recoveryProgress", () => {
 
     const progress = recoveryProgress({ objectiveRevision: "turn_1" });
 
-    expect(progress.disposition).toBe("uncertain_write");
+    expect(progress.disposition).toBe("uncertain_effect");
     expect(progress.nextStep).toBe("report_uncertain");
     // The prepared work is not thrown away.
     expect(progress.verifiedCheckpoints).toEqual(["Submitted the order form"]);
@@ -90,7 +90,7 @@ describe("recoveryProgress", () => {
 
     // Cancelling does not unsend anything, so this cannot be reported as
     // "cancelled, nothing happened".
-    expect(progress.disposition).toBe("uncertain_write");
+    expect(progress.disposition).toBe("uncertain_effect");
     expect(progress.nextStep).toBe("report_uncertain");
   });
 
@@ -108,6 +108,43 @@ describe("recoveryProgress", () => {
     // would be its own untruth; what cancellation forbids is claiming rollback.
     expect(progress.disposition).toBe("verified_success");
     expect(progress.nextStep).toBe("report");
+  });
+
+  it("RP-02c: one task's failure does not relabel another task's confirmed effect", () => {
+    // The cross-task case an outside review found: judging a receipt against the
+    // whole cohort's status let one task's failure make another task's
+    // completed, corroborated dispatch look uncertain.
+    admit("task_done", "turn_1");
+    admit("task_stalled", "turn_1");
+    settle("task_done", "turn_1", "completed", [
+      { claim: "Sent the invoice", evidence: "executor_receipt" },
+      { claim: "The outbox shows it sent", evidence: "observed" },
+    ]);
+    settle("task_stalled", "turn_1", "failed", [
+      { claim: "The report page never loaded", evidence: "observed" },
+    ]);
+
+    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+
+    // task_stalled never dispatched anything, so nothing here is uncertain.
+    expect(progress.disposition).toBe("stopped_without_dispatch");
+    expect(progress.verifiedCheckpoints).toContain("The outbox shows it sent");
+  });
+
+  it("RP-02d: an unconfirmed dispatch is an unknown effect, not a known write", () => {
+    admit("task_a", "turn_1");
+    settle("task_a", "turn_1", "failed", [
+      { claim: "Dispatched the request", evidence: "executor_receipt" },
+    ]);
+
+    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+
+    expect(progress.disposition).toBe("uncertain_effect");
+    const said = progress.unknownRemainder.join(" ");
+    // It must not assert what the action was, only that the outcome is unknown
+    // and that repeating it cannot be shown to be safe.
+    expect(said).toMatch(/never confirmed|cannot establish/iu);
+    expect(said).not.toMatch(/\bwrote\b|\bwrite\b/iu);
   });
 
   it("RP-03: stopping with no dispatch evidence asks rather than guesses", () => {
