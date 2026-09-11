@@ -5,6 +5,7 @@ import {
   deliveryToolChoiceForInteractiveTurn,
   wrapInteractiveDeliveryGuard,
 } from "@/agent/lib/delivery-guard";
+import { reconcileBackgroundTasks } from "@/agent/lib/completion-obligations";
 import { finalDeliveryStatus } from "@/agent/lib/message-delivery";
 import { wrapLinqModelDurationProbe } from "@/agent/lib/linq/timing";
 import { scheduledRunIdentity } from "@/agent/lib/schedules/identity";
@@ -34,6 +35,10 @@ export default defineAgent({
         }
         const caller = ctx.session.auth.current ?? ctx.session.auth.initiator;
         if (!caller) throw new Error("An authenticated user is required.");
+        // Keep this session's record of what background work is owed in line
+        // with the framework's own task index, before anything decides what to
+        // say. Idempotent, so a replayed step cannot double count.
+        reconcileBackgroundTasks();
         const turnId = stepEventSchema.safeParse(event).data?.data.turnId;
         const toolChoice = deliveryToolChoiceForInteractiveTurn({
           channelKind: ctx.channel.kind,
