@@ -5,6 +5,7 @@ import {
   toolOutput,
   type DynamicResolveContext,
 } from "eve/tools";
+import { completionReportForcingActive } from "../lib/completion-report-activation";
 import {
   beginFinalDelivery,
   finalDeliveryStatus,
@@ -25,7 +26,7 @@ export default defineDynamic({
       const turnId = parsed.success ? parsed.data.data.turnId : undefined;
       return finalDeliveryStatus(turnId) !== undefined
         ? null
-        : resolveMessaging(context, turnId);
+        : resolveMessaging(context, turnId, completionReportForcingActive());
     },
   },
 });
@@ -49,11 +50,56 @@ function assertDeliveryOpen(turnId: string) {
   }
 }
 
+/**
+ * Rejects anything that cannot be a completion summary while one is owed.
+ *
+ * A reaction, a non-final message, a bare link, and an attachment with no words
+ * all fail for the same reason: settled background work owes the user a written
+ * account, and none of these says anything about what happened.
+ */
+function assertCanSatisfyOwedReport(
+  attempt:
+    | { readonly tool: "react_to_message" }
+    | {
+        readonly tool: "send_message";
+        readonly final: boolean | undefined;
+        readonly kind: string;
+        readonly text: string | undefined;
+      }
+) {
+  // Checked live, not captured when the tools were resolved. A tool retained
+  // from an earlier step would otherwise escape this guard, which is the case
+  // it most needs to cover.
+  if (!completionReportForcingActive()) return;
+
+  if (attempt.tool === "react_to_message") {
+    throw new Error(
+      "Background work finished and the user is owed a written summary of it, so a reaction cannot answer this turn. Send one final message saying what happened, what the evidence was, and anything still uncertain."
+    );
+  }
+  if (attempt.kind !== "message") {
+    throw new Error(
+      "A written completion summary is owed, so send kind message with text. A standalone link does not say what happened."
+    );
+  }
+  if (attempt.text === undefined || attempt.text.trim().length === 0) {
+    throw new Error(
+      "A written completion summary is owed, so this message needs text. Attachments alone do not say what happened."
+    );
+  }
+  if (!attempt.final) {
+    throw new Error(
+      "A written completion summary is owed, so the message that reports the settled work must set final: true."
+    );
+  }
+}
+
 const stepEventSchema = z.object({ data: z.object({ turnId: z.string() }) });
 
 function resolveMessaging(
   context: DynamicResolveContext,
-  turnId: string | undefined
+  turnId: string | undefined,
+  reportOwed = false
 ) {
   const isProviderChannel =
     context.channel.kind === "channel:linq" ||
@@ -68,6 +114,12 @@ function resolveMessaging(
     inputSchema: sendMessageInputSchema,
     execute({ final, ...message }, toolContext) {
       assertDeliveryOpen(toolContext.session.turn.id);
+      assertCanSatisfyOwedReport({
+        final,
+        kind: message.kind,
+        text: "text" in message ? message.text : undefined,
+        tool: "send_message",
+      });
       if (final)
         beginFinalDelivery(
           toolContext.session.turn.id,
@@ -96,6 +148,7 @@ function resolveMessaging(
       : addReactionToMessageOutputSchema,
     execute(reaction, toolContext) {
       assertDeliveryOpen(toolContext.session.turn.id);
+      assertCanSatisfyOwedReport({ tool: "react_to_message" });
       if (reaction.operation === "add") {
         beginFinalDelivery(
           toolContext.session.turn.id,
@@ -116,7 +169,10 @@ function resolveMessaging(
   const interactive = { react_to_message, send_message };
 
   return resolveModeValue<typeof interactive | typeof sendOnly>(context, {
-    interactive,
+    // While a written summary is owed, offering a reaction invites the model to
+    // answer with one. Removing it is the structural half of the guard; the
+    // executor check above is what holds if the model calls it anyway.
+    interactive: reportOwed ? sendOnly : interactive,
     "scheduled-report": sendOnly,
   });
 }
