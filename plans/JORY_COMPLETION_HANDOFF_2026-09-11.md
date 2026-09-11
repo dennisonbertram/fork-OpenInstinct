@@ -1,204 +1,230 @@
 # Jory completion epic: session handoff, 2026-09-11
 
-Status: **execution record**, written at the end of one overnight session. This
-is what was implemented, verified, merged, and left undone. It is not a plan.
+Status: **execution record**, rewritten at the end of the second session of the
+day. This is what was implemented, verified, merged, and left undone. It is not
+a plan.
 
 Repository: `dennisonbertram/fork-OpenInstinct`. Upstream was never touched.
-Starting main: `ebcc0cc`. Ending main: `09937ea`.
+Starting main for the day: `ebcc0cc`. The earlier version of this file recorded
+the first thirteen PRs and ended at `09937ea`; that account is superseded here
+rather than appended to, because several of its conclusions turned out to be
+wrong.
 
-## What merged
+## The one thing to read first
 
-`main` at `5e04497`. Thirteen PRs, each with a red→green trail, mutation checks,
-and five green CI lanes.
+**Nothing merged today changes what a user sees.**
+`agent/lib/completion-report-activation.ts` returns `false`.
+`reportPolicyForTurn()` therefore returns `none` for every real turn, no
+obligation is ever bound, no claim is ever written, and no channel calls any of
+it. That is deliberate: #159 forbids activating before its paid-model,
+browser-visible, and native acceptance evidence exists, and that evidence needs
+operator authorisation nobody has given.
 
-| PR   | Issue       | What                                                    |
-| ---- | ----------- | ------------------------------------------------------- |
-| #166 | —           | Planning documents for both epics                       |
-| #167 | closes #154 | Plan 004: typed, authenticated background-task terminal |
-| #168 | toward #155 | Root completion obligation records                      |
-| #170 | closes #169 | Cohort membership, so a pending sibling is visible      |
-| #171 | —           | Fix: never summarise a cohort whose task never reported |
-| #172 | —           | Handoff correction                                      |
-| #173 | toward #155 | Admission on what the root can actually know            |
-| #174 | toward #155 | Registration at the root step boundary                  |
-| #175 | toward #156 | Report forcing mechanism, inactive                      |
-| #176 | toward #157 | Durable pre-dispatch claim for each report part         |
-| #177 | toward #158 | Approval bound to the action it authorised              |
-| #178 | toward #160 | Bounded situation view                                  |
-| #179 | closes #162 | Truthful message for an undrivable control              |
+So the milestone reached is **implemented contract coverage**, not a working
+completion fix. Anyone reading the PR list as evidence that Jory now reports
+truthfully would be reading it wrong.
 
-### Nothing merged changes what a user sees, by design
+## What merged today
 
-No production code forces a report, binds a report to a channel, or reads the
-situation view. `completionReportForcingActive()` returns false. The deployed
-runtime differs only in carrying a few self-healing per-turn context projections
-and holding an unused table.
+Twenty-eight PRs across both sessions. The first thirteen (#166–#179) are in
+git history; the later ones:
 
-Activation is blocked by the epic's own release policy until Plan 009 (#159) has
-authorised paid, live-send, and browser evidence. **That authorisation is the
-operator's and cannot be self-issued.** Flipping
-`agent/lib/completion-report-activation.ts` is the whole activation switch.
+| PR   | What                                                                           |
+| ---- | ------------------------------------------------------------------------------ |
+| #180 | Handoff refresh against what had landed                                        |
+| #181 | One legal next step after background work stops short                          |
+| #182 | Tell the worker how its result will be recorded                                |
+| #183 | One reviewed procedure, and what its promotion must not erode                  |
+| #184 | The reachable deterministic acceptance IDs, and which are not                  |
+| #185 | Claim, record, then dispatch — the ordering a caller can get wrong             |
+| #186 | Postgres healthcheck `start_period`, which unblocked two release gates         |
+| #187 | The crash window through a synthetic adapter, call count as oracle             |
+| #188 | `situationView` looked a cohort up by the wrong key                            |
+| #189 | The report policy follows the obligation; settlement binds and settles         |
+| #190 | `recoveryProgress` had the same wrong-key defect                               |
+| #191 | A report revision, and the durable identity of one physical effect             |
+| #192 | One place that owns claim-then-record-then-dispatch                            |
+| #193 | A parked native approval, projected as this turn's pending input               |
+| #194 | What exists between the records and a provider, and where it stops             |
+| #195 | One truthful fallback when a summary could not be composed                     |
+| #196 | The words a cancellation account may not use                                   |
+| #197 | Settle from the call, not the delivery record; stop the fallback over-claiming |
 
-All deployment statuses reported success. That is a successful deploy, not
-evidence that any of this behaves correctly in a live session; nothing has
-exercised it with real traffic.
+Every one ran `pnpm check`, `git diff --check`, its own focused suite, and a
+mutation check, with five green CI lanes. Two Square eval runs were authorised
+and run for the `agent/agent.ts` change: `13 passed (13 total)` and `12 passed,
+1 scored (13 total)`, **113 gates passed in both**.
+
+## What exists between the records and a provider
+
+Working outward from the database. `docs/evaluation/completion-summaries.md`
+carries the same table with its owning files.
+
+1. A durable claim with a transactional compare-and-swap, proven against real
+   Postgres including contention and restart readback.
+2. The ordering that must hold around it: claim, durably record the attempt,
+   then dispatch. Holding a claim is not permission.
+3. The crash window at each of the three fault points, driven through a
+   synthetic channel adapter whose call count is the oracle.
+4. Which cohort a final message answers, bound to its exact turn and call, and
+   settled from that call when a provider result arrives.
+5. Which attempt it is, as a revision a later turn cannot collide with.
+6. The durable identity of one physical effect of one report.
+7. One helper that owns the ordering, so no channel branch can forget it.
+8. A parked native approval, and this turn's pending input.
+9. One truthful fallback when the summary could not be composed at all.
+
+**The last link is missing: no channel calls any of it.** `sendblue.ts` and
+`linq.ts` dispatch exactly as they did before. That is #157 step 2, and it is
+what CS-01 to CS-06 and AR-01 wait on, because those assert provider-call counts
+and ordering at a mounted channel.
+
+## What outside review caught that the tests did not
+
+This is the part most worth carrying forward. Independent reviews found
+**eleven real defects** in code written during these sessions, and the pattern is
+consistent: not broken logic, but a label or sentence claiming more than the
+records establish — several of them inside the functions written to prevent
+exactly that.
+
+In the approval store (#193):
+
+- The record was kept by reference, so a caller could change **which action was
+  authorised** after a person had been asked about a different one. `readonly`
+  is a promise about a parameter's type, not about the caller's object.
+- Extra properties survived, because a TypeScript interface does not strip them
+  at runtime — a `secretToken` alongside the declared fields went into session
+  state and back out through the accessors.
+- Two tasks could share one request id, and then an authorised answer for one
+  **retired the other task's unanswered question**.
+- `NaN`, `Infinity` and `-Infinity` all encode as `null` in JSON, so three
+  different terms produced one fingerprint. A serialisation collision, fatal to
+  the one thing a fingerprint is for.
+
+In the fallback and the delivery settlement (#197):
+
+- Settlement read the per-turn delivery record, which `beginFinalDelivery`
+  replaces unconditionally — so a provider result arriving after a later turn
+  began left its obligation at `delivery_pending` forever: not delivered, not
+  owed, invisible.
+- The fallback's single allowance was spent at composition rather than delivery,
+  so a caller that composed and abandoned delivery left settled work with no
+  report and no way to produce one.
+- "I have not tried again" asserted a retry history nothing inspected.
+- An unknown-provenance fact was introduced as "Reported by the worker", which
+  invents a source.
+- The fact budget was per section, allowing six facts under a ceiling of three.
+
+And two latent defects found by looking for a repeated pattern rather than by
+review: `situationView` (#188) and `recoveryProgress` (#190) both looked a
+cohort up by `objectiveRevision` when cohorts are keyed by parent turn. In
+`recoveryProgress` every disposition collapsed to `awaiting`, so a root whose
+work had finished and gone wrong would have been told to keep waiting.
+
+Both were unreachable in production for the same reason everything here is:
+`reconcileBackgroundTasks` currently passes `objectiveRevision:
+member.parentTurnId`, so the two identifiers are equal today. They diverge as
+soon as #158's steering work supplies a distinct revision.
+
+## Three process lessons, paid for
+
+**A mutation that does not apply looks exactly like one that was caught.**
+Several mutation runs reported a survivor that was really a patch that never
+matched. Verify the file changed before believing a result.
+
+**Weak assertions pass for the wrong reason.** `expect(text).toContain("no")`
+is satisfied by the word "not". A length ceiling is satisfied by a per-item
+bound while an unbounded _count_ slips through. Two of my own cases passed
+without testing what they were named for.
+
+**`git add -A` puts the implementation in the RED commit.** It happened twice
+and both histories had to be rewritten. Stage the files the commit is about.
 
 ## Where each issue actually stands
 
-| Issue                           | State                                                                                                                                                   |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| #154 typed terminal             | **closed**                                                                                                                                              |
-| #155 obligations + registration | implementation complete across #168, #173, #174; open for the worker-field requirement                                                                  |
-| #156 required report            | mechanism merged in #175, **inactive**; grounded composition and the real-model eval remain                                                             |
-| #157 report claim               | record merged in #176; channel binding remains                                                                                                          |
-| #158 approval                   | identity merged in #177; cancellation truthfulness, channel seams, and duplicate-prose removal remain                                                   |
-| #159 acceptance                 | **not started** — needs authorised paid/live/browser evidence                                                                                           |
-| #160 situation view             | **reopened**: five of seven declared fields shipped. Objective summary, pending input, and selected route are absent, each for want of an owner to read |
-| #161 capability readiness       | **blocked by its own drift check** — it names Plan 011's selected-route API, which does not exist                                                       |
-| #162 browser affordances        | **closed** by #179                                                                                                                                      |
-| #163–#165                       | not started                                                                                                                                             |
+| Issue | State                                                                                                                                                                 |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #154  | closed, legitimately: typed authenticated terminal                                                                                                                    |
+| #155  | open; records and registration landed, nothing consumes them                                                                                                          |
+| #156  | open; steps 1, 2 and the step 3 fallback landed. The grounded composition context is not built, and doing so would duplicate `situationView` rather than add anything |
+| #157  | open; step 1 landed (#187), every piece of step 2 exists except the channel call sites                                                                                |
+| #158  | open; step 2's storage landed, step 3 was already correct and is now pinned, **step 4 is not applicable** — see below                                                 |
+| #159  | open; the deterministic portion landed. Steps 2 and 4 need operator authorisation                                                                                     |
+| #160  | open; `pendingInput` now has an owner (#193). The objective summary and the selected route do not                                                                     |
+| #161  | open; **both of its own STOP conditions trip** — see below                                                                                                            |
+| #162  | closed                                                                                                                                                                |
+| #163  | open; `recoveryProgress` exists and is correct. Step 3 needs a caller                                                                                                 |
+| #164  | closed                                                                                                                                                                |
+| #165  | open; **its STOP condition trips on #136** — see below                                                                                                                |
 
-## What review caught that tests did not
+### #158 step 4 is not applicable
 
-Five scoped outside reviews, one function at a time. A whole-file review of the
-obligations module timed out and returned nothing, which is why the scoped form
-is the one to use.
+It asks to remove a duplicate prose confirmation after demonstrating one exists.
+It does not exist. The instructions forbid one in three places and send
+preparation straight to the native gate: `execution-safety.md:5`,
+`interactive.md:20`, `interactive.md:40`, `interactive.md:57`. The step's own
+text says to stop rather than collapse questions that were never duplicated.
+#198 guards those directives against silent removal instead.
 
-| Found                                                                                                   | Where                                                                             |
-| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `retireCohort` summarised a cohort as completed while a task had never reported                         | fixed in #171                                                                     |
-| The insert-race fallback called an accepted part uncertain                                              | fixed inside #176                                                                 |
-| Four fingerprint collisions: delimiter forgery, absent vs empty token, number vs digits, lone surrogate | fixed inside #177                                                                 |
-| `priorEvidence` was unattributable to its objective                                                     | fixed inside #178                                                                 |
-| My own claim that the projection could not leak secrets was false                                       | corrected in #178: text is bounded, and the module says bounding is not redaction |
+### #161's STOP conditions both trip
 
-## Two failure modes worth carrying forward
+_"STOP if Plan 011's selected-route/task-revision API differs from this plan or
+if either chosen owner lacks a safe status read."_
 
-**A mutation that does not apply looks exactly like one that was caught.** Twice,
-perl patterns still matched a pre-rewrite shape and reported false survivors.
-Re-target mutation scripts after any refactor, and treat an unexpected survivor
-as "did it apply?" before "is it redundant?".
+`situationView` has no selected-route field, and — the fatal half — there is no
+root-readable browser prerequisite status. `requireWorkerScope` is an
+authorization gate that throws unless the caller is a delegated worker, not a
+readiness read, and creating a root-readable one would mean a root browser
+connection, which `AGENTS.md` forbids. The Square owner read
+(`findConnectionInstallation`) does exist and is root-callable.
 
-**An empty output file is not a clean review.** A waiter keyed on file
-non-emptiness fired while an unrelated line was the only content. Wait on process
-liveness.
+### #165's STOP condition trips on #136
 
-## What is open
+Not because of file overlap — that is almost nothing (#120 and #138 touch none
+of this issue's files; #136 touches one). It is the other clause: #136, open and
+green since 2026-09-05, supplies the whole conversation evaluation harness and
+already records per-turn tool calls, step counts, elapsed time and
+request-limit overruns. Its baseline is also pinned to a specific model with an
+uncalibrated judge, which is the mismatched-criteria case the issue forbids
+measuring against. Sequencing #136 is the decision, not implementation here.
 
-| Branch / PR | State                                  |
-| ----------- | -------------------------------------- |
-| —           | Nothing open. All thirteen PRs merged. |
+## What needs the operator, not more code
 
-Worktree `.claude/worktrees/admission-contract` holds the working checkout; all
-earlier worktrees were removed.
+**#159 step 2** — a paid-run budget with model and fixture authorisation for
+CM-01 to CM-06.
 
-## Plan 004, as built
+**#159 step 4** — bounded operator approval for one synthetic native acceptance
+journey, with a named recipient, sender, budget and stop condition.
 
-The public Eve surface could not provide a typed terminal result. Recorded
-against a clean `npm pack eve@0.49.0`: `eve/context` exports only `defineState`,
-nothing under `dist/src/public/` mentions task terminal state, and
-`defineState("eve.tasks")` throws on the reserved prefix. The typed index exists
-but lives on `HarnessSession.state`, which authored code cannot reach, and the
-only public signal is the runtime's rendered `[Task state]` prose — which the
-plan forbids parsing.
-
-So the conditional patch route was taken. The registered `eve@0.49.0` boundary
-went from eleven files to fourteen:
-
-- `dist/src/tasks/terminal-projection.{js,d.ts}` (new) — the projection and
-  `readBackgroundTaskTerminals()`.
-- `dist/src/execution/workflow-steps.js` — one added call where `turnStep`
-  already derives task-delivery context from the same session state.
-- `dist/src/public/context/index.{js,d.ts}` — the re-export.
-
-It publishes no `taskInboxToken`, no child stream history, and changes no task
-delivery prompt, retry, approval, tenant, or channel behaviour. It is a per-turn
-projection, not storage: a framework-only process that deserializes without
-loading authored code drops its copy and the next turn re-derives it.
-`docs/EVE_PATCHES.md` records the row, the dated RED, and that property.
-
-An outside review found the projection handed back the framework's own
-`lastOutput.data` object, so a caller could mutate durable session state through
-a read-only evidence API. Fixed at the application boundary in `6941ba0`: the
-adapter clones the output, pinned by a regression.
-
-## Plan 005, as built and as stopped
-
-`agent/lib/completion-obligations.ts` keeps, in the root session only, which
-tasks were admitted to which cohort, what each terminally produced, and whether
-one summary is owed. RED `408c09c` (`29 failed | 6 passed`), green `a76f6a0`
-(`36 passed`). Five mutations were applied and reverted; four were caught, and
-the fifth proved a "first terminal" replay flag was dead code, so it was deleted
-— the cohort phase guard alone makes promotion once-only.
-
-It stopped short of the root registration because of
-[#169](https://github.com/dennisonbertram/fork-OpenInstinct/issues/169): the
-Plan 004 projection omitted entries without a `terminalView`, so it showed
-settled tasks only. A root reading it could not see that a sibling was still
-running, and so could not tell "one of two finished" from "the only one
-finished" — CR-01/CO-01, the case that must not produce a premature report. It
-also could not admit a task before dispatch, because a task was invisible until
-it settled.
-
-Wiring the state machine to a projection that cannot answer that question would
-have produced exactly the premature report this epic exists to prevent, so the
-slice was split instead. #170 then closed that gap, so the registration is
-unblocked.
-
-One bug escaped into #168 and is fixed in #171: `retireCohort` computed its
-outcome from the tasks that had reported, ignoring any that had not, so a
-delivered cohort holding an unsettled member retired as `completed` and dropped
-the detail. A scoped outside review of that one function found it; a whole-file
-review of the same module had timed out and returned nothing, which is why the
-scoped pass was worth running. Review the module one function at a time.
+Without both, activation stays blocked however much machinery exists. Nothing
+below the line changes that, and no amount of deterministic coverage substitutes
+for it.
 
 ## Exact next steps
 
-1. **#159 is the gate everything waits on, and it needs you.** Authorised paid
-   model, live-send, and browser evidence. Without it the completion behaviour
-   stays inactive no matter how much machinery exists, because the epic forbids
-   activating before that evidence. Nothing below changes that.
-2. **#157's channel binding.** Bind a composed report to exact channel settlement
-   through the merged `completion_report_attempts` record: claim the part, CAS to
-   `attempted` before the provider call, record acceptance after. Touches
-   `agent/channels/linq.ts` and `agent/channels/sendblue.ts` at their existing
-   seams, and triggers the Square gate.
-3. **#158 steps 3–4.** Cancellation truthfulness ("cancelled after dispatch" vs
-   "without dispatch" vs "outcome uncertain") read from that record, then the
-   duplicate-prose removal — which requires _first_ demonstrating with a failing
-   test that an instruction asks an equivalent prose confirmation. Do not edit an
-   instruction without that demonstration.
-4. **#160's three missing fields**, each of which needs an owner first: pending
-   input lives in the channel lifecycles, selected route has no owner at all, and
-   an objective summary must not be authored by the projection.
-5. **#161 stays blocked** until #160 gains a selected-route field with a real
-   owner, or the plan is rebased onto whatever records route selection.
-6. **#163–#165** are unstarted. #163's own STOP conditions do not trip: Plan 005
-   exposes a typed outcome envelope with per-fact provenance, and no recovery fact
-   depends on notification text.
+1. **#157 step 2: the channel call sites.** Everything it needs exists.
+   `reportPartIdentityFor` gives the identity (undefined for ordinary messages,
+   which is the ordinary case), `dispatchReportPart` owns the ordering, and each
+   call site becomes a single wrap. Physical effects in SendBlue:
+   `postSendblueReply` is `text`, `uploadSendblueFile` is a `media-upload` part,
+   `adapter.getSdk().messages.send` is a `media-send` part whose provider handle
+   is `response.message_handle`. `ReportPart` needs widening to carry ordinals
+   for multiple media items. A media send must not begin before its upload part
+   is accepted. This triggers the Square gate via `agent/channels/linq.ts`.
+2. **Then CS-01 to CS-06 and AR-01**, which need those call sites to exist
+   because they assert provider-call counts and ordering at a mounted channel.
+3. **#163 step 3** — route the report through the existing completion/delivery
+   owner. `recoveryProgress` is correct and has no caller.
+4. **#156's grounded composition context** — read the existing projections
+   first. A third projection over the same records would be a parallel
+   representation, which `AGENTS.md` warns against.
+5. Leave #161 and #165 alone until their sequencing decisions are made.
 
-## Gates, and what each one actually proves
+## Two environment notes
 
-Every slice ran `pnpm check`, `pnpm build`, `pnpm eval:contract`, and
-`git diff --check`, all green, plus its own focused suite and a mutation check.
-CI ran all five lanes on #167 green.
-
-`pnpm eval:square` was **not triggered** by either PR — no changed path is in the
-repository's Square gate list. The authorisation for that paid run is unused and
-carries forward to step 2 above.
-
-Nothing here is live evidence. Every case is deterministic and synthetic. No
-provider message was sent, no Gmail connected, no secret changed, no paid model
-eval run. The projection's behaviour under a genuine background dispatch, and
-under an interrupted-step retry in the live runtime, remains unproven by
-anything but the framework's own index schema and these fixtures. Plan 009 is
-still the acceptance gate.
-
-## Two environment notes for the next session
-
-- A worktree created with `git worktree add` rather than `EnterWorktree` gets no
-  `.env.local`, and `pnpm build` then fails inside `src/lib/application-origin.ts`
-  and `src/env.ts` rather than on anything you changed. Copy `.env.local` from the
-  main checkout.
-- `pnpm test:app -- <path>` does not filter to one file; it runs the whole suite.
-  Use `pnpm exec vitest run <path>`.
+- The Compose healthcheck had no `start_period`, so both supervised database
+  lanes failed locally on a cold volume while Postgres was still running
+  `initdb`. Fixed in #186. If they fail again, read the container log before
+  concluding the database is broken.
+- `pnpm test:app -- <path>` does not filter to one file; it runs the whole
+  suite. Use `pnpm exec vitest run <path>`.
