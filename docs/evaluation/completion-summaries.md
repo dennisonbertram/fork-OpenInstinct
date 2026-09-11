@@ -52,19 +52,21 @@ Where each deterministic ID is actually exercised, as of `main` after the
 completion and operating-model slices landed. A row marked **not yet** names what
 it waits on; none is marked covered on the strength of an authored-but-unrun case.
 
-| ID                  | Covered by                                                                                        | Status                                                                                                                                                                              |
-| ------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TA-01, TA-03, TA-05 | `tests/unit/background-task-terminal-adapter.test.ts`                                             | covered                                                                                                                                                                             |
-| CO-01, CO-02, CO-04 | `tests/agent/lib/completion-obligations.test.ts`                                                  | covered                                                                                                                                                                             |
-| CO-06               | same file, cancelled cohort retaining an `executor_receipt`                                       | covered                                                                                                                                                                             |
-| CO-07               | same file, superseded cohort with a late terminal                                                 | covered                                                                                                                                                                             |
-| RP-01               | `tests/agent/tools/messaging-report-policy.test.ts`                                               | covered — the guard names `send_message` and the executor rejects a reaction                                                                                                        |
-| RP-06               | `agent/lib/tests/later-summary-request.test.ts`                                                   | covered at the unit layer                                                                                                                                                           |
-| AR-03               | `tests/agent/lib/approval-identity.test.ts`, stale answer against changed terms                   | covered                                                                                                                                                                             |
-| AR-05               | `agent/lib/tests/later-summary-request.test.ts`, plus `agent/lib/tests/recovery-progress.test.ts` | covered at the unit layer                                                                                                                                                           |
-| RP-05               | —                                                                                                 | **not yet**: the pre-provider composition fallback is Plan 006 step 3, which needs grounded composition context                                                                     |
-| CS-03, CS-05, CS-06 | —                                                                                                 | **not yet**: these assert mounted provider-call ordering and counts. Every piece between the records and a provider now exists (see below), but no channel calls it yet             |
-| AR-01               | —                                                                                                 | **not yet**: one approval and one attempt end to end needs the same channel call sites. The parked-approval record now exists, so the missing half is the attempt, not the approval |
+| ID                  | Covered by                                                                                            | Status                                                                                                                                                                                                                               |
+| ------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| TA-01, TA-03, TA-05 | `tests/unit/background-task-terminal-adapter.test.ts`                                                 | covered                                                                                                                                                                                                                              |
+| CO-01, CO-02, CO-04 | `tests/agent/lib/completion-obligations.test.ts`                                                      | covered                                                                                                                                                                                                                              |
+| CO-06               | same file, cancelled cohort retaining an `executor_receipt`                                           | covered                                                                                                                                                                                                                              |
+| CO-07               | same file, superseded cohort with a late terminal                                                     | covered                                                                                                                                                                                                                              |
+| RP-01               | `tests/agent/tools/messaging-report-policy.test.ts`                                                   | covered — the guard names `send_message` and the executor rejects a reaction                                                                                                                                                         |
+| RP-06               | `agent/lib/tests/later-summary-request.test.ts`                                                       | covered at the unit layer                                                                                                                                                                                                            |
+| AR-03               | `tests/agent/lib/approval-identity.test.ts`, stale answer against changed terms                       | covered                                                                                                                                                                                                                              |
+| AR-05               | `agent/lib/tests/later-summary-request.test.ts`, plus `agent/lib/tests/recovery-progress.test.ts`     | covered at the unit layer                                                                                                                                                                                                            |
+| RP-05               | —                                                                                                     | **not yet**: the pre-provider composition fallback is Plan 006 step 3, which needs grounded composition context                                                                                                                      |
+| CS-01 through CS-06 | `tests/agent/channels/sendblue-channel.test.ts`, `tests/agent/channels/linq-message-delivery.test.ts` | covered at the mounted channel, with provider-call counts as the oracle                                                                                                                                                              |
+| CS-11, CS-12        | the same two files — a refused upload never repeated, a scheduled report never claimed                | covered                                                                                                                                                                                                                              |
+| CS-07 through CS-10 | `tests/unit/completion-report-dispatch-boundary.test.ts`, `tests/integration/real-postgres.test.ts`   | covered at the crash-boundary and contention layers, which is where those faults live, rather than at the channel                                                                                                                    |
+| AR-01               | —                                                                                                     | **not yet**: one approval and one attempt end to end. The channel call sites exist and the parked-approval record exists, but nothing calls `parkApproval` from `commit_browser_action`, so no approval is ever parked in a real run |
 
 ### What exists between the records and a provider
 
@@ -84,10 +86,20 @@ Working outward from the database:
 | one report part wrapped in its claim                     | `agent/lib/report-part-dispatch.ts`                             | `agent/lib/tests/report-part-dispatch.test.ts`                                                                                     |
 | a parked native approval, and this turn's pending input  | `agent/lib/approval-identity.ts`, `agent/lib/situation-view.ts` | `agent/lib/tests/parked-approval.test.ts`, `agent/lib/tests/situation-view.test.ts`                                                |
 
-What is missing is the last link: **no channel calls any of it.** `agent/channels/sendblue.ts` and
-`agent/channels/linq.ts` still dispatch exactly as they did before. That is Plan
-007 step 2, and it is what CS-03, CS-05, CS-06 and AR-01 wait on, because those
-four assert provider-call counts and ordering at a mounted channel.
+**The channel call sites now exist.** Every physical effect of a bound report --
+the text send, each media upload, each media send -- goes through its durable
+claim, and a media send cannot begin before its owned upload is accepted. The
+chain is complete from the database to the provider call.
+
+What remains is not a missing piece but missing **evidence**. Plan 009 gates
+activation on four things: the deterministic matrix (substantially covered),
+authorised paid-model trials (CM-01 to CM-06, which need a local synthetic
+fixture that does not exist yet -- the browser evals run against real sites), a
+browser-visible reload proof (which needs a settled worker cohort in the
+end-to-end fixture environment, and that fixture currently drives only `say`,
+`silent` and `wait`), and one configured-native acceptance journey, prepared in
+`native-acceptance-journey.md` and not run, because it needs an
+operator-controlled recipient.
 
 Two latent defects found and fixed while assembling this, both of the same kind
 and worth recording so the pattern is recognised if it recurs: `situationView`
