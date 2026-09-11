@@ -31,7 +31,9 @@ vi.mock("@/agent/lib/completion-report-activation", () => ({
 
 import {
   admitTask,
+  beginCohortReport,
   recordTerminal,
+  settleCohortReport,
   type BoundedFact,
 } from "@/agent/lib/completion-obligations";
 import { completionFallbackText } from "@/agent/lib/completion-fallback";
@@ -73,13 +75,31 @@ describe("the one bounded fallback when a summary could not be composed", () => 
     expect(text).toContain("Submitted the order form");
   });
 
-  it("FB-02: there is exactly one fallback per obligation", () => {
+  it("FB-02: composing the text twice without sending it is not a duplicate", () => {
     settle("task_a", "turn_1", [
       { claim: "Submitted the order form", evidence: "observed" },
     ]);
 
+    // Composing is not sending. An earlier version consumed the one allowance
+    // here, so a caller that composed and then abandoned delivery left settled
+    // work with no report at all and no way to produce one.
+    const first = completionFallbackText("turn_1");
+    expect(first).toBeDefined();
+    expect(completionFallbackText("turn_1")).toBe(first);
+  });
+
+  it("FB-09: once the fallback has been delivered, there is no second one", () => {
+    settle("task_a", "turn_1", [
+      { claim: "Submitted the order form", evidence: "observed" },
+    ]);
     expect(completionFallbackText("turn_1")).toBeDefined();
-    // A second bounded fallback is a second message about the same failure.
+
+    // Delivering it settles the obligation through the ordinary path, and a
+    // settled obligation owes nothing. That is what stops a second message,
+    // rather than a separate counter that can be spent without sending.
+    beginCohortReport("turn_1", { callId: "call_1", turnId: "turn_1" });
+    settleCohortReport("turn_1", true);
+
     expect(completionFallbackText("turn_1")).toBeUndefined();
   });
 
@@ -157,5 +177,64 @@ describe("the one bounded fallback when a summary could not be composed", () => 
     ]);
 
     expect(completionFallbackText("turn_1")).toBeUndefined();
+  });
+});
+
+describe("what the fallback may and may not assert", () => {
+  it("FB-10: a fact of unknown provenance is not attributed to the worker", () => {
+    settle("task_a", "turn_1", [
+      { claim: "Something happened on the page", evidence: "unknown" },
+    ]);
+
+    const text = completionFallbackText("turn_1");
+
+    // Unknown provenance does not establish that a worker reported it. Saying
+    // so would invent a source, which is the same mistake as inventing a fact.
+    expect(text).toContain("Something happened on the page");
+    expect(text).not.toMatch(
+      /worker[^.]*Something happened|Reported by the worker[^.]*Something happened/u
+    );
+  });
+
+  it("FB-11: a worker's own claim is still attributed to the worker", () => {
+    settle("task_a", "turn_1", [
+      { claim: "I completed the purchase", evidence: "worker_assertion" },
+    ]);
+
+    expect(completionFallbackText("turn_1")).toMatch(
+      /worker.*I completed the purchase/u
+    );
+  });
+
+  it("FB-12: nothing is claimed about whether anything was retried", () => {
+    settle("task_a", "turn_1", [
+      { claim: "Submitted the order form", evidence: "observed" },
+    ]);
+
+    const text = completionFallbackText("turn_1");
+
+    // Nothing here inspects whether the composition or the work was retried, so
+    // saying "I have not tried again" asserted a history no record establishes.
+    expect(text).not.toMatch(/tried again|retried|no retry/iu);
+    // What is established is that this is not a success claim.
+    expect(text).toMatch(/not.*claim.*succeed/iu);
+  });
+
+  it("FB-13: the fact budget is shared, not one allowance per section", () => {
+    settle("task_a", "turn_1", [
+      { claim: "Confirmed one", evidence: "observed" },
+      { claim: "Confirmed two", evidence: "observed" },
+      { claim: "Confirmed three", evidence: "observed" },
+      { claim: "Asserted one", evidence: "worker_assertion" },
+      { claim: "Asserted two", evidence: "worker_assertion" },
+      { claim: "Asserted three", evidence: "worker_assertion" },
+    ]);
+
+    const text = completionFallbackText("turn_1") ?? "";
+
+    // Three each is six, which is twice the declared ceiling. The budget is one
+    // number for the whole message.
+    const named = (text.match(/Confirmed \w+|Asserted \w+/gu) ?? []).length;
+    expect(named).toBeLessThanOrEqual(3);
   });
 });
