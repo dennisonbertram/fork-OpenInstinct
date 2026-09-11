@@ -980,8 +980,9 @@
           cancelled, failed, or outstanding work cannot complete early. A
           successful <code>react_to_message</code> add on Linq and web chat
           follows the same turn-scoped completion path, while remove does not.
-          Later sends after confirmed completion are rejected and the next step
-          omits messaging tools. Web chat keeps its session observer open while
+          Later sends after a pending, unconfirmed, or completed final delivery
+          are rejected and the next step omits messaging tools; a later turn has
+          a fresh delivery state. Web chat keeps its session observer open while
           waiting and retires delivered or cancelled worker observers; worker
           approvals appear in the normal conversation without requiring the
           developer trace. Parent completion receipts also settle the task

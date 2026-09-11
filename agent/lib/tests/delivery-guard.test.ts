@@ -20,7 +20,7 @@ describe("interactive delivery guard", () => {
     ).toBeUndefined();
   });
 
-  it("preserves automatic choice after a pending or unconfirmed attempt so the model does not resend it", () => {
+  it("does not require another tool after a pending or unconfirmed attempt", () => {
     for (const deliveryStatus of ["pending", "unconfirmed"] as const) {
       expect(
         deliveryToolChoiceForInteractiveTurn({

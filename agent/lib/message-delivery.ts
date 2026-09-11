@@ -6,10 +6,21 @@ const finalDelivery = defineState<{
   status: "pending" | "completed" | "unconfirmed";
 } | null>("messaging.final-delivery", () => null);
 
+const unconfirmedProviderAttempt = defineState<{
+  callId: string;
+  turnId: string;
+} | null>("messaging.unconfirmed-provider-attempt", () => null);
+
 export function finalDeliveryStatus(turnId: string | undefined) {
   if (turnId === undefined) return undefined;
   const delivery = finalDelivery.get();
   return delivery?.turnId === turnId ? delivery.status : undefined;
+}
+
+export function hasUnconfirmedProviderAttempt(turnId: string | undefined) {
+  return (
+    turnId !== undefined && unconfirmedProviderAttempt.get()?.turnId === turnId
+  );
 }
 
 export function beginFinalDelivery(
@@ -26,7 +37,8 @@ export function beginFinalDelivery(
 
 export function settleFinalDelivery(callId: string, accepted: boolean) {
   finalDelivery.update((delivery) =>
-    delivery?.callId === callId && delivery.status !== "completed"
+    delivery?.callId === callId &&
+    (delivery.status === "pending" || delivery.status === "unconfirmed")
       ? { ...delivery, status: accepted ? "completed" : "unconfirmed" }
       : delivery
   );
@@ -34,10 +46,13 @@ export function settleFinalDelivery(callId: string, accepted: boolean) {
 
 /** Suppress an automatic fallback after a provider request may have reached it. */
 export function recordUnconfirmedDelivery(turnId: string, callId: string) {
+  unconfirmedProviderAttempt.update(() => ({ callId, turnId }));
   finalDelivery.update((delivery) =>
-    delivery?.turnId === turnId
+    delivery?.callId === callId &&
+    delivery.turnId === turnId &&
+    (delivery.status === "pending" || delivery.status === "unconfirmed")
       ? { ...delivery, status: "unconfirmed" }
-      : { callId, turnId, status: "unconfirmed" }
+      : delivery
   );
 }
 

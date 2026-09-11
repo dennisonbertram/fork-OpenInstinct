@@ -313,7 +313,7 @@ describe("Linq message delivery", () => {
         event,
         resolverContext
       );
-      expect(nextTools === null).toBe(!failed);
+      expect(nextTools).toBeNull();
       const retryAllowed = await Promise.resolve()
         .then(() =>
           tools.send_message.execute(
@@ -333,7 +333,7 @@ describe("Linq message delivery", () => {
           () => true,
           () => false
         );
-      expect(retryAllowed).toBe(failed);
+      expect(retryAllowed).toBe(false);
       expect(post).toHaveBeenCalledTimes(1);
       expect(output).not.toHaveProperty("final");
       expect(completionCapture.request.mock.calls).toEqual(
@@ -517,7 +517,24 @@ describe("Linq message delivery", () => {
         event,
         resolverContext
       );
-      expect(nextTools === null).toBe(!failed);
+      expect(nextTools).toBeNull();
+      await expect(
+        Promise.resolve().then(() =>
+          reactionTool.execute(
+            { operation: "add", type: "heart" },
+            {
+              ...base,
+              callId: "retry-reaction-call",
+              session: {
+                ...base.session,
+                turn: { id: "turn-1", sequence: 0 },
+              },
+            }
+          )
+        )
+      ).rejects.toThrow(
+        /already.*final|final.*already|not confirmed|do not resend/iu
+      );
       expect(completionCapture.request).toHaveBeenCalledTimes(failed ? 0 : 1);
     }
   );

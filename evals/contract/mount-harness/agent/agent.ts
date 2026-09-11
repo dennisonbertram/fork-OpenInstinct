@@ -111,6 +111,9 @@ function respond(request: MockModelRequest): MockModelResponse {
       if (request.tools.some((tool) => tool.name === "send_message")) {
         throw new Error("Linq provider acknowledgement was not persisted");
       }
+      if (command === "linq-final-rejected") {
+        return { text: "DELIVERY_UNCONFIRMED" };
+      }
       if (command === "linq-final-timeout") {
         throw new Error("contract fixture late model timeout after Linq ACK");
       }

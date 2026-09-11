@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   beginFinalDelivery,
   finalDeliveryStatus,
+  hasUnconfirmedProviderAttempt,
 } from "@/agent/lib/message-delivery";
+import messaging from "@/agent/tools/messaging";
+import { toolContextFor } from "@/tests/helpers/tool-context";
 
 // oxlint-disable anti-slop/no-chained-type-assertions, anti-slop/no-unknown-parameters, anti-slop/no-unsafe-type-assertion, anti-slop/require-safety-comment-for-type-assertion, typescript/no-unsafe-assignment, typescript/no-unsafe-member-access, vitest/require-mock-type-parameters -- adapter and Eve are owning boundaries; this suite uses only synthetic fixtures.
 
@@ -45,16 +48,39 @@ const capture = vi.hoisted(() => ({
   verifier: vi.fn(),
 }));
 
+type DeliveryState =
+  | { readonly callId: string; readonly turnId: string }
+  | {
+      readonly callId: string;
+      readonly status: "pending" | "completed" | "unconfirmed";
+      readonly turnId: string;
+    }
+  | null;
+
+const deliveryState = vi.hoisted(() => {
+  const initializers = new Map<string, () => DeliveryState>();
+  const values = new Map<string, DeliveryState>();
+  return {
+    defineState: (name: string, initial: () => DeliveryState) => {
+      initializers.set(name, initial);
+      values.set(name, initial());
+      return {
+        get: () => values.get(name) ?? null,
+        update: (updater: (current: DeliveryState) => DeliveryState) => {
+          values.set(name, updater(values.get(name) ?? null));
+        },
+      };
+    },
+    reset: () => {
+      for (const [name, initial] of initializers) {
+        values.set(name, initial());
+      }
+    },
+  };
+});
+
 vi.mock("eve/context", () => ({
-  defineState: <T>(_name: string, initial: () => T) => {
-    let value = initial();
-    return {
-      get: () => value,
-      update: (updater: (current: T) => T) => {
-        value = updater(value);
-      },
-    };
-  },
+  defineState: deliveryState.defineState,
   requestTurnCompletion: capture.requestTurnCompletion,
 }));
 
@@ -171,6 +197,7 @@ interface StoredPendingInput {
 }
 
 beforeEach(() => {
+  deliveryState.reset();
   vi.clearAllMocks();
   capture.findOne.mockResolvedValue({ id: "alice", phoneNumberVerified: true });
   capture.findIdentity.mockResolvedValue({
@@ -1102,7 +1129,8 @@ describe("SendBlue channel", () => {
     expect(capture.fetch).toHaveBeenCalledTimes(1);
     expect(capture.mediaSend).toHaveBeenCalledTimes(1);
     expect(capture.post).not.toHaveBeenCalled();
-    expect(finalDeliveryStatus("turn-1")).toBe("unconfirmed");
+    expect(finalDeliveryStatus("turn-1")).toBeUndefined();
+    expect(hasUnconfirmedProviderAttempt("turn-1")).toBe(true);
   });
 
   it("bounds mixed public and private images to four distinct sends", async () => {
@@ -1323,6 +1351,73 @@ describe("SendBlue channel", () => {
     expect(capture.post).toHaveBeenCalledTimes(1);
   });
 
+  it("allows a distinct final after an uncertain progress send, then blocks its failed final", async () => {
+    capture.post.mockRejectedValueOnce(new Error("provider timeout"));
+    await expect(
+      getSendblueEvent("action.result")(
+        action({ callId: "progress-call" }),
+        { thread },
+        sessionContext()
+      )
+    ).rejects.toThrow("provider timeout");
+    await getSendblueEvent("turn.failed")({ turnId: "turn-1" }, { thread });
+    expect(capture.post).toHaveBeenCalledTimes(1);
+    expect(finalDeliveryStatus("turn-1")).toBeUndefined();
+
+    const resolve = messaging.events["step.started"];
+    if (!resolve) throw new Error("Missing messaging resolver");
+    const tools = await resolve(
+      { data: { turnId: "turn-1" } },
+      {
+        channel: { kind: "channel:sendblue" },
+        messages: [],
+        session: { id: "root", auth: { current: null, initiator: null } },
+      }
+    );
+    if (!tools) throw new Error("Missing same-turn messaging tools");
+    const context = {
+      ...toolContextFor({ callId: "final-call", sessionId: "root" }),
+      session: {
+        id: "root",
+        auth: { current: null, initiator: null },
+        turn: { id: "turn-1", sequence: 0 },
+      },
+    };
+    await tools.send_message.execute(
+      { final: true, kind: "message", text: "Final result" },
+      context
+    );
+
+    capture.post.mockRejectedValueOnce(new Error("final provider timeout"));
+    await expect(
+      getSendblueEvent("action.result")(
+        action({ callId: "final-call", output: { text: "Final result" } }),
+        { thread },
+        sessionContext()
+      )
+    ).rejects.toThrow("final provider timeout");
+    expect(finalDeliveryStatus("turn-1")).toBe("unconfirmed");
+    expect(
+      await resolve(
+        { data: { turnId: "turn-1" } },
+        {
+          channel: { kind: "channel:sendblue" },
+          messages: [],
+          session: { id: "root", auth: { current: null, initiator: null } },
+        }
+      )
+    ).toBeNull();
+    await expect(
+      Promise.resolve().then(() =>
+        tools.send_message.execute(
+          { kind: "message", text: "Final result again" },
+          context
+        )
+      )
+    ).rejects.toThrow(/not confirmed|do not resend/iu);
+    expect(capture.post).toHaveBeenCalledTimes(2);
+  });
+
   it("treats an HTTP-success media response without a handle as unconfirmed", async () => {
     capture.mediaSend.mockResolvedValueOnce({});
     await expect(
@@ -1427,6 +1522,7 @@ function sessionContext() {
 
 function action(
   overrides: {
+    readonly callId?: string;
     readonly output?: Partial<{
       readonly attachments: readonly {
         readonly kind: string;
@@ -1439,7 +1535,7 @@ function action(
 ) {
   return {
     result: {
-      callId: "call-1",
+      callId: overrides.callId ?? "call-1",
       kind: "tool-result",
       output: { kind: "message", text: "progress", ...overrides.output },
       toolName: "send_message",
