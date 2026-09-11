@@ -441,11 +441,16 @@ export function retireCohort(cohortId: string): boolean {
     const tasks = current.tasks.filter(
       (task) => task.parentTurnId === cohortId
     );
-    const statuses = new Set(
-      tasks.flatMap((task) =>
-        task.terminal === undefined ? [] : [task.terminal.status]
-      )
+    // A task may join a cohort that already owes a report, so a delivered
+    // cohort can still hold a member that never reported. Retiring it would
+    // drop that member's record and summarise the cohort as though every task
+    // had finished. Keep it in full until the straggler settles.
+    const terminals = tasks.flatMap((task) =>
+      task.terminal === undefined ? [] : [task.terminal.status]
     );
+    if (terminals.length !== tasks.length) return current;
+
+    const statuses = new Set(terminals);
     const outcome =
       statuses.size === 1 ? ([...statuses][0] ?? "mixed") : ("mixed" as const);
 
@@ -455,9 +460,13 @@ export function retireCohort(cohortId: string): boolean {
       outcome,
       reportState: "delivered",
       report: cohort.report,
-      evidenceDigest: tasks.map(
-        (task) =>
-          `${task.taskId}: ${task.terminal?.status ?? "unsettled"}, strongest evidence ${strongestEvidence(task.terminal?.facts ?? [])}${task.terminal?.truncatedUnknown === true ? ", some facts truncated" : ""}`
+      // Every task here has a terminal, or the guard above kept the cohort.
+      evidenceDigest: tasks.flatMap((task) =>
+        task.terminal === undefined
+          ? []
+          : [
+              `${task.taskId}: ${task.terminal.status}, strongest evidence ${strongestEvidence(task.terminal.facts)}${task.terminal.truncatedUnknown === true ? ", some facts truncated" : ""}`,
+            ]
       ),
     };
 
