@@ -39,7 +39,7 @@ export function defineMessagingProviderContract(
       const prompt = await createDriver().requestApproval(toolName);
       expect(prompt).not.toContain(toolName);
       expect(prompt).toMatch(/yes|go ahead|approve/iu);
-      expect(prompt).toMatch(/cancel/iu);
+      expect(prompt).toMatch(/\b(?:no|cancel)\b/iu);
     });
   });
 }

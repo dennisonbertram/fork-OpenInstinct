@@ -608,7 +608,7 @@ function renderInputRequest(request: {
   readonly prompt: string;
 }) {
   if (request.kind === "tool-approval")
-    return "Ready for me to do that?\n\nReply naturally—“yes,” “go ahead,” or “cancel.”";
+    return "Ready for me to do that?\n\nReply naturally—“yes,” “go ahead,” or “no.”";
   if (request.options?.length)
     return [
       request.prompt,

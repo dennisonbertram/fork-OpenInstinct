@@ -307,14 +307,17 @@ describe("SendBlue channel", () => {
     );
   });
 
-  it("maps cancellation to the same pending Eve request", async () => {
-    capture.getState.mockResolvedValue(pending());
-    await dispatchSendblueMessage(thread, inbound({ text: "cancel" }));
-    expect(capture.send).toHaveBeenCalledWith(
-      { inputResponses: [{ optionId: "cancel", requestId: "request-1" }] },
-      expect.any(Object)
-    );
-  });
+  it.each(["no", "cancel"])(
+    "maps %s to the same pending Eve request",
+    async (reply) => {
+      capture.getState.mockResolvedValue(pending());
+      await dispatchSendblueMessage(thread, inbound({ text: reply }));
+      expect(capture.send).toHaveBeenCalledWith(
+        { inputResponses: [{ optionId: "cancel", requestId: "request-1" }] },
+        expect.any(Object)
+      );
+    }
+  );
 
   it("does not map a pending request from another workspace", async () => {
     capture.getState.mockResolvedValue({
@@ -356,11 +359,12 @@ describe("SendBlue channel", () => {
       }
     );
     expect(capture.post).toHaveBeenCalledWith({
-      raw: expect.stringContaining("cancel"),
+      raw: expect.stringContaining("“no.”"),
     });
     expect(capture.post.mock.calls[0]?.[0].raw).not.toContain(
       "provider-internal-write"
     );
+    expect(capture.post.mock.calls[0]?.[0].raw).not.toContain("cancel");
   });
 
   it("does not make an approval eligible when its first prompt lacks a provider handle", async () => {
