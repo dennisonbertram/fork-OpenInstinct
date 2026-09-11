@@ -565,3 +565,85 @@ describe("an obligation cannot be stranded by the delivery record", () => {
     expect(cohortFor("turn_1")?.phase).toBe("delivery_pending");
   });
 });
+
+describe("a backlog is answered once, not once per turn", () => {
+  it("RP-23: one report covers every cohort that is owed", async () => {
+    // Observed live: turns 13 and 14 both owed a summary, because each turn
+    // discharged one cohort and the rest stayed owed. A session with settled
+    // work behind it was forced to answer in sentences on every turn until the
+    // backlog drained. One message about everything that settled is what a
+    // person wants, and it is also the only option that reports all of it.
+    policy.owed.mockReturnValue(true);
+    owedCohort("turn_a", "task_a");
+    owedCohort("turn_b", "task_b");
+    owedCohort("turn_c", "task_c");
+
+    const group = await tools(providerContext);
+    await group.send_message.execute(
+      { final: true, kind: "message", text: "Here is where things got to." },
+      executorContext()
+    );
+
+    // Every owed cohort is bound to this one attempt.
+    expect(cohortFor("turn_a")?.phase).toBe("delivery_pending");
+    expect(cohortFor("turn_b")?.phase).toBe("delivery_pending");
+    expect(cohortFor("turn_c")?.phase).toBe("delivery_pending");
+    expect(reportableCohorts()).toEqual([]);
+  });
+
+  it("RP-24: the message carries every owed cohort's records, not just the first", async () => {
+    policy.owed.mockReturnValue(true);
+    owedCohort("turn_a", "task_a");
+    owedCohort("turn_b", "task_b");
+
+    const group = await tools(providerContext);
+    const delivered = deliveredMessageSchema.parse(
+      await group.send_message.execute(
+        { final: true, kind: "message", text: "Done." },
+        executorContext()
+      )
+    );
+
+    // Binding a cohort without reporting it would be worse than leaving it
+    // owed: the obligation would be discharged by a message that never
+    // mentioned it.
+    expect(delivered.text).toContain("task_a");
+    expect(delivered.text).toContain("task_b");
+  });
+
+  it("RP-25: settling that one attempt settles every cohort it bound", async () => {
+    policy.owed.mockReturnValue(true);
+    owedCohort("turn_a", "task_a");
+    owedCohort("turn_b", "task_b");
+
+    const group = await tools(providerContext);
+    await group.send_message.execute(
+      { final: true, kind: "message", text: "Done." },
+      executorContext()
+    );
+    settleFinalDelivery(executorContext().callId, true);
+
+    // Otherwise the backlog is bound but never cleared, which is the worst of
+    // the three states: not delivered, not owed, invisible.
+    expect(cohortFor("turn_a")?.phase).toBe("delivered");
+    expect(cohortFor("turn_b")?.phase).toBe("delivered");
+  });
+
+  it("RP-26: a provider that never confirmed leaves every bound cohort unconfirmed", async () => {
+    policy.owed.mockReturnValue(true);
+    owedCohort("turn_a", "task_a");
+    owedCohort("turn_b", "task_b");
+
+    const group = await tools(providerContext);
+    await group.send_message.execute(
+      { final: true, kind: "message", text: "Done." },
+      executorContext()
+    );
+    settleFinalDelivery(executorContext().callId, false);
+
+    expect(cohortFor("turn_a")?.phase).toBe("unconfirmed");
+    expect(cohortFor("turn_b")?.phase).toBe("unconfirmed");
+    // And none of them goes back to owed: the send may have landed.
+    expect(reportableCohorts()).toEqual([]);
+  });
+});
