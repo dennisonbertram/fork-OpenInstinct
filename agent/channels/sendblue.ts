@@ -11,6 +11,12 @@ import {
 } from "@/agent/lib/message-delivery";
 import { sendMessageToolResultSchema } from "@/agent/lib/send-message";
 import { reactToMessageToolResultSchema } from "@/agent/lib/react-to-message";
+import { dispatchReportPart } from "@/agent/lib/report-part-dispatch";
+import { reportPartIdentityFor } from "@/agent/lib/completion-report-policy";
+import type {
+  ReportPart,
+  ReportPartIdentity,
+} from "@/agent/lib/completion-report-attempts";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getAuth } from "@/auth";
@@ -350,6 +356,16 @@ const bridge = chatSdkChannel({
           const attachments = message.data.output.attachments ?? [];
           const requestedText = message.data.output.text ?? "";
           const rootSessionId = session.session.id;
+          const conversationId = context.thread.id;
+          const leaseOwner = `${event.turnId}:${event.result.callId}`;
+          const identityFor = (part: ReportPart) =>
+            reportPartIdentity({
+              callId: event.result.callId,
+              part,
+              rootSessionId,
+              scope,
+              turnId: event.turnId,
+            });
           const artifactDelivery =
             scope && rootSessionId
               ? await prepareBrowserImageArtifactDelivery(requestedText, {
@@ -381,7 +397,8 @@ const bridge = chatSdkChannel({
               !(await postSendblueReply(
                 context.thread,
                 { raw: attachmentCaption },
-                scope
+                scope,
+                { conversationId, identity: identityFor("text"), leaseOwner }
               ))
             )
               return;
@@ -401,10 +418,27 @@ const bridge = chatSdkChannel({
                 return;
               let mediaUrl: string;
               try {
-                mediaUrl =
-                  "file" in mediaItem
-                    ? await uploadSendblueFile(mediaItem.file)
-                    : mediaItem.attachment.url;
+                if ("file" in mediaItem) {
+                  const uploaded = await dispatchReportPart({
+                    channel: "sendblue",
+                    contentDigest: createHash("sha256")
+                      .update(mediaItem.file.data)
+                      .digest("hex"),
+                    conversationId,
+                    dispatch: () => uploadSendblueFile(mediaItem.file),
+                    // oxlint-disable-next-line typescript/restrict-template-expressions -- index is the media loop's small integer ordinal, never NaN or a float.
+                    identity: identityFor(`media-upload:${index}`),
+                    leaseOwner,
+                  });
+                  // A media send cannot begin before its owned upload part is
+                  // accepted. Whether it is uncertain or was already accepted
+                  // by an owner this process cannot see, this call has no
+                  // media URL to send, so it stops rather than guess or resend.
+                  if (uploaded.kind === "not_dispatched") return;
+                  mediaUrl = uploaded.value;
+                } else {
+                  mediaUrl = mediaItem.attachment.url;
+                }
               } catch (error) {
                 if (!("file" in mediaItem)) throw error;
                 const failureText = [
@@ -417,7 +451,12 @@ const bridge = chatSdkChannel({
                   !(await postSendblueReply(
                     context.thread,
                     { raw: failureText },
-                    scope
+                    scope,
+                    {
+                      conversationId,
+                      identity: identityFor("text"),
+                      leaseOwner,
+                    }
                   ))
                 )
                   return;
@@ -427,14 +466,31 @@ const bridge = chatSdkChannel({
                 throw new Error(
                   "SendBlue media delivery requires a valid URL."
                 );
-              const response = await adapter.getSdk().messages.send({
-                content: index === 0 ? attachmentCaption : "",
-                from_number: configured.fromNumber,
-                media_url: mediaUrl,
-                number: contactNumber,
+              const sent = await dispatchReportPart({
+                channel: "sendblue",
+                contentDigest: createHash("sha256")
+                  .update(mediaUrl)
+                  .digest("hex"),
+                conversationId,
+                dispatch: async () => {
+                  const response = await adapter.getSdk().messages.send({
+                    content: index === 0 ? attachmentCaption : "",
+                    from_number: configured.fromNumber,
+                    media_url: mediaUrl,
+                    number: contactNumber,
+                  });
+                  if (!response.message_handle)
+                    throw new Error(
+                      "SendBlue did not accept the media message."
+                    );
+                  return response;
+                },
+                // oxlint-disable-next-line typescript/restrict-template-expressions -- index is the media loop's small integer ordinal, never NaN or a float.
+                identity: identityFor(`media-send:${index}`),
+                leaseOwner,
+                providerHandle: (response) => response.message_handle,
               });
-              if (!response.message_handle)
-                throw new Error("SendBlue did not accept the media message.");
+              if (sent.kind === "not_dispatched") return;
               await recordSendblueUsage(scope);
             }
             /* oxlint-enable eslint/no-await-in-loop */
@@ -693,14 +749,60 @@ async function resolvePendingInputResponses({
   };
 }
 
+/**
+ * Where a physical send fits in a bound completion report. Absent for every
+ * ordinary message, which is almost all of them.
+ */
+interface ReportDispatchOptions {
+  readonly identity?: ReportPartIdentity;
+  readonly leaseOwner: string;
+  readonly conversationId: string;
+}
+
+/**
+ * The durable identity of one physical effect of the report this call may be
+ * making, or undefined when there is no scope to bind one to or this call
+ * answers no completion obligation. Never computed from anything the caller
+ * controls beyond the part name itself.
+ */
+function reportPartIdentity(input: {
+  readonly scope: AccessScope | undefined;
+  readonly rootSessionId: string;
+  readonly turnId: string;
+  readonly callId: string;
+  readonly part: ReportPart;
+}): ReportPartIdentity | undefined {
+  return input.scope
+    ? reportPartIdentityFor({
+        callId: input.callId,
+        part: input.part,
+        rootSessionId: input.rootSessionId,
+        turnId: input.turnId,
+        workspaceId: input.scope.workspaceId,
+      })
+    : undefined;
+}
+
 async function postSendblueReply(
   thread: SendblueThread,
   outgoing: { readonly raw: string },
-  scope?: AccessScope
+  scope?: AccessScope,
+  report?: ReportDispatchOptions
 ) {
   if (!(await checkSendblueMessageBudget(thread, scope))) return false;
-  const posted = await thread.post(outgoing);
-  if (!posted.id) throw new Error("SendBlue did not accept the message.");
+  const dispatched = await dispatchReportPart({
+    channel: "sendblue",
+    contentDigest: createHash("sha256").update(outgoing.raw).digest("hex"),
+    conversationId: report?.conversationId ?? thread.id,
+    dispatch: async () => {
+      const posted = await thread.post(outgoing);
+      if (!posted.id) throw new Error("SendBlue did not accept the message.");
+    },
+    identity: report?.identity,
+    leaseOwner: report?.leaseOwner ?? "sendblue",
+  });
+  if (dispatched.kind === "not_dispatched")
+    return dispatched.reason === "already_accepted";
   await recordSendblueUsage(scope);
   return true;
 }

@@ -19,6 +19,10 @@ import { z } from "zod";
 import { getAuth } from "@/auth";
 import { reactToMessageToolResultSchema } from "@/agent/lib/react-to-message";
 import { sendMessageToolResultSchema } from "@/agent/lib/send-message";
+import { dispatchReportPart } from "@/agent/lib/report-part-dispatch";
+import { reportPartIdentityFor } from "@/agent/lib/completion-report-policy";
+import type { ReportPartIdentity } from "@/agent/lib/completion-report-attempts";
+import { createHash } from "node:crypto";
 import { normalizeAuthPhoneNumber } from "@/auth/phone-number";
 import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
 import { accessScopeForUser, type AccessScope } from "@/lib/access-scope";
@@ -432,11 +436,12 @@ export const linqChannelConfig = {
             return;
           }
 
+          const scope = scopeFromPrincipal(caller);
           const delivery = await prepareLinqImageArtifactDelivery(
             requestedText,
             {
               rootSessionId: report?.workerSessionId ?? session.session.id,
-              scope: scopeFromPrincipal(caller),
+              scope,
             }
           );
           if (delivery.failedArtifactIds.length > 0) {
@@ -461,7 +466,26 @@ export const linqChannelConfig = {
           if (attachments?.length) outgoing.attachments = attachments;
           if (delivery.files.length > 0) outgoing.files = delivery.files;
           try {
-            await postLinqReply(post, outgoing, scopeFromPrincipal(caller));
+            // Never bind a scheduled report's send to the durable claim: it
+            // already has its own idempotency key and lease, and this record
+            // is for the interactive completion-report obligation only.
+            const identity = report
+              ? undefined
+              : reportPartIdentityFor({
+                  callId: event.result.callId,
+                  part: "text",
+                  rootSessionId: session.session.id,
+                  turnId: event.turnId,
+                  workspaceId: scope.workspaceId,
+                });
+            if (
+              !(await postLinqReply(post, outgoing, scope, {
+                conversationId: thread.id,
+                identity,
+                leaseOwner: `${event.turnId}:${event.result.callId}`,
+              }))
+            )
+              return;
           } catch (error) {
             if (
               error instanceof BudgetExceededError ||
@@ -805,18 +829,31 @@ function approvalOptionId(reply: string) {
   return undefined;
 }
 
+/** Where a physical text send fits in a bound completion report, if at all. */
+interface ReportDispatchOptions {
+  readonly identity?: ReportPartIdentity;
+  readonly leaseOwner: string;
+  readonly conversationId: string;
+}
+
 /**
  * Posts one send_message reply, budgeted and ledgered when the caller has a
  * workspace. One `send_message` call is one iMessage bubble: the agent decides
  * bubble boundaries by calling the tool more than once, so the channel never
  * re-splits the text. `splitLinqReply` (`agent/lib/linq/reply.ts`) stays the
  * single splitter for the Square eval gym, which scores unsent reply shape.
+ *
+ * Returns false when the send did not happen and must not be treated as
+ * delivered: the part is uncertain from a prior crashed attempt, and nothing
+ * here may resend it. A part already accepted by a prior attempt returns true,
+ * since as far as this call is concerned the report already went out.
  */
 async function postLinqReply(
   post: (content: AdapterPostableMessage) => Promise<void>,
   outgoing: Extract<AdapterPostableMessage, { raw: string }>,
-  scope?: AccessScope
-) {
+  scope?: AccessScope,
+  report?: ReportDispatchOptions
+): Promise<boolean> {
   if (scope) {
     try {
       await checkBudget(scope, "provider_message");
@@ -831,8 +868,18 @@ async function postLinqReply(
       throw error;
     }
   }
-  await post(outgoing);
+  const dispatched = await dispatchReportPart({
+    channel: "linq",
+    contentDigest: createHash("sha256").update(outgoing.raw).digest("hex"),
+    conversationId: report?.conversationId ?? "linq",
+    dispatch: () => post(outgoing),
+    identity: report?.identity,
+    leaseOwner: report?.leaseOwner ?? "linq",
+  });
+  if (dispatched.kind === "not_dispatched")
+    return dispatched.reason === "already_accepted";
   recordLinqUsage(scope);
+  return true;
 }
 
 function recordLinqUsage(scope: AccessScope | undefined) {
