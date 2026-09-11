@@ -6,6 +6,13 @@ import {
   resetDatabaseForIntegrationTest,
   setDatabaseForIntegrationTest,
 } from "@/db";
+import {
+  claimCompletionReportPart,
+  findCompletionReportPart,
+  markAccepted,
+  markProviderAttempted,
+  markUnconfirmed,
+} from "@/db/services/completion-report-attempts";
 import { adminDependencies } from "@/lib/admin";
 import * as schema from "../../db/schema";
 import { createRealPostgres } from "../harness/real-postgres";
@@ -207,6 +214,223 @@ describe.skipIf(realPostgres === undefined)(
         }
       } finally {
         await Promise.all([first.disconnect(), second.disconnect()]);
+      }
+    });
+
+    it("refuses to dispatch a completion report part twice across a crash window", async () => {
+      if (!realPostgres) throw new Error("Real Postgres was not initialized.");
+      const pool = new Pool({
+        connectionString: realPostgres.connectionString,
+      });
+      const database = drizzle({ client: pool, schema });
+      setDatabaseForIntegrationTest(database);
+
+      try {
+        const now = new Date();
+        await pool.query(
+          `INSERT INTO workspaces (id, lifecycle_state, created_at)
+             VALUES ('report-workspace', 'active', $1)
+             ON CONFLICT (id) DO NOTHING`,
+          [now.toISOString()]
+        );
+
+        const key = {
+          cohortId: "turn_report",
+          part: "text",
+          reportRevision: 0,
+          rootSessionId: "root-session",
+          workspaceId: "report-workspace",
+        };
+        const lease = (owner: string, minutes: number) => ({
+          channel: "channel:sendblue",
+          contentDigest: "digest-of-the-composed-summary",
+          conversationId: "conversation-1",
+          id: `${owner}-attempt`,
+          key,
+          leaseExpiresAt: new Date(now.getTime() + minutes * 60_000),
+          leaseOwner: owner,
+          now,
+        });
+
+        // DW-01 — a second claimer arrives while the first lease is live. It
+        // must not be handed the right to dispatch, because the original owner
+        // can still transition to attempted and call the provider.
+        const first = await claimCompletionReportPart(lease("owner-a", 5));
+        expect(first.kind).toBe("claimed");
+        if (first.kind !== "claimed") throw new Error("expected a claim");
+
+        const contender = await claimCompletionReportPart(lease("owner-b", 5));
+        expect(contender.kind).toBe("uncertain");
+
+        // Eight concurrent claimers on a fresh part yield exactly one dispatcher.
+        const concurrentKey = { ...key, part: "attachment" };
+        const race = await Promise.all(
+          Array.from({ length: 8 }, (_, index) =>
+            claimCompletionReportPart({
+              ...lease(`racer-${String(index)}`, 5),
+              id: `racer-${String(index)}-attempt`,
+              key: concurrentKey,
+            })
+          )
+        );
+        expect(
+          race.filter((outcome) => outcome.kind === "claimed")
+        ).toHaveLength(1);
+
+        // DW-02 — the pre-dispatch compare-and-swap. Only the live lease and
+        // version may move to attempted, and that happens before any network
+        // call. A stale owner is refused and therefore cannot dispatch.
+        expect(
+          await markProviderAttempted({
+            id: first.claim.id,
+            leaseOwner: "owner-b",
+            version: first.claim.version,
+          })
+        ).toBeUndefined();
+        expect(
+          await markProviderAttempted({
+            id: first.claim.id,
+            leaseOwner: "owner-a",
+            version: first.claim.version + 99,
+          })
+        ).toBeUndefined();
+
+        const attempted = await markProviderAttempted({
+          id: first.claim.id,
+          leaseOwner: "owner-a",
+          version: first.claim.version,
+        });
+        expect(attempted?.state).toBe("attempted");
+        if (!attempted) throw new Error("expected the attempt to be recorded");
+
+        // A crash here leaves the part attempted with no acceptance. Recovery
+        // in a new process reads exactly that, and must never re-send it.
+        const restartPool = new Pool({
+          connectionString: realPostgres.connectionString,
+        });
+        setDatabaseForIntegrationTest(drizzle({ client: restartPool, schema }));
+        try {
+          const recovered = await findCompletionReportPart(key);
+          expect(recovered?.state).toBe("attempted");
+
+          // The recovering owner cannot claim it again, whatever call id the
+          // model regenerates, because identity is the logical part.
+          const afterRestart = await claimCompletionReportPart({
+            ...lease("owner-after-restart", 5),
+            id: "a-brand-new-call-id",
+          });
+          expect(afterRestart.kind).toBe("uncertain");
+          expect(afterRestart.claim.state).toBe("attempted");
+        } finally {
+          await restartPool.end();
+        }
+
+        setDatabaseForIntegrationTest(database);
+
+        // DW-03 — acceptance is recorded against the same lease and version,
+        // and a checkpoint lost afterwards still cannot cause a second call.
+        const accepted = await markAccepted({
+          id: first.claim.id,
+          leaseOwner: "owner-a",
+          providerHandle: "provider-handle-1",
+          version: attempted.version,
+        });
+        expect(accepted?.state).toBe("accepted");
+
+        const afterAcceptance = await claimCompletionReportPart({
+          ...lease("owner-c", 5),
+          id: "yet-another-call-id",
+        });
+        expect(afterAcceptance.kind).toBe("settled");
+        expect(afterAcceptance.claim.providerHandle).toBe("provider-handle-1");
+
+        // The dangerous case, and the one a live lease does not cover: the
+        // owning process died, so its lease has expired, while the part is
+        // already attempted. Nothing here may take it over, because the
+        // provider may already hold that send.
+        const abandonedKey = { ...key, part: "attachment-send" };
+        const abandoned = await claimCompletionReportPart({
+          ...lease("owner-that-died", 5),
+          id: "abandoned-attempt",
+          key: abandonedKey,
+        });
+        if (abandoned.kind !== "claimed") throw new Error("expected a claim");
+        const abandonedAttempt = await markProviderAttempted({
+          id: abandoned.claim.id,
+          leaseOwner: "owner-that-died",
+          version: abandoned.claim.version,
+        });
+        expect(abandonedAttempt?.state).toBe("attempted");
+        await pool.query(
+          `UPDATE completion_report_attempts SET lease_expires_at = $1 WHERE id = $2`,
+          [new Date(now.getTime() - 60_000).toISOString(), abandoned.claim.id]
+        );
+
+        const afterExpiry = await claimCompletionReportPart({
+          ...lease("owner-taking-over", 5),
+          id: "takeover-attempt",
+          key: abandonedKey,
+        });
+        expect(afterExpiry.kind).toBe("uncertain");
+        expect(afterExpiry.claim.state).toBe("attempted");
+
+        // And one owner cannot record a second attempt for the same part, so a
+        // retry loop cannot turn one claim into two provider calls.
+        expect(
+          await markProviderAttempted({
+            id: abandoned.claim.id,
+            leaseOwner: "owner-that-died",
+            version: abandonedAttempt?.version ?? 0,
+          })
+        ).toBeUndefined();
+
+        // An uncertain provider result is terminal: the part is recorded
+        // unconfirmed and nothing re-sends it, because the send may have landed.
+        const uncertainKey = { ...key, part: "media-upload" };
+        const uncertain = await claimCompletionReportPart({
+          ...lease("owner-uncertain", 5),
+          id: "uncertain-attempt",
+          key: uncertainKey,
+        });
+        if (uncertain.kind !== "claimed") throw new Error("expected a claim");
+        const uncertainAttempt = await markProviderAttempted({
+          id: uncertain.claim.id,
+          leaseOwner: "owner-uncertain",
+          version: uncertain.claim.version,
+        });
+        const settledUnconfirmed = await markUnconfirmed({
+          id: uncertain.claim.id,
+          leaseOwner: "owner-uncertain",
+          version: uncertainAttempt?.version ?? 0,
+        });
+        expect(settledUnconfirmed?.state).toBe("unconfirmed");
+
+        const afterUnconfirmed = await claimCompletionReportPart({
+          ...lease("owner-retrying", 5),
+          id: "retry-attempt",
+          key: uncertainKey,
+        });
+        expect(afterUnconfirmed.kind).toBe("uncertain");
+        expect(afterUnconfirmed.claim.state).toBe("unconfirmed");
+
+        // The logical identity is unique, so the whole crash window rests on one
+        // row rather than on a call id.
+        const rows = await pool.query(
+          `SELECT state, version FROM completion_report_attempts
+             WHERE workspace_id = $1 AND root_session_id = $2
+               AND cohort_id = $3 AND report_revision = $4 AND part = $5`,
+          [
+            key.workspaceId,
+            key.rootSessionId,
+            key.cohortId,
+            key.reportRevision,
+            key.part,
+          ]
+        );
+        expect(rows.rowCount).toBe(1);
+      } finally {
+        resetDatabaseForIntegrationTest();
+        await pool.end();
       }
     });
 
