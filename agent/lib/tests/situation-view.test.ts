@@ -133,6 +133,44 @@ describe("situationView", () => {
     expect(view.reportOwedFor).toEqual([]);
   });
 
+  it("SV-07: prior evidence says which objective each fact came from", () => {
+    settle("task_a", "turn_1", [
+      { claim: "Checked the invoice", evidence: "observed" },
+    ]);
+    settle("task_b", "turn_2", [
+      { claim: "Booked the slot", evidence: "worker_assertion" },
+    ]);
+    settle("task_c", "turn_3", [
+      { claim: "Cancelled the hold", evidence: "observed" },
+    ]);
+
+    const view = situationView({ objectiveRevision: "turn_1" });
+
+    // Without this a flattened prior list cannot be attributed, and "something
+    // happened earlier" is not a useful thing to tell a user.
+    expect(
+      view.priorEvidence.map((item) => [item.cohortId, item.claim])
+    ).toEqual([
+      ["turn_2", "Booked the slot"],
+      ["turn_3", "Cancelled the hold"],
+    ]);
+    expect(view.evidence.map((item) => item.cohortId)).toEqual(["turn_1"]);
+  });
+
+  it("SV-08: an unbounded claim is truncated rather than carried whole", () => {
+    settle("task_a", "turn_1", [
+      { claim: "x".repeat(5_000), evidence: "worker_assertion" },
+    ]);
+
+    const claim = situationView({ objectiveRevision: "turn_1" }).evidence[0]
+      ?.claim;
+
+    // Bounded, not redacted: this keeps a page-sized worker message out of a
+    // projection meant to be short. It makes no promise about what the text is.
+    expect(claim?.length).toBeLessThan(500);
+    expect(claim?.endsWith("…")).toBe(true);
+  });
+
   it("SV-06: claim text cannot become an approval or a constraint", () => {
     settle("task_a", "turn_1", [
       {

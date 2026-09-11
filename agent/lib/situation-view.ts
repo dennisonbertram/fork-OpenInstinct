@@ -19,6 +19,12 @@ import {
  * cannot originate here — the only approval this reports is one a typed record
  * already holds, and no claim text, however confident, becomes authority by
  * appearing in it.
+ *
+ * Claim text is bounded here so an unbounded worker message or page excerpt
+ * cannot flow through a projection that is supposed to be short. Bounding is not
+ * redaction: this reads text other code already recorded, so it cannot promise
+ * that text holds no secret. Keeping secrets out of a fact claim, and out of a
+ * caller-supplied constraint, is the job of whoever writes them.
  */
 
 /** Where a constraint came from, which is what decides how much it binds. */
@@ -30,6 +36,8 @@ export interface SituationConstraint {
 }
 
 interface SituationEvidence {
+  /** The objective this fact belongs to, so prior evidence stays attributable. */
+  readonly cohortId: string;
   readonly taskId: string;
   readonly claim: string;
   readonly evidence: BoundedFact["evidence"];
@@ -61,10 +69,20 @@ function otherCohorts(objectiveRevision: string): readonly CohortRecord[] {
   );
 }
 
+/** The most claim text a projection will carry for one fact. */
+const maximumClaimLength = 400;
+
+function boundClaim(claim: string) {
+  return claim.length <= maximumClaimLength
+    ? claim
+    : `${claim.slice(0, maximumClaimLength)}…`;
+}
+
 function evidenceFrom(cohortId: string): readonly SituationEvidence[] {
   return taskRecords(cohortId).flatMap((task) =>
     (task.terminal?.facts ?? []).map((fact) => ({
-      claim: fact.claim,
+      claim: boundClaim(fact.claim),
+      cohortId,
       evidence: fact.evidence,
       reference: fact.reference,
       taskId: task.taskId,
