@@ -1,5 +1,4 @@
 import {
-  cohortFor,
   taskRecords,
   type BoundedFact,
 } from "@/agent/lib/completion-obligations";
@@ -57,22 +56,79 @@ function corroborated(fact: BoundedFact) {
   return fact.evidence === "observed" || fact.evidence === "executor_receipt";
 }
 
-/**
- * Decides what may happen next for one objective.
- *
- * Implemented in the following commit; see the RED suite.
- */
+/** The step each disposition permits, and nothing wider. */
+const nextStepFor: Readonly<Record<RecoveryDisposition, RecoveryNextStep>> = {
+  awaiting: "wait",
+  settled_unverified: "report",
+  stopped_without_dispatch: "ask_user",
+  // Never "retry". The first attempt may already have reached the world.
+  uncertain_write: "report_uncertain",
+  verified_success: "report",
+};
+
+/** Decides what may happen next for one objective. */
 export function recoveryProgress(input: {
   readonly objectiveRevision: string;
 }): RecoveryProgress {
-  void cohortFor;
-  void taskRecords;
-  void corroborated;
+  const tasks = taskRecords(input.objectiveRevision);
+  const settled = tasks.filter((task) => task.terminal !== undefined);
+  const facts = settled.flatMap((task) => task.terminal?.facts ?? []);
+  const verifiedCheckpoints = facts
+    .filter((fact) => corroborated(fact))
+    .map((fact) => fact.claim);
+
+  const disposition = ((): RecoveryDisposition => {
+    // Nothing to recover until every member has reported. Deciding earlier is
+    // how a premature account of a half-finished objective gets written.
+    if (tasks.length === 0 || settled.length !== tasks.length)
+      return "awaiting";
+
+    const dispatched = facts.some(
+      (fact) => fact.evidence === "executor_receipt"
+    );
+    const allCompleted = settled.every(
+      (task) => task.terminal?.status === "completed"
+    );
+
+    // A dispatch receipt without a clean completion leaves the world in a state
+    // this session cannot confirm, and cancelling does not unsend it.
+    //
+    // A *completed* dispatch is not made uncertain by a later cancellation: the
+    // work finished before the cancel arrived, and calling that "uncertain"
+    // would be its own untruth. What cancellation forbids is claiming rollback.
+    if (dispatched && !allCompleted) return "uncertain_write";
+    if (allCompleted) {
+      return verifiedCheckpoints.length > 0
+        ? "verified_success"
+        : "settled_unverified";
+    }
+    return "stopped_without_dispatch";
+  })();
+
+  const unknownRemainder = ((): readonly string[] => {
+    switch (disposition) {
+      case "uncertain_write":
+        return [
+          "Whether the dispatched action took effect is unknown; it was not confirmed and must not be repeated.",
+        ];
+      case "settled_unverified":
+        return [
+          "The worker reported success, but nothing corroborated it, so the outcome is not corroborated evidence.",
+        ];
+      case "stopped_without_dispatch":
+        return [
+          "The objective stopped before anything was dispatched, so what remains is undone rather than uncertain.",
+        ];
+      default:
+        return [];
+    }
+  })();
+
   return {
-    disposition: "awaiting",
-    nextStep: "wait",
-    tasksSpent: 0,
-    unknownRemainder: [],
-    verifiedCheckpoints: [],
+    disposition,
+    nextStep: nextStepFor[disposition],
+    tasksSpent: tasks.length,
+    unknownRemainder,
+    verifiedCheckpoints,
   };
 }

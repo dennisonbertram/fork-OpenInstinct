@@ -94,6 +94,22 @@ describe("recoveryProgress", () => {
     expect(progress.nextStep).toBe("report_uncertain");
   });
 
+  it("RP-02b: a cancellation after the work already completed is not made uncertain", () => {
+    admit("task_a", "turn_1");
+    settle("task_a", "turn_1", "completed", [
+      { claim: "Sent the message", evidence: "executor_receipt" },
+      { claim: "The thread shows it delivered", evidence: "observed" },
+    ]);
+    cancelCohort("turn_1");
+
+    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+
+    // The work finished before the cancellation arrived. Calling that uncertain
+    // would be its own untruth; what cancellation forbids is claiming rollback.
+    expect(progress.disposition).toBe("verified_success");
+    expect(progress.nextStep).toBe("report");
+  });
+
   it("RP-03: stopping with no dispatch evidence asks rather than guesses", () => {
     admit("task_a", "turn_1");
     settle("task_a", "turn_1", "failed", [
