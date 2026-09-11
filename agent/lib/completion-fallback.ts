@@ -33,7 +33,7 @@ export function completionFallbackText(turnId: string): string | undefined {
   // message, whatever this one would have said.
   if (hasUnconfirmedProviderAttempt(turnId)) return undefined;
 
-  const records = completionReportText(policy.cohortId);
+  const records = completionReportText(policy.cohortIds);
   return [
     "I could not prepare a summary of the background work, so this is what the records hold.",
     records,

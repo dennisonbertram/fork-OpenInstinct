@@ -1,4 +1,7 @@
-import { stripImageArtifactMarkdownReferences } from "@/agent/lib/browser-image-artifact/markdown";
+import {
+  extractImageArtifactMarkdownReferences,
+  stripImageArtifactMarkdownReferences,
+} from "@/agent/lib/browser-image-artifact/markdown";
 import {
   taskRecords,
   type BoundedFact,
@@ -32,8 +35,9 @@ import { recoveryProgress } from "@/agent/lib/recovery-progress";
  * report that can hide a failure is worse than no report.
  *
  * What this honestly guarantees is narrow, and worth stating plainly. Every
- * settled task's outcome reaches the user, with anything that did not complete
- * named first so a length limit cannot hide it. Supporting claims are carried
+ * settled task's outcome reaches the user, tagged with the request it belongs
+ * to, with anything that did not complete named first -- across the whole batch,
+ * not within each cohort -- so a length limit cannot hide it. Supporting claims are carried
  * whole or not at all, and the ones that did not fit are counted rather than
  * shortened -- a shortened claim can say the opposite of what was recorded. It does not make the model's own
  * sentences true, and it does not make the records true -- a worker's claim
@@ -42,10 +46,41 @@ import { recoveryProgress } from "@/agent/lib/recovery-progress";
 
 /** The most supporting claims one report will name, across the whole message. */
 const maximumClaims = 3;
-/** The most room supporting claims may take, leaving space for the rest. */
+/**
+ * The most room supporting claims may take in one message.
+ *
+ * One budget for the whole message, not one per cohort. Rendering each cohort
+ * separately and joining them produced 35,462 characters against the channel's
+ * 20,000 limit -- which the channel rejects outright, after the obligations were
+ * already bound. Appending cohort by cohort instead kept only the last four and
+ * dropped the rest, which is worse: an obligation discharged by a message that
+ * never mentions it.
+ */
 const maximumClaimBudget = 4_000;
 /** What the channel accepts, so a carried report can never make a send invalid. */
 const maximumMessageLength = 20_000;
+/**
+ * The most of an identifier one outcome shows.
+ *
+ * Outcomes are never dropped, so their total length has to be bounded by
+ * something other than goodwill. Task and cohort ids are validated for shape but
+ * not for length, and 64 outcomes built from 150-character ids came to 20,310
+ * characters on their own -- past the channel limit before a single claim was
+ * added, which the channel rejects after the obligations are already bound.
+ *
+ * Shortening an identifier is safe in the way shortening a claim is not. An id
+ * is a label with no internal meaning to reverse; a sentence whose middle holds
+ * "not" becomes its own opposite. Two shortened ids can look alike, and that is
+ * visible to a reader, where an unsendable message is not. Eve's own ids are
+ * well inside this, so in practice nothing is shortened at all.
+ */
+const maximumIdentifierLength = 40;
+
+function shortIdentifier(identifier: string) {
+  return identifier.length <= maximumIdentifierLength
+    ? identifier
+    : `${identifier.slice(0, maximumIdentifierLength)}…`;
+}
 
 function corroborated(fact: BoundedFact) {
   return fact.evidence === "observed" || fact.evidence === "executor_receipt";
@@ -77,40 +112,59 @@ function provenanceOf(fact: BoundedFact) {
 }
 
 /**
- * Renders what the records hold for one cohort.
+ * Renders what the records hold for every cohort this message answers.
+ *
+ * Outcomes and uncertainty are reserved first and are never trimmed; supporting
+ * claims fill what is left and the ones that did not fit are counted. Failures
+ * are ranked ahead of successes across the entire batch, because bad news last
+ * is bad news a length limit can remove.
  *
  * Keyed by cohort rather than by re-asking the policy, because the caller binds
- * the obligation before composing: by then the cohort is `delivery_pending` and
- * the policy would correctly say nothing is owed, so re-deriving it here would
- * silently drop every fact.
+ * the obligation before composing: by then the cohorts are `delivery_pending`
+ * and the policy would correctly say nothing is owed.
  */
-export function completionReportText(cohortId: string): string | undefined {
-  const tasks = taskRecords(cohortId);
-  if (tasks.length === 0) return undefined;
+export function completionReportText(
+  cohortIds: readonly string[]
+): string | undefined {
+  const members = cohortIds.flatMap((cohortId) =>
+    taskRecords(cohortId).map((task) => ({ cohortId, task }))
+  );
+  if (members.length === 0) return undefined;
 
-  // Every task's outcome, always, and anything that did not complete comes
-  // first. Trimming this is how a failure disappears behind an earlier success,
-  // and ordering it this way means even a truncated report keeps the bad news.
-  const outcomes = tasks
-    .toSorted((left, right) => completedLast(left) - completedLast(right))
-    .map((task) => `${task.taskId} ${outcomeOf(task)}`)
+  // Every task's outcome, always, and tagged with the request it belongs to:
+  // one message about several requests is only useful if a reader can tell
+  // which outcome is which.
+  const outcomes = members
+    .toSorted(
+      (left, right) => completedLast(left.task) - completedLast(right.task)
+    )
+    .map(
+      (member) =>
+        `${shortIdentifier(member.cohortId)}/${shortIdentifier(member.task.taskId)} ${outcomeOf(member.task)}`
+    )
     .join("; ");
 
-  const facts = tasks.flatMap((task) => task.terminal?.facts ?? []);
-  // Corroborated claims first, then the worker's own word, then unattributed.
+  const facts = members.flatMap((member) => member.task.terminal?.facts ?? []);
   const ordered = [
     ...facts.filter((fact) => corroborated(fact)),
     ...facts.filter((fact) => fact.evidence === "worker_assertion"),
     ...facts.filter((fact) => fact.evidence === "unknown"),
   ];
+
   // Whole or not at all. Shortening a claim can reverse it -- a sentence whose
-  // middle holds "not" becomes its own opposite, and a reader cannot tell it was
-  // shortened. Omission is visible; mutation is not.
+  // middle holds "not" becomes its own opposite, and a reader cannot tell it
+  // was shortened. Omission is visible; mutation is not.
   const shown: BoundedFact[] = [];
   let spent = 0;
   for (const fact of ordered) {
     if (shown.length >= maximumClaims) break;
     if (spent + fact.claim.length > maximumClaimBudget) continue;
+    // The channel removes artifact image markdown on its way out, and a claim
+    // is not safe from that: "The order was ![not](/artifacts/...) submitted"
+    // arrives as "The order was  submitted", which is the opposite of what was
+    // recorded. Nothing here can carry such a claim intact, so it is omitted and
+    // counted with the rest that did not fit.
+    if (extractImageArtifactMarkdownReferences(fact.claim).length > 0) continue;
     shown.push(fact);
     spent += fact.claim.length;
   }
@@ -120,7 +174,6 @@ export function completionReportText(cohortId: string): string | undefined {
     lines.push(`${fact.claim} (${provenanceOf(fact)}).`);
   }
   if (ordered.length > shown.length) {
-    // Said rather than silently dropped, so nobody reads the list as complete.
     lines.push(
       `${String(ordered.length - shown.length)} further recorded claims are not shown here.`
     );
@@ -129,9 +182,19 @@ export function completionReportText(cohortId: string): string | undefined {
     lines.push("There is no recorded evidence of what the work achieved.");
   }
   // What the records leave unresolved, in the words of the module that decides
-  // it. Empty for a corroborated completion, so nothing invents a doubt that
-  // the records do not support.
-  lines.push(...recoveryProgress({ turnId: cohortId }).unknownRemainder);
+  // it, for each request separately. Empty for a corroborated completion, so
+  // nothing invents a doubt the records do not support.
+  //
+  // Each line names its request. Untagged, two requests in one message produce
+  // "an action was dispatched and its outcome was never confirmed" next to "no
+  // stopped part left a dispatch unconfirmed", and a reader cannot tell which
+  // request holds the action that must not be repeated.
+  for (const cohortId of cohortIds) {
+    for (const line of recoveryProgress({ turnId: cohortId })
+      .unknownRemainder) {
+      lines.push(`${shortIdentifier(cohortId)}: ${line}`);
+    }
+  }
   return lines.join(" ");
 }
 
@@ -145,21 +208,18 @@ export function completionReportText(cohortId: string): string | undefined {
  *
  * Two things it refuses to assume. That a report appearing anywhere in the
  * model's text will be seen: the channel strips artifact image markdown before
- * sending, so a report hidden in an image reference reaches nobody, and the
- * check runs against the stripped text. And that a longer message is always
- * deliverable: text is capped at both ends, so the model's own words are
- * shortened to make room rather than letting the send be rejected after the
- * obligation was already bound.
+ * sending, so the check runs against the stripped text. And that a longer
+ * message is always deliverable: the records are the obligation, so the model's
+ * words are dropped whole rather than cut when there is no room.
  */
 export function reportWithRecordedFacts(
-  cohortId: string,
+  cohortIds: readonly string[],
   modelText: string
 ): string {
-  const report = completionReportText(cohortId);
+  const report = completionReportText(cohortIds);
   if (report === undefined || report.length === 0) return modelText;
 
   const written = modelText.trim();
-  // Checked against what survives the channel, not against what the model sent.
   if (stripImageArtifactMarkdownReferences(written).includes(report)) {
     return modelText;
   }
@@ -167,9 +227,6 @@ export function reportWithRecordedFacts(
 
   const separator = "\n\n";
   const room = maximumMessageLength - report.length - separator.length;
-  // The records alone may fill the message. Carrying them is the obligation, so
-  // the model's words are what gives way -- and they are dropped whole rather
-  // than cut, for the same reason a claim is.
   if (room <= 0) return report;
   return written.length <= room ? `${written}${separator}${report}` : report;
 }

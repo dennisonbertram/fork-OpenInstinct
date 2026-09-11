@@ -322,6 +322,110 @@ export function retiredSummaries(): readonly RetiredCohortSummary[] {
 }
 
 /**
+ * Whether one cohort accepts this attempt, and what it becomes if it does.
+ *
+ * Decides without writing, so several cohorts can be judged together and the
+ * whole set either applied or abandoned. A cohort that accepts without changing
+ * -- the same call re-announcing an attempt it already holds -- returns no
+ * replacement, which is how a rollback avoids inventing a phase for it.
+ */
+function cohortAfterBinding(
+  cohort: CohortRecord | undefined,
+  report: CohortReport,
+  owedNow: ReadonlySet<string>
+) {
+  const refuses = { accepts: false, next: undefined };
+  if (cohort === undefined) return refuses;
+
+  if (cohort.phase === "delivery_pending") {
+    // The same attempt may re-announce itself; a second attempt in the same
+    // turn may not take an obligation another call already holds. Either way
+    // there is nothing to write.
+    return {
+      accepts:
+        cohort.report?.turnId === report.turnId &&
+        cohort.report.callId === report.callId,
+      next: undefined,
+    };
+  }
+
+  const owed =
+    owedNow.has(cohort.cohortId) ||
+    // An uncertain write is never resent inside its own turn. A later turn is
+    // the user asking again, which is a new obligation rather than a retry.
+    (cohort.phase === "unconfirmed" && cohort.report?.turnId !== report.turnId);
+  if (!owed) return refuses;
+
+  // A previous attempt in a different turn means the user asked again, and
+  // that is a new revision. The same turn re-binding is the same attempt, so
+  // it keeps the revision it already has -- one send must not be able to
+  // claim two durable rows.
+  const priorTurn = cohort.report?.turnId;
+  return {
+    accepts: true,
+    next: {
+      ...cohort,
+      phase: "delivery_pending" as const,
+      report,
+      reportRevision:
+        priorTurn !== undefined && priorTurn !== report.turnId
+          ? cohort.reportRevision + 1
+          : cohort.reportRevision,
+    },
+  };
+}
+
+/**
+ * Binds one report attempt to every named cohort, or to none of them.
+ *
+ * All or nothing, in one state update. A partial bind would discharge a cohort's
+ * obligation with a message the caller is about to refuse to send, leaving
+ * settled work with no report and nothing owed to produce one.
+ *
+ * Nothing is written when any cohort refuses, which matters more than it looks:
+ * an earlier version bound each cohort in turn and undid the earlier ones by
+ * setting them back to `must_report`. That guessed at their prior phase. A
+ * cohort can be bound out of `unconfirmed`, and one already held by this same
+ * call is accepted without being changed at all, so "put it back to owing a
+ * report" silently rewrote states that were never owed.
+ *
+ * Returns the cohorts now bound to this attempt. An empty result means the
+ * caller must not treat this send as the summary.
+ */
+export function bindCohortReports(
+  cohortIds: readonly string[],
+  report: CohortReport
+): readonly string[] {
+  let boundCohorts: readonly string[] = [];
+
+  completion.update((current) => {
+    const owedNow = new Set(
+      reportableCohorts().map((candidate) => candidate.cohortId)
+    );
+    const replacements = new Map<string, CohortRecord>();
+    for (const cohortId of cohortIds) {
+      const decision = cohortAfterBinding(
+        current.cohorts.find((candidate) => candidate.cohortId === cohortId),
+        report,
+        owedNow
+      );
+      if (!decision.accepts) return current;
+      if (decision.next) replacements.set(cohortId, decision.next);
+    }
+
+    boundCohorts = cohortIds;
+    return {
+      ...current,
+      cohorts: current.cohorts.map(
+        (candidate) => replacements.get(candidate.cohortId) ?? candidate
+      ),
+    };
+  });
+
+  return boundCohorts;
+}
+
+/**
  * Binds one report attempt to a cohort. Returns false when the cohort owes no
  * report, or when a different attempt already holds the obligation.
  */
@@ -329,59 +433,7 @@ export function beginCohortReport(
   cohortId: string,
   report: CohortReport
 ): boolean {
-  let didBind = false;
-
-  completion.update((current) => {
-    const cohort = current.cohorts.find(
-      (candidate) => candidate.cohortId === cohortId
-    );
-    if (cohort === undefined) return current;
-
-    if (cohort.phase === "delivery_pending") {
-      // The same attempt may re-announce itself; a second attempt in the same
-      // turn may not take an obligation another call already holds.
-      didBind =
-        cohort.report?.turnId === report.turnId &&
-        cohort.report.callId === report.callId;
-      return current;
-    }
-
-    const owed =
-      reportableCohorts().some(
-        (candidate) => candidate.cohortId === cohortId
-      ) ||
-      // An uncertain write is never resent inside its own turn. A later turn is
-      // the user asking again, which is a new obligation rather than a retry.
-      (cohort.phase === "unconfirmed" &&
-        cohort.report?.turnId !== report.turnId);
-    if (!owed) return current;
-
-    didBind = true;
-    // A previous attempt in a different turn means the user asked again, and
-    // that is a new revision. The same turn re-binding is the same attempt, so
-    // it keeps the revision it already has -- one send must not be able to
-    // claim two durable rows.
-    const priorTurn = cohort.report?.turnId;
-    const reportRevision =
-      priorTurn !== undefined && priorTurn !== report.turnId
-        ? cohort.reportRevision + 1
-        : cohort.reportRevision;
-    return {
-      ...current,
-      cohorts: current.cohorts.map((candidate) =>
-        candidate.cohortId === cohortId
-          ? {
-              ...candidate,
-              phase: "delivery_pending" as const,
-              report,
-              reportRevision,
-            }
-          : candidate
-      ),
-    };
-  });
-
-  return didBind;
+  return bindCohortReports([cohortId], report).length > 0;
 }
 
 /**
@@ -404,17 +456,18 @@ export function cohortForReportAttempt(
 }
 
 /**
- * The cohort whose report attempt holds this call.
+ * Every cohort whose report attempt holds this call.
  *
- * A call id identifies one tool call, so it identifies one attempt on its own.
+ * A call id identifies one tool call, and one call can answer several owed
+ * cohorts at once, so this returns all of them.
  * This exists because the per-turn delivery record holds only the most recent
  * attempt: once a later turn replaces it, an earlier turn's provider result can
  * no longer find the obligation it owns through that record.
  */
-export function cohortForReportCall(callId: string): CohortRecord | undefined {
+export function cohortsForReportCall(callId: string): readonly CohortRecord[] {
   return completion
     .get()
-    .cohorts.find((candidate) => candidate.report?.callId === callId);
+    .cohorts.filter((candidate) => candidate.report?.callId === callId);
 }
 
 /** Records whether the channel accepted the bound report attempt. */

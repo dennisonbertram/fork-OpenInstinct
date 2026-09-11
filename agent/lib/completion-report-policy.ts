@@ -1,5 +1,5 @@
 import {
-  beginCohortReport,
+  bindCohortReports,
   cohortForReportAttempt,
   reportableCohorts,
 } from "@/agent/lib/completion-obligations";
@@ -26,33 +26,39 @@ import { completionReportForcingActive } from "@/agent/lib/completion-report-act
 export type ReportPolicy =
   /** Nothing is owed, or enforcement is off. An ordinary turn. */
   | { readonly kind: "none" }
-  /** This cohort owes a written summary and only a final text send can give it. */
-  | { readonly kind: "must_report"; readonly cohortId: string };
+  /**
+   * These cohorts owe a written summary, and only a final text send can give
+   * it. Every owed cohort, not just the oldest: one message accounts for all of
+   * them, so a backlog is answered once rather than on every turn until it
+   * drains. Reporting fewer would leave an obligation discharged by a message
+   * that never mentioned it.
+   */
+  | { readonly kind: "must_report"; readonly cohortIds: readonly string[] };
 
 export function reportPolicyForTurn(): ReportPolicy {
   if (!completionReportForcingActive()) return { kind: "none" };
-  // The oldest owed cohort first. One written summary accounts for one cohort,
-  // so any others stay owed and are answered in a later turn rather than being
-  // absorbed silently into this one.
-  const [owed] = reportableCohorts();
-  return owed === undefined
+  const owed = reportableCohorts();
+  return owed.length === 0
     ? { kind: "none" }
-    : { cohortId: owed.cohortId, kind: "must_report" };
+    : { cohortIds: owed.map((cohort) => cohort.cohortId), kind: "must_report" };
 }
 
 /**
- * Records that this exact call is the attempt at the owed summary.
+ * Records that this exact call is the attempt at every owed summary, and
+ * returns the cohorts it now owns.
  *
- * Returns false when the obligation could not be bound: another call in this
- * turn already holds it, or what was owed when the policy was read is no longer
- * owed now. The caller must not treat a false as a delivered summary.
+ * All or none, and the state machine applies it as one write rather than binding
+ * each cohort and undoing the earlier ones, because undoing has to guess at a
+ * phase the cohort may never have been in.
+ *
+ * An empty result means the caller must not treat this send as a summary.
  */
 export function bindReportAttempt(input: {
-  readonly cohortId: string;
+  readonly cohortIds: readonly string[];
   readonly turnId: string;
   readonly callId: string;
-}): boolean {
-  return beginCohortReport(input.cohortId, {
+}): readonly string[] {
+  return bindCohortReports(input.cohortIds, {
     callId: input.callId,
     turnId: input.turnId,
   });
