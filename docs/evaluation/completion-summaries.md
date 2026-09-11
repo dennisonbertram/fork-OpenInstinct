@@ -95,11 +95,18 @@ What remains is not a missing piece but missing **evidence**. Plan 009 gates
 activation on four things: the deterministic matrix (substantially covered),
 authorised paid-model trials (CM-01 to CM-06, which need a local synthetic
 fixture that does not exist yet -- the browser evals run against real sites), a
-browser-visible reload proof (which needs a settled worker cohort in the
-end-to-end fixture environment, and that fixture currently drives only `say`,
-`silent` and `wait`), and one configured-native acceptance journey, prepared in
-`native-acceptance-journey.md` and not run, because it needs an
-operator-controlled recipient.
+browser-visible reload proof, and one configured-native acceptance journey
+prepared in `native-acceptance-journey.md`.
+
+The browser proof is **structurally blocked**, not merely unrun. It needs a
+settled worker cohort in the end-to-end fixture environment, which needs the
+worker to run on the contract fixture -- and a subagent's model comes from the
+config its resolver returns, which Eve requires to be serializable, so a provider
+object makes it omit the subagent entirely. `step.started` is not available to
+subagents either. One route remains: a static agent config may hold a direct
+provider, which means restructuring how `browser-agent` is defined and moving its
+mode gating. That is a change to production delegation made to suit a test, and
+it deserves a deliberate decision rather than a late one.
 
 Two latent defects found and fixed while assembling this, both of the same kind
 and worth recording so the pattern is recognised if it recurs: `situationView`
@@ -116,10 +123,35 @@ them shows that a real model writes a grounded summary, that a browser user sees
 it, or that a provider accepted it. Those are the real-model, browser, and native
 layers below, and they remain unrun.
 
-The production behaviour is also still inactive:
-`agent/lib/completion-report-activation.ts` returns false, so none of this
-changes what a user sees yet. Activation is gated on the layers below, not on the
-table above.
+### Activation, and what changed before it was reinstated
+
+Forcing is now **active**. `completionReportForcingActive()` returns
+`reportableCohorts().length > 0`, so it applies exactly when a summary is owed.
+Ordinary turns are unchanged because nothing is owed on one -- a property of the
+state rather than a promise about a flag, and there is no configuration in which
+forcing reaches a session with nothing to report.
+
+It was switched on once before and reverted the same day on live evidence. The
+guard at that point checked only the **shape** of a final message, and the model
+satisfied it with a progress note about work no worker had started, which closed
+the turn. Two things changed before reinstating it:
+
+- **The records no longer depend on the model.** The messaging tool appends what
+  the state machine holds to whatever the model wrote. There is deliberately no
+  check on the model's prose: nothing can tell a plausible sentence from a true
+  one, and deleting prose on suspicion would be guessing. What changed is that a
+  progress note can no longer be the _whole_ message.
+- **One report answers the whole backlog.** Each turn previously discharged at
+  most one cohort, so a session with accumulated settled work was forced to
+  report on every turn until it drained.
+
+What that does **not** establish is what a recipient saw. A provider handle is
+acceptance, the durable claim stores a digest of the rendered payload rather than
+its text, the delivery receipts are metadata only by design, and the runtime log
+records a response length and never its content. Nothing in the system can show
+what the message said; only a person looking at the device can. That is why CL-01
+requires manual native display observation, and it is the same blind spot that
+let the first activation be reported as working from a log.
 
 ## Real-model cases
 

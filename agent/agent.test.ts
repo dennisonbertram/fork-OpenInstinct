@@ -68,6 +68,9 @@ vi.mock("@/agent/lib/message-delivery", () => ({
 // eve context. Mocked at its owning boundary, like the delivery status above.
 vi.mock("@/agent/lib/completion-obligations", () => ({
   reconcileBackgroundTasks: services.reconcile,
+  // Forcing is derived from what is owed, and these cases are about model and
+  // lease resolution rather than a session with settled work behind it.
+  reportableCohorts: () => [],
 }));
 
 const agent = await import("./agent");
