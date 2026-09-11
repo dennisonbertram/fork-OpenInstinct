@@ -238,3 +238,20 @@ The source-review phase itself did not exercise live provider calls,
 infrastructure provisioning, DNS/TLS, reverse-proxy deployment, browser UI, or
 production data. Later deployment checks are recorded separately in the
 operator runbook so source findings are not silently conflated with live proof.
+
+## Dated design addendum (2026-09-11, Proposed)
+
+The proposed [Jory agent operating model](JORY_AGENT_OPERATING_MODEL.md)
+organizes remediation around existing trust boundaries: application services
+own identity and workspace, Eve owns sessions and lifecycle, workers own
+browser observations, the executor owns approval and commit receipts, and
+channels own transport evidence. This does not close the findings above or
+claim new runtime behavior.
+
+A model-generated summary or inferred task revision remains an interpretation
+anchored to user-message references. It cannot grant authority. Hooks remain
+observers and dynamic instructions remain context injection; neither promotes
+model text into policy. Eve event IDs are not replay-stable action idempotency
+keys, and an event stream may contain abandoned attempts. The proposed design
+therefore requires owner-scoped action keys and explicit evidence before any
+future lifecycle API is approved.

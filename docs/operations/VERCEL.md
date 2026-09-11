@@ -8,11 +8,10 @@ It covers four outcomes:
 
 1. start the complete application locally with disposable Postgres;
 2. provision and deploy a new Vercel environment;
-3. attach Linq without exposing credentials or accidentally enabling preview
-   messaging;
+3. attach and verify the applicable provider channel without exposing credentials or accidentally enabling preview messaging;
 4. verify, operate, roll back, and recover the deployment.
 
-The current product has one deployment-level Linq line. The proposed
+The dated reference deployment has one deployment-level Linq line. The repository also implements a native SendBlue channel at /eve/v1/sendblue, disabled by default. Provider acceptance is channel-specific; the proposed
 multi-tenant product deliberately uses a shared platform number with durable
 conversation-to-workspace/agent routing; optional dedicated lines are a later
 premium channel. That resolver, agent, API, and webhook design is proposed in
@@ -163,16 +162,19 @@ Use `on` to expose the panel in an authorized preview environment. The panel is
 always disabled in production, even if the variable is set to `on`. Unset flags
 default off outside local development.
 
-### Local authentication and Linq modes
+### Local authentication and provider modes
 
 Local loopback development uses Better Auth's intentional phone bypass. Enter
 an E.164 phone number and the development code `000000`. This does not call Linq
 and proves no external messaging behavior.
 
-Do not point the production Linq trigger at localhost. The supported live Linq
-test is a deployed Vercel environment with a dedicated connector/line and
-approved Messaging Contact. A separate tunneled local webhook, signature path,
-and connector is not currently documented or verified.
+Do not point a production provider trigger at localhost. The supported live
+Linq test is a deployed Vercel environment with a dedicated connector/line and
+approved Messaging Contact. SendBlue has a separate /eve/v1/sendblue route,
+admission and approval contract, and credential set; it remains disabled unless
+explicitly configured. A provider HTTP response or health check is not proof of
+recipient delivery. A separate tunneled local webhook, signature path, and
+connector is not currently documented or verified.
 
 ### Local acceptance
 
@@ -394,10 +396,10 @@ or resolve ownership with Linq.
 Use the Connect dashboard to add only approved users under Messaging Contacts.
 The configured line, connector, trigger destination, and contact allowlist are
 one deployment-level trust boundary today; they are not a multi-tenant routing
-model. The product plan may use the existing Sendblue account through Eve's
-Chat SDK channel, but this runbook remains the verified Linq procedure until a
-Sendblue migration has its own webhook, delivery, rollback, and isolation
-evidence. Repeat attachments and environment variables for preview only when
+model. The repository also implements the native SendBlue route, but this
+runbook remains the verified Linq procedure. SendBlue requires its own webhook,
+delivery, rollback, isolation, and recipient-evidence acceptance. Repeat
+attachments and environment variables for preview only when
 traffic is intentionally isolated.
 
 Keep `LINQ_CONNECTOR` and `LINQ_PHONE_NUMBER` production-only unless a separate
@@ -1071,3 +1073,11 @@ pnpm exec vercel connect attach --help
 Then update the verification date and exact behavior exercised. Do not assume a
 managed-connector UI, Marketplace environment name, webhook retry policy, or
 line-provisioning capability remains unchanged.
+
+## Proposed operating-model acceptance (2026-09-11)
+
+For any provider channel, record the exact deployment SHA, configured channel,
+approval path, provider acceptance, visible rendering, and recipient receipt
+separately. The native SendBlue route is implemented and disabled by default;
+this runbook does not claim a SendBlue live acceptance merely from the route or
+from the unsigned-webhook 401 health check recorded above.

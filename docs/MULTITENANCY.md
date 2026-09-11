@@ -304,3 +304,11 @@ Never roll back encryption/AAD or membership data by silently recreating a tenan
 - What is the billing authority and reconciliation window for provider-reported cost?
 - Which provider integrations are Vercel-only at launch?
 - What is the approved support escalation path for a stuck or disputed external action?
+
+## Proposed operating-model principle (2026-09-11)
+
+Tenant authority remains application-owned. A model summary, inferred task
+revision, provider event, or user-visible projection cannot select a workspace
+or authorize a side effect. Proposed completion projections must retain
+workspace, agent revision, participant, channel, freshness, and evidence scope;
+they do not replace the existing fail-closed binding contract.

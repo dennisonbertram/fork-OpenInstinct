@@ -16,6 +16,7 @@ being considered. Documents use three labels deliberately:
 | Coding agent          | [`AGENT_GUIDE.md`](AGENT_GUIDE.md)                                 | Repository topology, ownership boundaries, change recipes, and gates                                                   |
 | Architect             | [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md)                 | Current system, trust boundaries, findings, and portability limits                                                     |
 | Architect/contributor | [`PLATFORM_ARCHITECTURE.md`](PLATFORM_ARCHITECTURE.md)             | Core/Eve/extension/MCP boundaries, credential pattern, provider contract, and gym ladder                               |
+| Architect/contributor | [`JORY_AGENT_OPERATING_MODEL.md`](JORY_AGENT_OPERATING_MODEL.md)   | Proposed source-of-truth/projection, completion, evidence, and operating model                                         |
 | Product/engineering   | [`PRODUCT_DIRECTION.md`](PRODUCT_DIRECTION.md)                     | Infrastructure-first recommendation, product model, MVP, API, webhooks, and phone lifecycle                            |
 | Platform engineer     | [`MULTITENANCY.md`](MULTITENANCY.md)                               | Tenant isolation contract, migration sequence, quotas, lifecycle, and test strategy                                    |
 | Coding agent          | [`agent-loop.html`](agent-loop.html)                               | Diagram of one turn: channels, scope, session hooks, steps, tool branches, bubble delivery (open in a browser)         |
@@ -50,7 +51,9 @@ runtime instructions.
   Vercel Workflow/AI Gateway, and Vercel Connect are part of the current path.
 - The database and service layer are workspace-scoped, but the product is not
   yet a shared multi-tenant service.
-- One Linq connector and one phone line currently configure the deployment.
+- Linq and SendBlue channel adapters are implemented in the repository. Which
+  provider is enabled is deployment-specific; live provider evidence remains
+  separate from model-free contract evidence.
 - `workspace` is the intended customer, isolation, billing, and lifecycle
   boundary. A future `agent` is a separately configurable resource owned by a
   workspace.

@@ -6,11 +6,47 @@ the index update to the reviewer who dispatched the work.
 
 ## Execution order and status
 
-| Plan | Title                                                            | Priority | Effort | Depends on | Status |
-| ---- | ---------------------------------------------------------------- | -------- | ------ | ---------- | ------ |
-| 001  | Define Vercel-first multi-tenancy and make onboarding repeatable | P1       | M      | —          | DONE   |
+| Plan | Title                                                                                                       | Priority | Effort | Depends on   | Status            |
+| ---- | ----------------------------------------------------------------------------------------------------------- | -------- | ------ | ------------ | ----------------- |
+| 001  | [Define Vercel-first multi-tenancy and make onboarding repeatable](001-architecture-onboarding-runbooks.md) | P1       | M      | —            | DONE              |
+| 002  | [Multi-tenancy product epic](002-multitenancy-epic.md)                                                      | P1       | L      | 001          | DONE (historical) |
+| 003  | [Deliver one truthful completion summary per settled task cohort](003-reliable-completion-epic.md)          | P1       | L      | —            | TODO              |
+| 004  | [Prove typed background terminal adapter](004-typed-background-terminal-adapter.md)                         | P1       | M–L    | —            | TODO              |
+| 005  | [Persist durable completion obligations](005-durable-completion-obligations.md)                             | P1       | M      | 004          | TODO              |
+| 006  | [Require one substantive completion report](006-required-completion-report.md)                              | P1       | M      | 005          | TODO              |
+| 007  | [Bind exact completion channel settlement](007-exact-completion-channel-settlement.md)                      | P1       | M–L    | 005–006      | TODO              |
+| 008  | [Approval, cancellation, and resume integration](008-approval-cancellation-and-resume.md)                   | P1       | M      | 005–007      | TODO              |
+| 009  | [Completion acceptance and release gate](009-completion-summary-acceptance.md)                              | P1       | M      | 004–008      | TODO              |
+| 010  | [Agent operating-model epic](010-agent-operating-model-epic.md)                                             | P1       | L      | —            | TODO              |
+| 011  | [Root situation view](011-root-situation-view.md)                                                           | P1       | M      | 005–006      | TODO              |
+| 012  | [Capability readiness](012-capability-readiness.md)                                                         | P1       | M      | 011          | TODO              |
+| 013  | [Browser action affordances](013-browser-action-affordances.md)                                             | P2       | M      | —            | TODO              |
+| 014  | [Bounded recovery and progress](014-bounded-recovery-progress.md)                                           | P1       | M      | 005–006, 011 | TODO              |
+| 015  | [Reviewed procedure improvement](015-reviewed-procedure-improvement.md)                                     | P2       | S–M    | —            | TODO              |
+| 016  | [Matched whole-task efficiency](016-matched-task-efficiency.md)                                             | P2       | M      | —            | TODO              |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
+
+## GitHub execution map
+
+The two epics have six native subissues each. GitHub blocking dependencies match the plan dependencies above. All implementation issues remain open.
+
+| Plan | Issue                                                                   |
+| ---- | ----------------------------------------------------------------------- |
+| 003  | [#152](https://github.com/dennisonbertram/fork-OpenInstinct/issues/152) |
+| 004  | [#154](https://github.com/dennisonbertram/fork-OpenInstinct/issues/154) |
+| 005  | [#155](https://github.com/dennisonbertram/fork-OpenInstinct/issues/155) |
+| 006  | [#156](https://github.com/dennisonbertram/fork-OpenInstinct/issues/156) |
+| 007  | [#157](https://github.com/dennisonbertram/fork-OpenInstinct/issues/157) |
+| 008  | [#158](https://github.com/dennisonbertram/fork-OpenInstinct/issues/158) |
+| 009  | [#159](https://github.com/dennisonbertram/fork-OpenInstinct/issues/159) |
+| 010  | [#153](https://github.com/dennisonbertram/fork-OpenInstinct/issues/153) |
+| 011  | [#160](https://github.com/dennisonbertram/fork-OpenInstinct/issues/160) |
+| 012  | [#161](https://github.com/dennisonbertram/fork-OpenInstinct/issues/161) |
+| 013  | [#162](https://github.com/dennisonbertram/fork-OpenInstinct/issues/162) |
+| 014  | [#163](https://github.com/dennisonbertram/fork-OpenInstinct/issues/163) |
+| 015  | [#164](https://github.com/dennisonbertram/fork-OpenInstinct/issues/164) |
+| 016  | [#165](https://github.com/dennisonbertram/fork-OpenInstinct/issues/165) |
 
 ## Dependency notes
 
@@ -29,3 +65,14 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 - Portable Linq credentials in this plan: rejected for this phase. Eve supports them, but the
   current production strategy uses Vercel Connect; changing credential modes is
   product code and needs a separate regression-tested implementation plan.
+
+Plans 003 and 010 are coordination epics. Plans 004–009 and 011–016 are
+planned child slices and remain TODO until their owner files, RED evidence,
+drift checks, and acceptance gates are complete. An index row does not mean
+the slice is implemented or ready to run. Plan 002 is retained as a historical
+DONE record from the existing plan set; this update does not reverify its
+claims.
+
+The [overnight handoff](JORY_OVERNIGHT_HANDOFF.md) is an execution prompt and
+gate checklist. It authorizes scoped implementation and normal PR delivery;
+live sends, Gmail, secret changes, and paid budget remain separately scoped.

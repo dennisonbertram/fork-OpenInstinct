@@ -156,3 +156,30 @@ The rubric and scenario choices are a Jory-specific proposal informed by:
   verbosity, and self-preference biases when calibrating automated judgments.
 
 These sources motivate the design; none establishes Jory's current quality.
+
+## Proposed completion-summary scenarios (2026-09-11)
+
+The detailed scenario catalog is defined in
+[completion-summaries.md](completion-summaries.md) and is owned by the
+completion-plan work. The operating-model and completion epics are linked from
+[the proposed system contract](../JORY_AGENT_OPERATING_MODEL.md).
+
+Future focused cases should exercise the existing conversation runner before a
+larger shared baseline is adopted:
+
+- after a successful synthetic write, distinguish prepared, attempted,
+  provider-accepted, visibly rendered, and recipient-received evidence;
+- after an uncertain provider result, report uncertainty and do not resend;
+- after cancellation or steering, keep already dispatched effects intact while
+  preventing stale work from answering the new objective;
+- after a worker returns a success label without corroborating evidence, avoid a
+  success claim;
+- after a substantive completion obligation, do not discharge it with only a
+  reaction; a concise written summary must identify unresolved facts.
+
+These are Proposed scenarios. They do not claim that the current model passes
+them, and they must report execution, correctness, delivery, quality, and human
+review separately. The native SendBlue channel is an implemented route but
+requires its own configured live acceptance evidence; this evaluation document
+does not treat a generic tool request or provider HTTP response as recipient
+receipt.
