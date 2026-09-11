@@ -8,26 +8,32 @@ Starting main: `ebcc0cc`. Ending main: `09937ea`.
 
 ## What merged
 
-| PR                                                                    | Issue                                                                          | Merged at | What it does                                                     |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------- | ---------------------------------------------------------------- |
-| [#166](https://github.com/dennisonbertram/fork-OpenInstinct/pull/166) | —                                                                              | `ebcc0cc` | The planning documents for both epics (docs only)                |
-| [#167](https://github.com/dennisonbertram/fork-OpenInstinct/pull/167) | closes [#154](https://github.com/dennisonbertram/fork-OpenInstinct/issues/154) | `09937ea` | Plan 004: a typed, authenticated background-task terminal result |
+| PR                                                                    | Issue                                                                          | Merged at | What it does                                                        |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------- | ------------------------------------------------------------------- |
+| [#166](https://github.com/dennisonbertram/fork-OpenInstinct/pull/166) | —                                                                              | `ebcc0cc` | The planning documents for both epics (docs only)                   |
+| [#167](https://github.com/dennisonbertram/fork-OpenInstinct/pull/167) | closes [#154](https://github.com/dennisonbertram/fork-OpenInstinct/issues/154) | `09937ea` | Plan 004: a typed, authenticated background-task terminal result    |
+| [#168](https://github.com/dennisonbertram/fork-OpenInstinct/pull/168) | toward [#155](https://github.com/dennisonbertram/fork-OpenInstinct/issues/155) | `e2559ab` | Plan 005's root completion state machine. **Does not close #155**   |
+| [#170](https://github.com/dennisonbertram/fork-OpenInstinct/pull/170) | closes [#169](https://github.com/dennisonbertram/fork-OpenInstinct/issues/169) | `0b60921` | Cohort membership, so the root can see a task that has not finished |
 
-`main` auto-deploys, and the operator authorised #167's release explicitly. Both
-deployment statuses on `09937ea` — Vercel and Railway — report success. That is a
-successful deploy, not evidence that the projection behaves correctly in a live
-session; nothing exercised it with real traffic.
+`main` auto-deploys, and the operator authorised the release explicitly. All
+deployment statuses reported success. That is a successful deploy, not evidence
+that any of this behaves correctly in a live session; nothing exercised it with
+real traffic.
+
+Nothing merged so far changes Jory's behaviour. No production code imports
+`completion-obligations` or `backgroundTaskMembers` yet. What the deployed runtime
+does differently is carry two extra durable context keys per turn for a
+tasks-enabled agent, each a self-healing per-turn projection.
 
 ## What is open
 
-| PR                                                                    | Issue                                                                          | State                                                                                                                                                   |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [#168](https://github.com/dennisonbertram/fork-OpenInstinct/pull/168) | toward [#155](https://github.com/dennisonbertram/fork-OpenInstinct/issues/155) | Plan 005's root completion state machine and its 36 tests. Green locally; nothing imports it, so merging changes no behaviour. **Does not close #155.** |
-| —                                                                     | [#169](https://github.com/dennisonbertram/fork-OpenInstinct/issues/169)        | The gap that stopped #155's second half. Do this next.                                                                                                  |
+| PR                                                                    | State                                                                                                                                                                                                                                                  |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [#171](https://github.com/dennisonbertram/fork-OpenInstinct/pull/171) | Fixes a real bug in #168's merged code: `retireCohort` would summarise a cohort as `completed` while one of its tasks had never reported, then drop the records proving it. Found by a scoped outside review, reachability confirmed against the code. |
 
-Branch `plan/005-completion-obligations` at `a76f6a0`, worktree
-`.claude/worktrees/plan-005-obligations`. Worktree
-`.claude/worktrees/plan-004-terminal-adapter` is spent and can be removed.
+Worktrees `.claude/worktrees/plan-004-terminal-adapter`,
+`.claude/worktrees/plan-005-obligations`, and
+`.claude/worktrees/pending-members` are spent once #171 lands and can be removed.
 
 ## Plan 004, as built
 
@@ -70,25 +76,30 @@ the fifth proved a "first terminal" replay flag was dead code, so it was deleted
 
 It stopped short of the root registration because of
 [#169](https://github.com/dennisonbertram/fork-OpenInstinct/issues/169): the
-Plan 004 projection omits entries without a `terminalView`, so it shows settled
-tasks only. A root reading it cannot see that a sibling is still running, and so
-cannot tell "one of two finished" from "the only one finished" — CR-01/CO-01, the
-case that must not produce a premature report. It also cannot admit a task before
-dispatch, because a task is invisible until it settles.
+Plan 004 projection omitted entries without a `terminalView`, so it showed
+settled tasks only. A root reading it could not see that a sibling was still
+running, and so could not tell "one of two finished" from "the only one
+finished" — CR-01/CO-01, the case that must not produce a premature report. It
+also could not admit a task before dispatch, because a task was invisible until
+it settled.
 
 Wiring the state machine to a projection that cannot answer that question would
 have produced exactly the premature report this epic exists to prevent, so the
-slice was split instead.
+slice was split instead. #170 then closed that gap, so the registration is
+unblocked.
+
+One bug escaped into #168 and is fixed in #171: `retireCohort` computed its
+outcome from the tasks that had reported, ignoring any that had not, so a
+delivered cohort holding an unsettled member retired as `completed` and dropped
+the detail. A scoped outside review of that one function found it; a whole-file
+review of the same module had timed out and returned nothing, which is why the
+scoped pass was worth running. Review the module one function at a time.
 
 ## Exact next steps
 
-1. **#169 first.** Project pending entries inside the existing registered hunks:
-   one record per index entry with `taskId`, `parentTurnId`, worker name, and a
-   `pending` status carrying no output and no child identity. Extend
-   `agent/lib/background-task-terminal.ts` to expose them, keep the existing
-   adapter cases green, update the `docs/EVE_PATCHES.md` row and
-   `tests/unit/eve-patch-boundary.test.ts`.
-2. **Then #155's second half.** Register at `agent/agent.ts`'s existing
+1. ~~#169 first.~~ Done in #170: `backgroundTaskMembers()` now reports every task
+   the root owns and whether it has settled.
+2. **#155's second half, the next real slice.** Register at `agent/agent.ts`'s existing
    `defineDynamic` `step.started` boundary: admit pending members, record
    terminals through `recordTerminal`, classify facts with
    `factsFromWorkerCompletion`. Require the compatible worker fields in
