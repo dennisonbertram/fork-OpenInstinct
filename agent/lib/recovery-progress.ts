@@ -80,11 +80,18 @@ const nextStepFor: Readonly<Record<RecoveryDisposition, RecoveryNextStep>> = {
   verified_success: "report",
 };
 
-/** Decides what may happen next for one objective. */
+/**
+ * Decides what may happen next for the work one turn started.
+ *
+ * The key is the turn, because that is how the completion records identify a
+ * cohort. The objective revision is a separate label those records carry, and
+ * looking tasks up by it finds nothing whenever the two differ -- which reads
+ * as an empty cohort, and therefore as "still running".
+ */
 export function recoveryProgress(input: {
-  readonly objectiveRevision: string;
+  readonly turnId: string;
 }): RecoveryProgress {
-  const tasks = taskRecords(input.objectiveRevision);
+  const tasks = taskRecords(input.turnId);
   const settled = tasks.filter((task) => task.terminal !== undefined);
   const facts = settled.flatMap((task) => task.terminal?.facts ?? []);
   const verifiedCheckpoints = facts

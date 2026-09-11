@@ -129,7 +129,7 @@ describe("a later summary request", () => {
       [{ claim: "Dispatched the submission", evidence: "executor_receipt" }]
     );
 
-    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+    const progress = recoveryProgress({ turnId: "turn_1" });
 
     // The evidence of the dispatch survives, and the account is uncertain rather
     // than a claim of rollback or of success.
