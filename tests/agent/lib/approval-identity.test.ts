@@ -141,7 +141,11 @@ describe("materialTermsFingerprint input validation", () => {
     // terms would share one fingerprint. A digest that cannot tell them apart
     // must not be produced at all: fingerprint equality is the whole basis for
     // deciding an action is unchanged.
-    for (const count of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    for (const count of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ]) {
       expect(() =>
         materialTermsFingerprint({
           action: "submit_form",

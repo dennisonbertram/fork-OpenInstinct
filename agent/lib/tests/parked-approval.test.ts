@@ -225,6 +225,9 @@ describe("parking a native approval", () => {
     // object carrying a secret alongside the declared fields is a valid
     // argument. Keeping it would put that secret into session state and back
     // out through the accessors.
+    // SAFETY: the extra property is the point of this case. A real caller can
+    // hold one, because a TypeScript interface does not strip it at runtime, and
+    // the assertion is only what lets the test pass what a caller could pass.
     parkApproval({
       cohortId: "turn_1",
       fingerprint: materialTermsFingerprint(terms),
