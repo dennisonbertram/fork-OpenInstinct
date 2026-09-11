@@ -127,7 +127,7 @@ describe("recoveryProgress", () => {
     const progress = recoveryProgress({ objectiveRevision: "turn_1" });
 
     // task_stalled never dispatched anything, so nothing here is uncertain.
-    expect(progress.disposition).toBe("stopped_without_dispatch");
+    expect(progress.disposition).toBe("stopped_incomplete");
     expect(progress.verifiedCheckpoints).toContain("The outbox shows it sent");
   });
 
@@ -155,13 +155,58 @@ describe("recoveryProgress", () => {
 
     const progress = recoveryProgress({ objectiveRevision: "turn_1" });
 
-    expect(progress.disposition).toBe("stopped_without_dispatch");
+    expect(progress.disposition).toBe("stopped_incomplete");
     // No automatic retry: whether this is worth another attempt is a judgement
     // about the user's goal, not something derivable from a failed observation.
     expect(progress.nextStep).toBe("ask_user");
     expect(progress.verifiedCheckpoints).toEqual([
       "The login form never appeared",
     ]);
+  });
+
+  it("RP-03b: a mixed outcome never claims that nothing was dispatched", () => {
+    // The contradiction an outside review found: one task completed with a
+    // receipt while another stopped, and the summary asserted that the
+    // objective had dispatched nothing.
+    admit("task_done", "turn_1");
+    admit("task_stopped", "turn_1");
+    settle("task_done", "turn_1", "completed", [
+      { claim: "Filed the return", evidence: "executor_receipt" },
+    ]);
+    settle("task_stopped", "turn_1", "failed", [
+      { claim: "The second form never loaded", evidence: "observed" },
+    ]);
+
+    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+    const said = progress.unknownRemainder.join(" ");
+
+    expect(progress.disposition).toBe("stopped_incomplete");
+    // Must not negate the task that did finish, and must not claim non-dispatch.
+    expect(said).not.toMatch(/stopped before anything was dispatched/iu);
+    expect(said).toMatch(/not the same as proof/iu);
+    expect(progress.verifiedCheckpoints).toContain("Filed the return");
+  });
+
+  it("RP-05b: a completion with no recorded facts is not credited to the worker's word", () => {
+    admit("task_bare", "turn_1");
+    settle("task_bare", "turn_1", "completed", []);
+
+    const bare = recoveryProgress({ objectiveRevision: "turn_1" });
+
+    // "Unverified" would imply the worker vouched for it. Nothing did.
+    expect(bare.disposition).toBe("settled_without_evidence");
+    expect(bare.unknownRemainder.join(" ")).toMatch(/not even the worker/iu);
+  });
+
+  it("RP-05c: a completion supported only by unknown-provenance facts is also uncredited", () => {
+    admit("task_murky", "turn_1");
+    settle("task_murky", "turn_1", "completed", [
+      { claim: "Something happened", evidence: "unknown" },
+    ]);
+
+    expect(recoveryProgress({ objectiveRevision: "turn_1" }).disposition).toBe(
+      "settled_without_evidence"
+    );
   });
 
   it("RP-04: a corroborated completion reports rather than asking", () => {
@@ -189,7 +234,9 @@ describe("recoveryProgress", () => {
     expect(progress.nextStep).toBe("report");
     expect(progress.verifiedCheckpoints).toEqual([]);
     // The claim survives, labelled for what it is.
-    expect(progress.unknownRemainder.join(" ")).toMatch(/not corroborated/iu);
+    expect(progress.unknownRemainder.join(" ")).toMatch(
+      /nothing corroborated it|worker's own account/iu
+    );
   });
 
   it("RP-06: an unsettled sibling means there is nothing to recover yet", () => {

@@ -25,15 +25,21 @@ import {
 type RecoveryDisposition =
   /** Every member settled and at least one claim is corroborated. */
   | "verified_success"
-  /** Members settled, but nothing stronger than the worker's own word. */
+  /** Completed, and the worker's own word is the only support for it. */
   | "settled_unverified"
+  /** Completed with no qualifying evidence at all, not even an assertion. */
+  | "settled_without_evidence"
   /**
    * A dispatched action whose outcome this session cannot confirm. Not called a
    * write: the records show a receipt, not whether repeating it is safe.
    */
   | "uncertain_effect"
-  /** It stopped without evidence that anything was dispatched. */
-  | "stopped_without_dispatch"
+  /**
+   * Some member stopped short, and no stopped member left an unconfirmed
+   * dispatch. Not called "nothing was dispatched": absence of a receipt is not
+   * proof of non-dispatch, and other members may have completed.
+   */
+  | "stopped_incomplete"
   /** Still running; there is nothing to recover yet. */
   | "awaiting";
 
@@ -67,7 +73,8 @@ function corroborated(fact: BoundedFact) {
 const nextStepFor: Readonly<Record<RecoveryDisposition, RecoveryNextStep>> = {
   awaiting: "wait",
   settled_unverified: "report",
-  stopped_without_dispatch: "ask_user",
+  settled_without_evidence: "report",
+  stopped_incomplete: "ask_user",
   // Never "retry". The first attempt may already have reached the world.
   uncertain_effect: "report_uncertain",
   verified_success: "report",
@@ -106,11 +113,15 @@ export function recoveryProgress(input: {
       (task) => task.terminal?.status === "completed"
     );
     if (allCompleted) {
-      return verifiedCheckpoints.length > 0
-        ? "verified_success"
-        : "settled_unverified";
+      if (verifiedCheckpoints.length > 0) return "verified_success";
+      // A completion with no facts at all, or only `unknown` ones, is not the
+      // same as one the worker vouched for. Calling it "unverified" would hand
+      // it a provenance nothing recorded.
+      return facts.some((fact) => fact.evidence === "worker_assertion")
+        ? "settled_unverified"
+        : "settled_without_evidence";
     }
-    return "stopped_without_dispatch";
+    return "stopped_incomplete";
   })();
 
   const unknownRemainder = ((): readonly string[] => {
@@ -121,11 +132,15 @@ export function recoveryProgress(input: {
         ];
       case "settled_unverified":
         return [
-          "The worker reported success, but nothing corroborated it, so the outcome is not corroborated evidence.",
+          "The worker reported this as done, but nothing corroborated it, so the outcome rests on the worker's own account.",
         ];
-      case "stopped_without_dispatch":
+      case "settled_without_evidence":
         return [
-          "The objective stopped before anything was dispatched, so what remains is undone rather than uncertain.",
+          "The work reported as finished without recording anything about what happened, so there is nothing to stand behind the outcome — not even the worker's own description of it.",
+        ];
+      case "stopped_incomplete":
+        return [
+          "Part of this objective stopped before finishing. No stopped part left a dispatch unconfirmed, but that is not the same as proof that nothing was dispatched, and any part that did finish is recorded separately above.",
         ];
       default:
         return [];
