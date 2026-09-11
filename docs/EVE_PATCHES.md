@@ -77,3 +77,12 @@ only `defineState`, no public module mentions task terminal state, and
 `defineState("eve.tasks")` throws on the reserved prefix, so zero typed terminal
 records are reachable from authored code. No upstream fix or contact is claimed;
 track a release that exposes an authenticated terminal accessor.
+
+The projection is a durable context key, registered when its module loads, the
+same arrangement as the final-delivery completion request. Any process that
+loads authored code registers it, because `eve/context` re-exports the reader.
+A framework-only process that deserializes a context without loading authored
+code logs Eve's "dropping unknown context key" warning and loses that copy of
+the projection; the next turn re-derives it from the task index, so the value is
+self-healing rather than authoritative storage. Treat it as a per-turn
+projection, never as the record of a task.
