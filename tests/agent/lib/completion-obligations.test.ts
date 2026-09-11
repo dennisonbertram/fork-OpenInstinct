@@ -793,6 +793,49 @@ describe("beginCohortReport and settleCohortReport", () => {
     expect(cohortFor("turn_b")?.phase).toBe("delivery_pending");
   });
 
+  it("CO-11: the first attempt at a cohort's report is revision zero", () => {
+    makeReportable("turn_1", "task_1", "session_1");
+    expect(
+      beginCohortReport("turn_1", { callId: "call_1", turnId: "turn_1" })
+    ).toBe(true);
+
+    expect(cohortFor("turn_1")?.reportRevision).toBe(0);
+  });
+
+  it("CO-12: a later turn asking again is a new revision, not a retry", () => {
+    makeReportable("turn_1", "task_1", "session_1");
+    expect(
+      beginCohortReport("turn_1", { callId: "call_1", turnId: "turn_1" })
+    ).toBe(true);
+    // The provider never confirmed, so the attempt is terminal and nothing
+    // resends it inside its own turn.
+    settleCohortReport("turn_1", false);
+    expect(cohortFor("turn_1")?.phase).toBe("unconfirmed");
+
+    // The user asks again in a later turn. That is a new obligation, so the
+    // durable claim must key on a different revision rather than colliding
+    // with the attempt that may already have reached the provider.
+    expect(
+      beginCohortReport("turn_1", { callId: "call_2", turnId: "turn_2" })
+    ).toBe(true);
+
+    expect(cohortFor("turn_1")?.reportRevision).toBe(1);
+  });
+
+  it("CO-13: the same attempt re-announcing itself is not a new revision", () => {
+    makeReportable("turn_1", "task_1", "session_1");
+    expect(
+      beginCohortReport("turn_1", { callId: "call_1", turnId: "turn_1" })
+    ).toBe(true);
+    // The identical call announcing itself again is the same physical attempt.
+    // Counting it as a revision would let one send claim two durable rows.
+    expect(
+      beginCohortReport("turn_1", { callId: "call_1", turnId: "turn_1" })
+    ).toBe(true);
+
+    expect(cohortFor("turn_1")?.reportRevision).toBe(0);
+  });
+
   it("returns false when the cohort owes no report", () => {
     admit({
       taskId: "task_1",

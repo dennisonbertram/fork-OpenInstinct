@@ -1,7 +1,12 @@
 import {
   beginCohortReport,
+  cohortForReportAttempt,
   reportableCohorts,
 } from "@/agent/lib/completion-obligations";
+import type {
+  ReportPart,
+  ReportPartIdentity,
+} from "@/agent/lib/completion-report-attempts";
 import { completionReportForcingActive } from "@/agent/lib/completion-report-activation";
 
 /**
@@ -51,4 +56,37 @@ export function bindReportAttempt(input: {
     callId: input.callId,
     turnId: input.turnId,
   });
+}
+
+/**
+ * The durable identity of one physical effect of the report this call is making.
+ *
+ * Returns undefined when this call answers no obligation, which is the ordinary
+ * case: most messages are not completion summaries, and a channel must send
+ * those the way it always did rather than invent a report part for them.
+ *
+ * The cohort and the revision come from the records, never from the caller. A
+ * caller that could supply them could also collide with an earlier attempt that
+ * may already have reached a provider.
+ */
+export function reportPartIdentityFor(input: {
+  readonly workspaceId: string;
+  readonly rootSessionId: string;
+  readonly turnId: string;
+  readonly callId: string;
+  readonly part: ReportPart;
+}): ReportPartIdentity | undefined {
+  const cohort = cohortForReportAttempt({
+    callId: input.callId,
+    turnId: input.turnId,
+  });
+  return cohort === undefined
+    ? undefined
+    : {
+        cohortId: cohort.cohortId,
+        part: input.part,
+        reportRevision: cohort.reportRevision,
+        rootSessionId: input.rootSessionId,
+        workspaceId: input.workspaceId,
+      };
 }
