@@ -37,7 +37,10 @@ import {
   recordTerminal,
   reportableCohorts,
 } from "@/agent/lib/completion-obligations";
-import { bindReportAttempt } from "@/agent/lib/completion-report-policy";
+import {
+  bindReportAttempt,
+  reportPolicyForTurn,
+} from "@/agent/lib/completion-report-policy";
 import type { completionReportForcingActive } from "@/agent/lib/completion-report-activation";
 /** The shape a message-kind send_message call returns. */
 const deliveredMessageSchema = z.object({
@@ -328,21 +331,55 @@ describe("forcing follows what is owed, and nothing else", () => {
     expect(forcingActive()).toBe(false);
   });
 
-  it("RP-33: with forcing live and nothing owed, the turn keeps its reactions and names no tool", async () => {
-    const forcingActive = await realActivation();
-    expect(forcingActive()).toBe(false);
+  it("RP-33: an ordinary turn running on the live activation is untouched", async () => {
+    // The production function drives the whole path here, not a boolean handed to
+    // the assertion. An earlier version of this case called `vi.importActual` and
+    // then resolved tools through the mock, which `beforeEach` sets to false -- so
+    // it passed no matter what the real activation did, and would have kept
+    // passing with report enforcement removed entirely.
+    policy.owed.mockImplementation(await realActivation());
 
-    // The two things a user would actually notice: a reaction is still offered,
-    // and the turn is not steered into send_message.
-    expect("react_to_message" in (await tools(providerContext))).toBe(true);
+    // Nothing has settled, so nothing is owed.
+    const group = await tools(providerContext);
+
+    // The three things a user would actually notice. A reaction is still offered.
+    expect("react_to_message" in group).toBe(true);
+    // The turn is not steered into send_message.
     expect(
       deliveryToolChoiceForInteractiveTurn({
         channelKind: "channel:linq",
         deliveryStatus: undefined,
         mode: undefined,
-        reportOwed: forcingActive(),
+        reportOwed: reportPolicyForTurn().kind === "must_report",
       })
     ).toEqual({ type: "required" });
+    // And the message goes out exactly as written, with nothing appended.
+    expect(
+      await group.send_message.execute(
+        { final: true, kind: "message", text: "Sure, on it." },
+        executorContext()
+      )
+    ).toEqual({ kind: "message", text: "Sure, on it." });
+  });
+
+  it("RP-34: a turn with settled work behind it, on the live activation, carries the records", async () => {
+    policy.owed.mockImplementation(await realActivation());
+    owedCohort("turn_1", "task_a");
+
+    const group = await tools(providerContext);
+
+    // The reaction is withheld, because a reaction cannot report settled work.
+    expect("react_to_message" in group).toBe(false);
+    const delivered = deliveredMessageSchema.parse(
+      await group.send_message.execute(
+        { final: true, kind: "message", text: "Here you go." },
+        executorContext()
+      )
+    );
+    // And the records travel with the message, through the production activation
+    // rather than a mock that was told to say yes.
+    expect(delivered.text).toContain("Here you go.");
+    expect(delivered.text).toContain("turn_1/task_a finished");
   });
 });
 
