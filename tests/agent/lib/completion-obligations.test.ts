@@ -42,6 +42,7 @@ vi.mock("eve/context", () => ({
 import {
   admitTask,
   beginCohortReport,
+  cohortForReportAttempt,
   blockCohort,
   cancelCohort,
   cohortFor,
@@ -735,6 +736,62 @@ describe("beginCohortReport and settleCohortReport", () => {
       [fact()]
     );
   }
+
+  /**
+   * Two cohorts owed at once, each bound in the same reporting turn. This is
+   * what makes both halves of the attempt identity load-bearing: the turn alone
+   * does not distinguish them, and neither does the call alone.
+   */
+  function twoBoundReports() {
+    makeReportable("turn_a", "task_a", "session_a");
+    makeReportable("turn_b", "task_b", "session_b");
+    expect(
+      beginCohortReport("turn_a", { callId: "call_1", turnId: "turn_report" })
+    ).toBe(true);
+    expect(
+      beginCohortReport("turn_b", { callId: "call_2", turnId: "turn_report" })
+    ).toBe(true);
+  }
+
+  it("CO-08: an attempt is identified by its turn and its call together", () => {
+    twoBoundReports();
+
+    expect(
+      cohortForReportAttempt({ callId: "call_1", turnId: "turn_report" })
+        ?.cohortId
+    ).toBe("turn_a");
+    expect(
+      cohortForReportAttempt({ callId: "call_2", turnId: "turn_report" })
+        ?.cohortId
+    ).toBe("turn_b");
+  });
+
+  it("CO-09: neither half of the attempt identity is enough on its own", () => {
+    twoBoundReports();
+
+    // Same turn, a call that belongs to no attempt.
+    expect(
+      cohortForReportAttempt({ callId: "call_3", turnId: "turn_report" })
+    ).toBeUndefined();
+    // Same call, a turn that belongs to no attempt.
+    expect(
+      cohortForReportAttempt({ callId: "call_1", turnId: "another_turn" })
+    ).toBeUndefined();
+  });
+
+  it("CO-10: settling one attempt leaves the other report outstanding", () => {
+    twoBoundReports();
+
+    const first = cohortForReportAttempt({
+      callId: "call_1",
+      turnId: "turn_report",
+    });
+    if (!first) throw new Error("expected the first attempt to be found");
+    settleCohortReport(first.cohortId, true);
+
+    expect(cohortFor("turn_a")?.phase).toBe("delivered");
+    expect(cohortFor("turn_b")?.phase).toBe("delivery_pending");
+  });
 
   it("returns false when the cohort owes no report", () => {
     admit({

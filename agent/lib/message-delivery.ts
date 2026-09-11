@@ -1,4 +1,8 @@
 import { defineState, requestTurnCompletion } from "eve/context";
+import {
+  cohortForReportAttempt,
+  settleCohortReport,
+} from "@/agent/lib/completion-obligations";
 
 const finalDelivery = defineState<{
   callId: string;
@@ -33,15 +37,36 @@ export function beginFinalDelivery(
     turnId,
     status: awaitChannel ? "pending" : "completed",
   }));
+  // A channel with no provider step never sends a separate acceptance, so there
+  // is nothing later to settle a bound report from. Leaving it pending would
+  // leave an obligation nothing can ever close.
+  if (!awaitChannel) settleBoundReport(turnId, callId, true);
+}
+
+/**
+ * Settles the completion obligation this exact attempt holds, if it holds one.
+ *
+ * Kept here rather than at each channel's call site so no channel can settle
+ * delivery and forget the obligation behind it.
+ */
+function settleBoundReport(turnId: string, callId: string, accepted: boolean) {
+  const cohort = cohortForReportAttempt({ callId, turnId });
+  if (cohort !== undefined) settleCohortReport(cohort.cohortId, accepted);
 }
 
 export function settleFinalDelivery(callId: string, accepted: boolean) {
-  finalDelivery.update((delivery) =>
-    delivery?.callId === callId &&
-    (delivery.status === "pending" || delivery.status === "unconfirmed")
-      ? { ...delivery, status: accepted ? "completed" : "unconfirmed" }
-      : delivery
+  const delivery = finalDelivery.get();
+  finalDelivery.update((current) =>
+    current?.callId === callId &&
+    (current.status === "pending" || current.status === "unconfirmed")
+      ? { ...current, status: accepted ? "completed" : "unconfirmed" }
+      : current
   );
+  // Read from the delivery this call owns, so a result for another call cannot
+  // reach another attempt's obligation.
+  if (delivery?.callId === callId) {
+    settleBoundReport(delivery.turnId, callId, accepted);
+  }
 }
 
 /** Suppress an automatic fallback after a provider request may have reached it. */
