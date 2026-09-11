@@ -1,4 +1,5 @@
 import {
+  allCohorts,
   cohortFor,
   reportableCohorts,
   taskRecords,
@@ -28,7 +29,7 @@ export interface SituationConstraint {
   readonly source: ConstraintSource;
 }
 
-export interface SituationEvidence {
+interface SituationEvidence {
   readonly taskId: string;
   readonly claim: string;
   readonly evidence: BoundedFact["evidence"];
@@ -51,6 +52,13 @@ export interface SituationView {
   readonly priorEvidence: readonly SituationEvidence[];
   /** Whether a written summary is owed, and for which cohort. */
   readonly reportOwedFor: readonly string[];
+}
+
+/** Every cohort this session holds other than the current objective's. */
+function otherCohorts(objectiveRevision: string): readonly CohortRecord[] {
+  return allCohorts().filter(
+    (candidate) => candidate.cohortId !== objectiveRevision
+  );
 }
 
 function evidenceFrom(cohortId: string): readonly SituationEvidence[] {
@@ -76,15 +84,20 @@ export function situationView(input: {
   readonly objectiveRevision: string;
   readonly constraints?: readonly SituationConstraint[];
 }): SituationView {
-  void cohortFor;
-  void evidenceFrom;
-  void reportableCohorts;
-  // Selection is implemented in the following commit; see the RED suite.
-  return {
+  const cohort = cohortFor(input.objectiveRevision);
+  const owed = reportableCohorts();
+  const current = {
     constraints: input.constraints ?? [],
-    evidence: [],
+    // Current evidence is exactly the cohort this objective owns. A record from
+    // another objective cannot reach this list, however recently it arrived.
+    evidence: cohort === undefined ? [] : evidenceFrom(cohort.cohortId),
     objectiveRevision: input.objectiveRevision,
-    priorEvidence: [],
-    reportOwedFor: [],
+    // Everything else, kept so a later question can still be answered, and kept
+    // separate so it can never be mistaken for this objective's outcome.
+    priorEvidence: otherCohorts(input.objectiveRevision).flatMap((candidate) =>
+      evidenceFrom(candidate.cohortId)
+    ),
+    reportOwedFor: owed.map((candidate) => candidate.cohortId),
   };
+  return cohort === undefined ? current : { ...current, cohort };
 }
