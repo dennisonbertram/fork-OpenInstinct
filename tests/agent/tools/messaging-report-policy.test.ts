@@ -33,9 +33,11 @@ import {
 import { deliveryToolChoiceForInteractiveTurn } from "@/agent/lib/delivery-guard";
 import {
   admitTask,
+  beginCohortReport,
   cohortFor,
   recordTerminal,
   reportableCohorts,
+  settleCohortReport,
 } from "@/agent/lib/completion-obligations";
 import type { completionReportForcingActive } from "@/agent/lib/completion-report-activation";
 const context = {
@@ -256,8 +258,8 @@ describe("messaging tools while a completion report is owed", () => {
     ).resolves.toEqual({ type: "thumbs_up" });
   });
 });
-describe("forcing stays inactive in production", () => {
-  it("a cohort that genuinely owes a report still does not activate forcing", async () => {
+describe("forcing follows the records in production", () => {
+  it("a cohort that genuinely owes a report activates forcing", async () => {
     const activation = await vi.importActual<{
       completionReportForcingActive: typeof completionReportForcingActive;
     }>("@/agent/lib/completion-report-activation");
@@ -285,8 +287,35 @@ describe("forcing stays inactive in production", () => {
     expect(outcome.cohortBecameReportable).toBe(true);
     expect(reportableCohorts()).toHaveLength(1);
 
-    // Forcing is still off, so nothing a user sees changes yet. Plan 007 binds
-    // settlement and Plan 009 supplies the evidence before this flips.
+    // This is the activation itself, and the one function the plan says the
+    // change consists of. Forcing is on exactly when the records say a summary
+    // is owed -- not on a flag, and not on every turn.
+    expect(activation.completionReportForcingActive()).toBe(true);
+  });
+
+  it("a session that owes nothing leaves forcing off", async () => {
+    const activation = await vi.importActual<{
+      completionReportForcingActive: typeof completionReportForcingActive;
+    }>("@/agent/lib/completion-report-activation");
+
+    // The negative control, and the half that keeps an ordinary conversation
+    // ordinary. CM-06 is the same case at the real-model layer.
+    expect(reportableCohorts()).toEqual([]);
+    expect(activation.completionReportForcingActive()).toBe(false);
+  });
+
+  it("a cohort whose report was delivered stops forcing again", async () => {
+    const activation = await vi.importActual<{
+      completionReportForcingActive: typeof completionReportForcingActive;
+    }>("@/agent/lib/completion-report-activation");
+    owedCohort("turn_done", "task_done");
+    expect(activation.completionReportForcingActive()).toBe(true);
+
+    beginCohortReport("turn_done", { callId: "call_1", turnId: "turn_done" });
+    settleCohortReport("turn_done", true);
+
+    // Otherwise activation would be a one-way door: the first settled cohort in
+    // a session would force every later turn to answer in sentences.
     expect(activation.completionReportForcingActive()).toBe(false);
   });
 });
