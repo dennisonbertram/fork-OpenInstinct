@@ -94,33 +94,38 @@ describe("the one bounded fallback when a summary could not be composed", () => 
     expect(completionFallbackText("turn_1")).toBeUndefined();
   });
 
-  it("FB-04: with nothing corroborated it says so rather than inventing detail", () => {
+  it("FB-04: with no evidence at all it says that, rather than inventing detail", () => {
     settle("task_a", "turn_1", []);
 
     const text = completionFallbackText("turn_1");
 
     expect(text).toBeDefined();
-    expect(text).toContain("no");
+    // Asserted as a whole sentence. An earlier version of this case looked for
+    // "no", which the word "not" in the first line satisfies, so it passed even
+    // when the absence of evidence went unmentioned.
+    expect(text).toContain("no recorded evidence of what the work achieved");
     expect(text?.length).toBeLessThan(400);
   });
 
   it("FB-05: a worker's own word is not stated as a finding", () => {
     settle("task_a", "turn_1", [
-      { claim: "Definitely completed the purchase", evidence: "worker_assertion" },
+      {
+        claim: "Definitely completed the purchase",
+        evidence: "worker_assertion",
+      },
     ]);
 
     const text = completionFallbackText("turn_1");
 
     // The claim may appear, but never as something this session observed. An
     // uncorroborated claim reported flatly is how a worker's word becomes a
-    // fact the user believes.
-    expect(text).toBeDefined();
-    if (text?.includes("Definitely completed the purchase")) {
-      expect(text).toMatch(/reported|unverified|said|not confirmed/i);
-    }
+    // fact the user believes. So the attribution is asserted as adjacent to the
+    // claim, not merely present somewhere in the message.
+    expect(text).toContain("not confirmed: Definitely completed the purchase");
+    expect(text).not.toContain("Confirmed: Definitely completed the purchase");
   });
 
-  it("FB-06: the text is bounded however much evidence there is", () => {
+  it("FB-06: the text is bounded in both length and number of facts", () => {
     settle(
       "task_a",
       "turn_1",
@@ -133,7 +138,11 @@ describe("the one bounded fallback when a summary could not be composed", () => 
     const text = completionFallbackText("turn_1");
 
     expect(text).toBeDefined();
-    expect(text?.length).toBeLessThan(1200);
+    expect(text?.length).toBeLessThan(700);
+    // Both ceilings, because either alone leaves the other free. Counting the
+    // named steps catches an unbounded list of individually short claims.
+    const named = (text?.match(/Step \d/g) ?? []).length;
+    expect(named).toBe(3);
   });
 
   it("FB-07: a turn that owes nothing gets no fallback", () => {

@@ -1,5 +1,8 @@
 import { defineState } from "eve/context";
-import { taskRecords, type BoundedFact } from "@/agent/lib/completion-obligations";
+import {
+  taskRecords,
+  type BoundedFact,
+} from "@/agent/lib/completion-obligations";
 import { reportPolicyForTurn } from "@/agent/lib/completion-report-policy";
 import { hasUnconfirmedProviderAttempt } from "@/agent/lib/message-delivery";
 
@@ -42,14 +45,45 @@ function bound(claim: string) {
     : `${claim.slice(0, maximumClaimLength)}…`;
 }
 
-export function completionFallbackText(_turnId: string): string | undefined {
-  void spent;
-  void maximumClaims;
-  void maximumClaimLength;
-  void corroborated;
-  void bound;
-  void taskRecords;
-  void reportPolicyForTurn;
-  void hasUnconfirmedProviderAttempt;
-  throw new Error("not implemented");
+export function completionFallbackText(turnId: string): string | undefined {
+  const policy = reportPolicyForTurn();
+  if (policy.kind !== "must_report") return undefined;
+  // A request that may have reached a provider forbids an automatic second
+  // message, whatever this one would have said.
+  if (hasUnconfirmedProviderAttempt(turnId)) return undefined;
+  if (spent.get().includes(policy.cohortId)) return undefined;
+  spent.update((current) => [...current, policy.cohortId]);
+
+  const facts = taskRecords(policy.cohortId).flatMap(
+    (task) => task.terminal?.facts ?? []
+  );
+  const confirmed = facts.filter((fact) => corroborated(fact));
+  const reported = facts.filter((fact) => !corroborated(fact));
+
+  const lines = [
+    "I could not prepare a summary of the background work, so this is what the records hold.",
+  ];
+  if (confirmed.length > 0) {
+    lines.push(
+      `Confirmed: ${confirmed
+        .slice(0, maximumClaims)
+        .map((fact) => bound(fact.claim))
+        .join("; ")}.`
+    );
+  }
+  if (reported.length > 0) {
+    // Attributed, never stated flatly. A worker's own word reported as a
+    // finding is how an unverified claim becomes something the user believes.
+    lines.push(
+      `Reported by the worker but not confirmed: ${reported
+        .slice(0, maximumClaims)
+        .map((fact) => bound(fact.claim))
+        .join("; ")}.`
+    );
+  }
+  if (confirmed.length === 0 && reported.length === 0) {
+    lines.push("There is no recorded evidence of what the work achieved.");
+  }
+  lines.push("I have not tried again, and I am not claiming it succeeded.");
+  return lines.join(" ");
 }
