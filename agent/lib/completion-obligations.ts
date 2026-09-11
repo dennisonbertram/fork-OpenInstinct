@@ -77,6 +77,13 @@ export interface CohortRecord {
   readonly taskIds: readonly string[];
   readonly phase: CohortPhase;
   readonly report?: CohortReport;
+  /**
+   * Which attempt at this cohort's summary the current report is. Zero for the
+   * first. A later turn asking again is a new revision rather than a retry, so
+   * the durable claim for its parts cannot collide with an earlier attempt that
+   * may already have reached a provider.
+   */
+  readonly reportRevision: number;
   readonly blockedReason?: string;
 }
 
@@ -174,6 +181,7 @@ export function admitTask(input: {
               objectiveRevision: input.objectiveRevision,
               taskIds: [input.taskId],
               phase: "awaiting_terminal" as const,
+              reportRevision: 0,
             },
           ]
         : current.cohorts.map((candidate) =>
@@ -349,11 +357,25 @@ export function beginCohortReport(
     if (!owed) return current;
 
     didBind = true;
+    // A previous attempt in a different turn means the user asked again, and
+    // that is a new revision. The same turn re-binding is the same attempt, so
+    // it keeps the revision it already has -- one send must not be able to
+    // claim two durable rows.
+    const priorTurn = cohort.report?.turnId;
+    const reportRevision =
+      priorTurn !== undefined && priorTurn !== report.turnId
+        ? cohort.reportRevision + 1
+        : cohort.reportRevision;
     return {
       ...current,
       cohorts: current.cohorts.map((candidate) =>
         candidate.cohortId === cohortId
-          ? { ...candidate, phase: "delivery_pending" as const, report }
+          ? {
+              ...candidate,
+              phase: "delivery_pending" as const,
+              report,
+              reportRevision,
+            }
           : candidate
       ),
     };
