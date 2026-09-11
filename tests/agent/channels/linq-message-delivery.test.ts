@@ -6,7 +6,7 @@ import { z } from "zod";
 import type * as Blob from "@vercel/blob";
 import type * as EnvModule from "@/env";
 import type * as UsageService from "@/db/services/usage";
-import type { recordUsageEvent } from "@/db/services/usage";
+import type { checkBudget, recordUsageEvent } from "@/db/services/usage";
 import { reactToMessageOutputSchema } from "@/agent/lib/react-to-message";
 import { sendMessageOutputSchema } from "@/agent/lib/send-message";
 import type { AccessScope } from "@/lib/access-scope";
@@ -84,8 +84,13 @@ const usageCapture = vi.hoisted(() => {
   vi.stubEnv("WORKSPACE_SCOPE_ENFORCEMENT", "off");
   return { recordUsageEvent: vi.fn<typeof recordUsageEvent>() };
 });
+// Enforcement is off, so the real check never rejects. A denial is a state this
+// suite has to be able to produce: it is the one path that posts to the provider
+// without sending the message the turn was about.
+const budget = vi.hoisted(() => ({ check: vi.fn<typeof checkBudget>() }));
 vi.mock("@/db/services/usage", async (importOriginal) => ({
   ...(await importOriginal<typeof UsageService>()),
+  checkBudget: budget.check,
   recordUsageEvent: usageCapture.recordUsageEvent,
 }));
 
@@ -386,8 +391,14 @@ const handleAuthorizationRequired =
   linqChannelConfig.events["authorization.required"];
 const handleTurnFailed = linqChannelConfig.events["turn.failed"];
 
-const { admitTask, beginCohortReport, recordTerminal } =
-  await import("@/agent/lib/completion-obligations");
+const {
+  admitTask,
+  beginCohortReport,
+  cohortFor,
+  recordTerminal,
+  reportableCohorts,
+} = await import("@/agent/lib/completion-obligations");
+const { BudgetExceededError } = await import("@/db/services/usage");
 
 /**
  * Binds the completion-report obligation for one turn/call, the way the
@@ -443,6 +454,7 @@ describe("Linq message delivery", () => {
     linqChannelCapture.getState.mockResolvedValue(null);
     linqChannelCapture.setState.mockResolvedValue(undefined);
     usageCapture.recordUsageEvent.mockResolvedValue(undefined);
+    budget.check.mockResolvedValue(undefined);
     scheduleDeliveryCapture.finalize.mockResolvedValue(true);
     scheduleDeliveryCapture.release.mockResolvedValue(true);
     completionCapture.request.mockReset();
@@ -1590,6 +1602,108 @@ describe("Linq message delivery", () => {
       // enough, because the dispatch refuses itself inside postLinqReply -- it
       // is the caller's early return that stops delivery being declared done.
       expect(completionCapture.request).not.toHaveBeenCalled();
+    });
+
+    it("CS-13: a budget denial does not discharge the report it could not send", async () => {
+      // The denial notice goes out through the same post callback as a real
+      // message, which marks the send accepted. The outer handler then settles
+      // the obligation as delivered in its `finally`, so the user receives a
+      // usage-limit notice, the records are never sent, and nothing is owed any
+      // more. A lost obligation is the one outcome this whole mechanism exists
+      // to prevent.
+      const cohortId = bindReportObligation("turn-1", "call-send-message");
+      budget.check.mockRejectedValueOnce(
+        new BudgetExceededError("provider_message", 10)
+      );
+      const { context, post } = handlerContext();
+
+      await handleActionResult(
+        sendMessageResult({ kind: "message", text: "All done." }),
+        context,
+        sessionContext()
+      );
+
+      // The notice was posted, and the report was not.
+      expect(post).toHaveBeenCalledTimes(1);
+      expect(post.mock.calls[0]?.[0]).toMatchObject({
+        raw: "Workspace usage limit reached. Please try again later.",
+      });
+      // So the summary is still owed. It is not `unconfirmed`: that phase means a
+      // send may have reached the user and must not be repeated, and here the
+      // records provably did not go out -- nothing was even claimed, because the
+      // budget check runs before the dispatch.
+      expect(cohortFor(cohortId)?.phase).toBe("must_report");
+      expect(reportableCohorts().map((cohort) => cohort.cohortId)).toEqual([
+        cohortId,
+      ]);
+    });
+
+    it("CS-14: a report a prior attempt already delivered settles as delivered, not unconfirmed", async () => {
+      // A crashed step reruns after the provider accepted the report. The
+      // dispatch correctly refuses to send it twice and reports that it already
+      // went out, but the handler's `accepted` flag only moves when the post
+      // callback runs -- so a report the records show was accepted was being
+      // settled as never confirmed.
+      const cohortId = bindReportObligation("turn-1", "call-send-message");
+      reportAttempts.durable.set(
+        reportPartKeyOf({
+          cohortId,
+          part: "text",
+          reportRevision: 0,
+          rootSessionId: "session-1",
+          workspaceId: "workspace-1",
+        }),
+        {
+          id: "text-prior-attempt",
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+          leaseOwner: "an-owner-that-crashed",
+          providerHandle: "provider-handle-1",
+          state: "accepted",
+          version: 3,
+        }
+      );
+      const { context, post } = handlerContext();
+
+      await handleActionResult(
+        sendMessageResult({ kind: "message", text: "All done." }),
+        context,
+        sessionContext()
+      );
+
+      // Not sent again: one report, one physical message.
+      expect(post).not.toHaveBeenCalled();
+      // And recorded as what it is. `unconfirmed` would leave the user's
+      // delivered summary looking like one that may never have arrived.
+      expect(cohortFor(cohortId)?.phase).toBe("delivered");
+    });
+
+    it("CS-15: a report already settled is not reopened by a later denial", async () => {
+      // The two fixes above meet here. A step delivers the report and settles the
+      // cohort, then reruns and is refused by the budget. Abandoning on that
+      // refusal must not reach a cohort that is already done: the user would be
+      // told about the same finished work a second time, with nothing to say it
+      // was a repeat.
+      const cohortId = bindReportObligation("turn-1", "call-send-message");
+      const { context, post } = handlerContext();
+      await handleActionResult(
+        sendMessageResult({ kind: "message", text: "All done." }),
+        context,
+        sessionContext()
+      );
+      expect(post).toHaveBeenCalledTimes(1);
+      expect(cohortFor(cohortId)?.phase).toBe("delivered");
+
+      budget.check.mockRejectedValueOnce(
+        new BudgetExceededError("provider_message", 10)
+      );
+      await handleActionResult(
+        sendMessageResult({ kind: "message", text: "All done." }),
+        handlerContext().context,
+        sessionContext()
+      );
+
+      expect(cohortFor(cohortId)?.phase).toBe("delivered");
+      expect(reportableCohorts()).toEqual([]);
     });
 
     it("CS-12: a scheduled report is never bound to the durable claim", async () => {
