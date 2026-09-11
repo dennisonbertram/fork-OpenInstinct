@@ -52,3 +52,15 @@ These notes are for review and planning; they are not yet committed to runtime a
 - LINQ clarification (as of 2026-09-03):
   - This issue path is LINQ, not Google consent setup.
   - Treat Google consent as a separate item; LINQ sign-on is likely where the user-facing bottleneck is.
+
+## Sanitized completion-reporting feedback (2026-09-10 EDT)
+
+A live synthetic interaction showed that actual images arrived and one approved
+synthetic submit was verified. The automatic root response produced only a
+reaction; the first explicit summary question also produced only a reaction.
+A second explicit request using words produced a summary. This is a qualitative
+failure example for completion reporting, not a success rate, general
+production receipt, or permission to send additional messages. The observed
+synthetic image and submit behavior remains a dated operator observation. The
+corresponding design
+proposal is [Jory agent operating model](JORY_AGENT_OPERATING_MODEL.md).

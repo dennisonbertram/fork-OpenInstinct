@@ -90,10 +90,11 @@ never supplies tenant authority.
   the same participant to reach multiple agents through the shared number.
 - Treat dedicated lines as an optional premium channel with provider cost and
   operational margin passed through in pricing.
-- Keep the channel contract provider-aware but portable. The current reference
-  deployment uses Linq; the intended shared-number product path may use the
-  existing Sendblue account through Eve's Chat SDK channel after a separate
-  adapter migration and provider acceptance test.
+- Keep the channel contract provider-aware but portable. The repository
+  implements both Linq and the native SendBlue channel at /eve/v1/sendblue.
+  Which provider is enabled is deployment-specific and requires its own
+  configured credentials, admission, approval, and live acceptance evidence.
+  Provider choice must not change the tenant and agent binding contract.
 
 ## Infrastructure MVP
 
@@ -290,11 +291,12 @@ Dedicated numbers remain a premium option:
 - support bring-your-own-provider installations only after ownership and
   offboarding contracts are defined.
 
-The current reference deployment uses one Linq line through Vercel Connect. The
-planned shared-number product may migrate to the existing Sendblue account via
-Eve's Chat SDK channel, but that is not an implemented claim. Migration requires
-provider webhook contract tests, stable conversation IDs, inbound/outbound
-delivery proof, opt-out handling, throughput limits, and multi-tenant terms.
+The repository implements both the Linq and native SendBlue channels; provider
+enablement is deployment-specific and this design does not claim that both are
+enabled in every deployment. Provider webhook
+contract tests, stable conversation IDs, inbound/outbound delivery proof,
+opt-out handling, throughput limits, and multi-tenant terms remain required
+for the shared-number product.
 Only one adapter may own a production line's inbound webhook at a time.
 
 Shared infrastructure concentrates risk. Monitor line reputation, provider
@@ -440,3 +442,11 @@ platform instead of building a second tenancy model.
   the runtime integration, not the underlying iMessage line.
 - Repository architecture and services described in
   [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md).
+
+## Proposed completion and operating-model addendum (2026-09-11)
+
+The planned product should report execution, verification, reporting, and
+channel delivery as separate states. The product model remains Proposed; the
+native SendBlue route is an implemented channel surface, not evidence that
+every deployment enables it or that a provider response proves recipient
+receipt. See [Jory agent operating model](JORY_AGENT_OPERATING_MODEL.md).

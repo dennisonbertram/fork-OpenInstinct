@@ -114,3 +114,17 @@ Before adding a capability, write down its owner, principal scope, read/write
 class, approval rule, idempotency behavior, and lowest useful gym layer. If it
 cannot fit one of the boundaries above, review the architecture before adding a
 conditional to the loop.
+
+## Proposed operating-model addendum (2026-09-11)
+
+The [Jory agent operating model](JORY_AGENT_OPERATING_MODEL.md) proposes a
+typed projection over these existing owners. The projection must identify
+source, scope, revision, observed time, freshness, and evidence level. It must
+not become a second authority or universal event store.
+
+Completion is intentionally split into execution, verification, reporting, and
+delivery. A provider acceptance response, worker success label, or valid
+serialized result cannot by itself establish recipient receipt or factual
+correctness. Approval remains an executor concern: model interpretation and
+user-facing summaries cannot authorize a commit. This is Proposed design
+guidance; the current provider contract above remains the implemented gate.

@@ -108,9 +108,10 @@ the repository proves user-facing approval prompts hide tool internals and
 accept clear natural confirmations, plus one tool call per native bubble,
 native attachments, retries, galleries, and Tapbacks. Inbound signature,
 duplicate-claim, and unverified-sender behavior also remains in channel tests.
-The reusable cases in `tests/agent/channels/provider-contract.ts` are
-instantiated by Linq and are the admission contract for a future provider such
-as Sendblue; they do not create a premature production provider abstraction.
+The reusable cases in `tests/agent/channels/provider-contract.ts` are instantiated by Linq and SendBlue and are the portable admission contract
+for both implemented provider adapters. They do not prove live provider
+receipt, recipient delivery, or model judgment, and they do not create a
+premature production provider abstraction.
 
 Cross-workspace denial and fail-closed no-user behavior remain integration and
 auth unit tests. The model-free eval channel currently authenticates one fixed

@@ -229,8 +229,10 @@ run the full startup acceptance when it affects startup or lifecycle behavior.
 
 Before handoff, run `pnpm check`, `pnpm build`, and `git diff --check`. For UI
 changes, use a real local browser smoke after automated checks. For deployment
-changes, prove one complete web-chat turn and one complete Linq turn; health
-alone is insufficient. Do not claim production readiness from local tests.
+changes, prove one complete web-chat turn and one complete turn through each
+configured affected provider channel; a disconnected Linq channel is not a
+required gate for an unrelated SendBlue-only change. Health alone is
+insufficient. Do not claim production readiness from local tests.
 
 ## Common traps
 
@@ -265,3 +267,8 @@ alone is insufficient. Do not claim production readiness from local tests.
 5. Search for an existing owning schema/type/service before adding one.
 6. Add the smallest focused test, then run `pnpm check` and `pnpm build`.
 7. Inspect the real rendered/runtime path when the change crosses a route or UI.
+
+The proposed [Jory agent operating model](JORY_AGENT_OPERATING_MODEL.md) defines
+source-of-truth ownership, bounded projections, and separate execution,
+verification, reporting, and delivery states. It is design guidance only until
+its linked plans are implemented and verified.
