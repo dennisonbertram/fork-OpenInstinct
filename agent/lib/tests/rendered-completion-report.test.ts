@@ -38,8 +38,14 @@ import {
   completionReportText,
   reportWithRecordedFacts,
 } from "@/agent/lib/completion-report-text";
+import { stripImageArtifactMarkdownReferences } from "@/agent/lib/browser-image-artifact/markdown";
 
-function settle(taskId: string, turnId: string, facts: BoundedFact[]) {
+function settle(
+  taskId: string,
+  turnId: string,
+  facts: BoundedFact[],
+  status: "completed" | "failed" | "cancelled" = "completed"
+) {
   admitTask({
     objectiveRevision: `objective_of_${turnId}`,
     parentTurnId: turnId,
@@ -49,7 +55,7 @@ function settle(taskId: string, turnId: string, facts: BoundedFact[]) {
     {
       childSessionId: `${taskId}_session`,
       parentTurnId: turnId,
-      status: "completed",
+      status,
       taskId,
       workerName: "browser",
     },
@@ -166,5 +172,87 @@ describe("the report the records can vouch for", () => {
     expect(reportWithRecordedFacts("turn_never_admitted", "Hello.")).toContain(
       "Hello."
     );
+  });
+});
+
+describe("what an outside review found the renderer still hid", () => {
+  it("RR-08: a failed task is reported as failed, not as its last checkpoint", () => {
+    // The renderer read only terminal.facts and never the terminal's status, so
+    // a failed task whose facts held an observed checkpoint rendered as
+    // "Confirmed: Opened the form." with no failure anywhere in the message.
+    settle(
+      "task_a",
+      "turn_1",
+      [{ claim: "Opened the form", evidence: "observed" }],
+      "failed"
+    );
+
+    const delivered = reportWithRecordedFacts("turn_1", "All done.");
+
+    expect(delivered).toMatch(/failed|did not finish|unsuccessful/iu);
+  });
+
+  it("RR-09: a later task's failure is not squeezed out by earlier successes", () => {
+    // Three facts was the whole budget, so a fourth task that failed vanished
+    // and the cohort still settled as delivered.
+    settle("task_1", "turn_1", [{ claim: "Step one", evidence: "observed" }]);
+    settle("task_2", "turn_1", [{ claim: "Step two", evidence: "observed" }]);
+    settle("task_3", "turn_1", [{ claim: "Step three", evidence: "observed" }]);
+    settle(
+      "task_4",
+      "turn_1",
+      [{ claim: "The checkout never loaded", evidence: "observed" }],
+      "failed"
+    );
+
+    const delivered = reportWithRecordedFacts("turn_1", "Finished.");
+
+    expect(delivered).toMatch(/failed|did not finish|unsuccessful/iu);
+  });
+
+  it("RR-10: a claim is not cut where its decisive qualification lives", () => {
+    // A 165-character worker message that ends in the outcome. Cutting at 120
+    // kept the preparation and dropped "The payment failed and no order was
+    // placed", while the module's own docstring claimed faithful reproduction.
+    const claim =
+      "Filled in the delivery address, selected standard shipping, and reviewed the basket before submitting. The payment failed and no order was placed.";
+    settle("task_a", "turn_1", [{ claim, evidence: "observed" }]);
+
+    const delivered = reportWithRecordedFacts("turn_1", "Here is where it got to.");
+
+    expect(delivered).toContain("The payment failed and no order was placed");
+  });
+
+  it("RR-11: a report hidden in image markup is not treated as delivered", () => {
+    // The channel strips artifact markdown before sending, so a report placed
+    // inside an image reference reaches nobody. Substring inclusion in
+    // model-controlled text is not proof the user will see it.
+    settle("task_a", "turn_1", [
+      { claim: "Submitted the order form", evidence: "observed" },
+    ]);
+    const report = completionReportText("turn_1") ?? "";
+
+    const delivered = reportWithRecordedFacts(
+      "turn_1",
+      `i'm checking now. ![${report}](/artifacts/00000000-0000-4000-8000-000000000000)`
+    );
+
+    const stripped = stripImageArtifactMarkdownReferences(delivered);
+    expect(stripped).toContain("Submitted the order form");
+  });
+
+  it("RR-12: a message at the channel's limit stays deliverable", () => {
+    // Input and channel output both cap text at 20,000 characters. Appending
+    // pushed a valid message past it, the channel rejected the result before
+    // sending, and the obligation had already been bound -- so nothing was sent
+    // and the turn could send nothing else.
+    settle("task_a", "turn_1", [
+      { claim: "Submitted the order form", evidence: "observed" },
+    ]);
+
+    const delivered = reportWithRecordedFacts("turn_1", "x".repeat(20_000));
+
+    expect(delivered.length).toBeLessThanOrEqual(20_000);
+    expect(delivered).toContain("Submitted the order form");
   });
 });
