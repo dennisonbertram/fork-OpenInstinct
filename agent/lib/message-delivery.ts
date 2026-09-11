@@ -1,6 +1,6 @@
 import { defineState, requestTurnCompletion } from "eve/context";
 import {
-  cohortForReportAttempt,
+  cohortForReportCall,
   settleCohortReport,
 } from "@/agent/lib/completion-obligations";
 
@@ -40,38 +40,46 @@ export function beginFinalDelivery(
   // A channel with no provider step never sends a separate acceptance, so there
   // is nothing later to settle a bound report from. Leaving it pending would
   // leave an obligation nothing can ever close.
-  if (!awaitChannel) settleBoundReport(turnId, callId, true);
+  if (!awaitChannel) settleBoundReport(callId, true);
 }
 
 /**
- * Settles the completion obligation this exact attempt holds, if it holds one.
+ * Settles the completion obligation this call holds, if it holds one.
  *
- * Kept here rather than at each channel's call site so no channel can settle
- * delivery and forget the obligation behind it.
+ * Looked up by call id in the obligation records, not in the delivery state
+ * above. That state holds only the most recent attempt, so a provider result
+ * that arrives after a later turn began would otherwise find no match and
+ * silently leave its obligation awaiting delivery forever.
+ *
+ * Kept here rather than at each channel's call site so a channel settling
+ * delivery cannot forget the obligation behind it.
  */
-function settleBoundReport(turnId: string, callId: string, accepted: boolean) {
-  const cohort = cohortForReportAttempt({ callId, turnId });
+function settleBoundReport(callId: string, accepted: boolean) {
+  const cohort = cohortForReportCall(callId);
   if (cohort !== undefined) settleCohortReport(cohort.cohortId, accepted);
 }
 
 export function settleFinalDelivery(callId: string, accepted: boolean) {
-  const delivery = finalDelivery.get();
   finalDelivery.update((current) =>
     current?.callId === callId &&
     (current.status === "pending" || current.status === "unconfirmed")
       ? { ...current, status: accepted ? "completed" : "unconfirmed" }
       : current
   );
-  // Read from the delivery this call owns, so a result for another call cannot
-  // reach another attempt's obligation.
-  if (delivery?.callId === callId) {
-    settleBoundReport(delivery.turnId, callId, accepted);
-  }
+  // Independent of the delivery record above, which may already belong to a
+  // later turn. A call id identifies one attempt, so this reaches exactly the
+  // obligation this result is about and no other.
+  settleBoundReport(callId, accepted);
 }
 
 /** Suppress an automatic fallback after a provider request may have reached it. */
 export function recordUnconfirmedDelivery(turnId: string, callId: string) {
   unconfirmedProviderAttempt.update(() => ({ callId, turnId }));
+  // Settled here too. Both channels follow this with settleFinalDelivery today,
+  // but an obligation that depends on a caller remembering a second call is one
+  // a caller can strand. Settling twice is harmless: the obligation only moves
+  // out of delivery_pending once.
+  settleBoundReport(callId, false);
   finalDelivery.update((delivery) =>
     delivery?.callId === callId &&
     delivery.turnId === turnId &&

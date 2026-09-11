@@ -403,6 +403,20 @@ export function cohortForReportAttempt(
     );
 }
 
+/**
+ * The cohort whose report attempt holds this call.
+ *
+ * A call id identifies one tool call, so it identifies one attempt on its own.
+ * This exists because the per-turn delivery record holds only the most recent
+ * attempt: once a later turn replaces it, an earlier turn's provider result can
+ * no longer find the obligation it owns through that record.
+ */
+export function cohortForReportCall(callId: string): CohortRecord | undefined {
+  return completion
+    .get()
+    .cohorts.find((candidate) => candidate.report?.callId === callId);
+}
+
 /** Records whether the channel accepted the bound report attempt. */
 export function settleCohortReport(cohortId: string, accepted: boolean): void {
   setPhase(cohortId, accepted ? "delivered" : "unconfirmed", {

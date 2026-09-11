@@ -26,6 +26,7 @@ vi.mock("@/agent/lib/completion-report-activation", () => ({
 }));
 import messaging from "@/agent/tools/messaging";
 import {
+  beginFinalDelivery,
   recordUnconfirmedDelivery,
   settleFinalDelivery,
 } from "@/agent/lib/message-delivery";
@@ -455,5 +456,57 @@ describe("settling the report the channel actually carried", () => {
     );
 
     expect(cohortFor("turn_1")?.phase).toBe("delivered");
+  });
+});
+
+describe("an obligation cannot be stranded by the delivery record", () => {
+  async function bindOneReport(taskId: string) {
+    policy.owed.mockReturnValue(true);
+    owedCohort("turn_1", taskId);
+    const group = await tools(providerContext);
+    await group.send_message.execute(
+      {
+        final: true,
+        kind: "message",
+        text: "The upload finished; the log confirms it landed.",
+      },
+      executorContext()
+    );
+    return executorContext().callId;
+  }
+
+  it("RP-18: a late provider result still settles its own obligation", async () => {
+    const callId = await bindOneReport("task_rp18");
+    expect(cohortFor("turn_1")?.phase).toBe("delivery_pending");
+
+    // A later turn starts its own delivery, which replaces the single tracked
+    // record. The first turn's provider result then arrives.
+    beginFinalDelivery("turn_2", "a-later-call", true);
+
+    settleFinalDelivery(callId, true);
+
+    // Before this fix the result found no matching delivery record and did
+    // nothing, leaving the obligation delivery_pending for the rest of the
+    // session: not delivered, not owed, and invisible to reportableCohorts.
+    expect(cohortFor("turn_1")?.phase).toBe("delivered");
+  });
+
+  it("RP-19: an unconfirmed provider attempt settles the obligation on its own", async () => {
+    const callId = await bindOneReport("task_rp19");
+
+    // Recorded without a following settle. Both channels do follow it with one
+    // today, but an obligation that depends on a caller remembering a second
+    // call is one a caller can strand.
+    recordUnconfirmedDelivery("turn_1", callId);
+
+    expect(cohortFor("turn_1")?.phase).toBe("unconfirmed");
+  });
+
+  it("RP-20: a result for a call that owes nothing still settles nothing", async () => {
+    await bindOneReport("task_rp20");
+
+    settleFinalDelivery("a-call-that-holds-no-obligation", true);
+
+    expect(cohortFor("turn_1")?.phase).toBe("delivery_pending");
   });
 });
