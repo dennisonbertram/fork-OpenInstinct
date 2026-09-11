@@ -1,21 +1,5 @@
 import type { DynamicResolveContext } from "eve/tools";
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("eve/context", () => ({
-  defineState: <T>(_name: string, initial: () => T) => {
-    let value = initial();
-    return {
-      get: () => value,
-      update: (update: (current: T) => T) => {
-        value = update(value);
-      },
-    };
-  },
-  readBackgroundTaskMembers: () => [],
-  readBackgroundTaskTerminals: () => [],
-  requestTurnCompletion: () => undefined,
-}));
-
+import { describe, expect, it } from "vitest";
 import personalInfoMemory from "@/agent/memory/personal_info";
 import browserAgent from "@/agent/subagents/browser-agent/agent";
 import calendar from "@/agent/tools/calendar";
