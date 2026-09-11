@@ -5,7 +5,11 @@ import {
   toolOutput,
   type DynamicResolveContext,
 } from "eve/tools";
-import { completionReportForcingActive } from "../lib/completion-report-activation";
+import {
+  bindReportAttempt,
+  reportPolicyForTurn,
+  type ReportPolicy,
+} from "../lib/completion-report-policy";
 import {
   beginFinalDelivery,
   finalDeliveryStatus,
@@ -26,7 +30,11 @@ export default defineDynamic({
       const turnId = parsed.success ? parsed.data.data.turnId : undefined;
       return finalDeliveryStatus(turnId) !== undefined
         ? null
-        : resolveMessaging(context, turnId, completionReportForcingActive());
+        : resolveMessaging(
+            context,
+            turnId,
+            reportPolicyForTurn().kind === "must_report"
+          );
     },
   },
 });
@@ -65,12 +73,13 @@ function assertCanSatisfyOwedReport(
         readonly final: boolean | undefined;
         readonly kind: string;
         readonly text: string | undefined;
-      }
+      },
+  policy: ReportPolicy
 ) {
-  // Checked live, not captured when the tools were resolved. A tool retained
-  // from an earlier step would otherwise escape this guard, which is the case
-  // it most needs to cover.
-  if (!completionReportForcingActive()) return;
+  // Read live, not captured when the tools were resolved. A tool retained from
+  // an earlier step would otherwise escape this guard, which is the case it most
+  // needs to cover.
+  if (policy.kind !== "must_report") return;
 
   if (attempt.tool === "react_to_message") {
     throw new Error(
@@ -114,12 +123,31 @@ function resolveMessaging(
     inputSchema: sendMessageInputSchema,
     execute({ final, ...message }, toolContext) {
       assertDeliveryOpen(toolContext.session.turn.id);
-      assertCanSatisfyOwedReport({
-        final,
-        kind: message.kind,
-        text: "text" in message ? message.text : undefined,
-        tool: "send_message",
-      });
+      const policy = reportPolicyForTurn();
+      assertCanSatisfyOwedReport(
+        {
+          final,
+          kind: message.kind,
+          text: "text" in message ? message.text : undefined,
+          tool: "send_message",
+        },
+        policy
+      );
+      // Bound before delivery begins, so a channel result always has a cohort
+      // to settle. A refusal means another call in this turn already holds the
+      // obligation, and this call must not pass for the summary.
+      if (policy.kind === "must_report") {
+        const bound = bindReportAttempt({
+          callId: toolContext.callId,
+          cohortId: policy.cohortId,
+          turnId: toolContext.session.turn.id,
+        });
+        if (!bound) {
+          throw new Error(
+            "Another call in this turn already holds the owed completion summary. Do not send it again; finish the turn."
+          );
+        }
+      }
       if (final)
         beginFinalDelivery(
           toolContext.session.turn.id,
@@ -148,7 +176,10 @@ function resolveMessaging(
       : addReactionToMessageOutputSchema,
     execute(reaction, toolContext) {
       assertDeliveryOpen(toolContext.session.turn.id);
-      assertCanSatisfyOwedReport({ tool: "react_to_message" });
+      assertCanSatisfyOwedReport(
+        { tool: "react_to_message" },
+        reportPolicyForTurn()
+      );
       if (reaction.operation === "add") {
         beginFinalDelivery(
           toolContext.session.turn.id,

@@ -150,6 +150,7 @@ describe("delivery tool choice for an interactive turn", () => {
 describe("messaging tools while a completion report is owed", () => {
   it("RP-03: the resolver drops react_to_message but keeps send_message", async () => {
     policy.owed.mockReturnValue(true);
+    owedCohort("turn_1", "task_rp03");
     const group = await tools();
     expect("react_to_message" in group).toBe(false);
     expect("send_message" in group).toBe(true);
@@ -160,6 +161,7 @@ describe("messaging tools while a completion report is owed", () => {
     // live state rather than what was true when the tool was built.
     const reaction = await reactionTool();
     policy.owed.mockReturnValue(true);
+    owedCohort("turn_1", "task_rp03b");
 
     await expect(
       Promise.resolve().then(() =>
@@ -170,6 +172,7 @@ describe("messaging tools while a completion report is owed", () => {
 
   it("RP-04a: a non-final message is rejected while a report is owed", async () => {
     policy.owed.mockReturnValue(true);
+    owedCohort("turn_1", "task_rp04a");
     const group = await tools();
     await expect(
       Promise.resolve().then(() =>
@@ -182,6 +185,7 @@ describe("messaging tools while a completion report is owed", () => {
   });
   it("RP-04b: a standalone link is rejected while a report is owed", async () => {
     policy.owed.mockReturnValue(true);
+    owedCohort("turn_1", "task_rp04b");
     const group = await tools();
     await expect(
       Promise.resolve().then(() =>
@@ -198,6 +202,7 @@ describe("messaging tools while a completion report is owed", () => {
   });
   it("RP-04c: an attachment with no text is rejected while a report is owed", async () => {
     policy.owed.mockReturnValue(true);
+    owedCohort("turn_1", "task_rp04c");
     const group = await tools();
     await expect(
       Promise.resolve().then(() =>
@@ -216,10 +221,11 @@ describe("messaging tools while a completion report is owed", () => {
   });
   it("RP-06: a final message with text satisfies the owed report and is delivered", async () => {
     policy.owed.mockReturnValue(true);
+    owedCohort("turn_1", "task_rp06");
     const group = await tools();
     const text = "The upload finished; the log confirms it landed.";
     expect(
-      group.send_message.execute(
+      await group.send_message.execute(
         { kind: "message", text, final: true },
         executorContext()
       )
@@ -297,7 +303,7 @@ describe("the policy follows what is actually owed, not only the switch", () => 
     expect("react_to_message" in group).toBe(false);
 
     const text = "The upload finished; the log confirms it landed.";
-    group.send_message.execute(
+    await group.send_message.execute(
       { final: true, kind: "message", text },
       executorContext()
     );
@@ -323,12 +329,31 @@ describe("the policy follows what is actually owed, not only the switch", () => 
     });
 
     const group = await tools();
-    group.send_message.execute(
+    await group.send_message.execute(
       { final: true, kind: "message", text: "Starting on that now." },
       executorContext()
     );
 
     expect(cohortFor("turn_1")?.phase).toBe("awaiting_terminal");
+    expect(cohortFor("turn_1")?.report).toBeUndefined();
+  });
+
+  it("RP-13: a settled cohort changes nothing while enforcement is off", async () => {
+    // The other half of RP-09. Both conditions have to hold, so a real
+    // obligation with the switch off is still an ordinary turn, and nothing is
+    // bound. This is what keeps the mechanism inert before activation.
+    policy.owed.mockReturnValue(false);
+    owedCohort("turn_1", "task_rp13");
+    expect(reportableCohorts()).toHaveLength(1);
+
+    const group = await tools();
+    expect("react_to_message" in group).toBe(true);
+    await group.send_message.execute(
+      { final: true, kind: "message", text: "Done." },
+      executorContext()
+    );
+
+    expect(cohortFor("turn_1")?.phase).toBe("must_report");
     expect(cohortFor("turn_1")?.report).toBeUndefined();
   });
 
@@ -338,7 +363,7 @@ describe("the policy follows what is actually owed, not only the switch", () => 
     owedCohort("turn_2", "task_b");
 
     const group = await tools();
-    group.send_message.execute(
+    await group.send_message.execute(
       {
         final: true,
         kind: "message",
