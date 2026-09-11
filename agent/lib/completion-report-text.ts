@@ -1,4 +1,7 @@
-import { stripImageArtifactMarkdownReferences } from "@/agent/lib/browser-image-artifact/markdown";
+import {
+  extractImageArtifactMarkdownReferences,
+  stripImageArtifactMarkdownReferences,
+} from "@/agent/lib/browser-image-artifact/markdown";
 import {
   taskRecords,
   type BoundedFact,
@@ -56,6 +59,28 @@ const maximumClaims = 3;
 const maximumClaimBudget = 4_000;
 /** What the channel accepts, so a carried report can never make a send invalid. */
 const maximumMessageLength = 20_000;
+/**
+ * The most of an identifier one outcome shows.
+ *
+ * Outcomes are never dropped, so their total length has to be bounded by
+ * something other than goodwill. Task and cohort ids are validated for shape but
+ * not for length, and 64 outcomes built from 150-character ids came to 20,310
+ * characters on their own -- past the channel limit before a single claim was
+ * added, which the channel rejects after the obligations are already bound.
+ *
+ * Shortening an identifier is safe in the way shortening a claim is not. An id
+ * is a label with no internal meaning to reverse; a sentence whose middle holds
+ * "not" becomes its own opposite. Two shortened ids can look alike, and that is
+ * visible to a reader, where an unsendable message is not. Eve's own ids are
+ * well inside this, so in practice nothing is shortened at all.
+ */
+const maximumIdentifierLength = 40;
+
+function shortIdentifier(identifier: string) {
+  return identifier.length <= maximumIdentifierLength
+    ? identifier
+    : `${identifier.slice(0, maximumIdentifierLength)}…`;
+}
 
 function corroborated(fact: BoundedFact) {
   return fact.evidence === "observed" || fact.evidence === "executor_receipt";
@@ -115,7 +140,7 @@ export function completionReportText(
     )
     .map(
       (member) =>
-        `${member.cohortId}/${member.task.taskId} ${outcomeOf(member.task)}`
+        `${shortIdentifier(member.cohortId)}/${shortIdentifier(member.task.taskId)} ${outcomeOf(member.task)}`
     )
     .join("; ");
 
@@ -134,6 +159,12 @@ export function completionReportText(
   for (const fact of ordered) {
     if (shown.length >= maximumClaims) break;
     if (spent + fact.claim.length > maximumClaimBudget) continue;
+    // The channel removes artifact image markdown on its way out, and a claim
+    // is not safe from that: "The order was ![not](/artifacts/...) submitted"
+    // arrives as "The order was  submitted", which is the opposite of what was
+    // recorded. Nothing here can carry such a claim intact, so it is omitted and
+    // counted with the rest that did not fit.
+    if (extractImageArtifactMarkdownReferences(fact.claim).length > 0) continue;
     shown.push(fact);
     spent += fact.claim.length;
   }
@@ -153,8 +184,16 @@ export function completionReportText(
   // What the records leave unresolved, in the words of the module that decides
   // it, for each request separately. Empty for a corroborated completion, so
   // nothing invents a doubt the records do not support.
+  //
+  // Each line names its request. Untagged, two requests in one message produce
+  // "an action was dispatched and its outcome was never confirmed" next to "no
+  // stopped part left a dispatch unconfirmed", and a reader cannot tell which
+  // request holds the action that must not be repeated.
   for (const cohortId of cohortIds) {
-    lines.push(...recoveryProgress({ turnId: cohortId }).unknownRemainder);
+    for (const line of recoveryProgress({ turnId: cohortId })
+      .unknownRemainder) {
+      lines.push(`${shortIdentifier(cohortId)}: ${line}`);
+    }
   }
   return lines.join(" ");
 }

@@ -469,12 +469,38 @@ describe("one message answering several owed cohorts", () => {
     return ids;
   }
 
-  it("RR-23: the largest possible backlog still fits the channel", () => {
-    // Rendering each cohort separately and joining them produced 35,462
-    // characters against a 20,000 limit, which the channel rejects outright --
-    // after the obligations were already bound. The budget has to be one budget
-    // for the whole message, not one per cohort.
-    const ids = fullBacklog();
+  it("RR-23: the largest records the capacity permits still fit the channel", () => {
+    // The worst case the state machine allows, built deliberately rather than
+    // approximated: every cohort, every task, every fact, ids at the longest the
+    // admission schema accepts, and claims large enough that any three overrun
+    // the budget. An earlier version of this test used short ids and produced
+    // 3,770 characters, so it passed with the budget check removed entirely and
+    // proved nothing about the limit.
+    //
+    // Two separate ways this message went over 20,000: rendering each cohort
+    // separately and joining them (35,462), and outcomes built from 150-character
+    // ids (20,310 before a single claim). The channel rejects an oversized send
+    // after the obligations are already bound, so the cohorts end up pending with
+    // nothing delivered.
+    const ids: string[] = [];
+    for (let cohort = 0; cohort < completionCapacity.openCohorts; cohort += 1) {
+      const turnId = `turn_${String(cohort)}_${"c".repeat(150)}`;
+      ids.push(turnId);
+      for (let task = 0; task < completionCapacity.tasksPerCohort; task += 1) {
+        settle(
+          `task_${String(cohort)}_${String(task)}_${"t".repeat(150)}`,
+          turnId,
+          Array.from(
+            { length: completionCapacity.factsPerTask },
+            (_unused, fact) => ({
+              claim: longClaim(`cohort ${String(cohort)} fact ${String(fact)}`),
+              evidence: "executor_receipt" as const,
+            })
+          ),
+          "cancelled"
+        );
+      }
+    }
 
     const delivered = reportWithRecordedFacts(
       ids,
@@ -482,6 +508,10 @@ describe("one message answering several owed cohorts", () => {
     );
 
     expect(delivered.length).toBeLessThanOrEqual(20_000);
+    // And the outcomes, which are never dropped, are still all there.
+    expect(delivered.match(/was cancelled/gu)?.length ?? 0).toBe(
+      completionCapacity.openCohorts * completionCapacity.tasksPerCohort
+    );
   });
 
   it("RR-24: no cohort is dropped to make the message fit", () => {
@@ -493,8 +523,15 @@ describe("one message answering several owed cohorts", () => {
 
     const delivered = reportWithRecordedFacts(ids, "Done.");
 
-    for (const turnId of ids) {
-      expect(delivered).toContain(turnId);
+    // Every task, not merely every cohort id: checking only that each cohort is
+    // mentioned would pass while seven of its eight outcomes went missing.
+    for (let cohort = 0; cohort < completionCapacity.openCohorts; cohort += 1) {
+      expect(delivered).toContain(`turn_${String(cohort)}`);
+      for (let task = 0; task < completionCapacity.tasksPerCohort; task += 1) {
+        expect(delivered).toContain(
+          `task_${String(cohort)}_${String(task)} finished`
+        );
+      }
     }
   });
 
@@ -534,10 +571,11 @@ describe("one message answering several owed cohorts", () => {
       "Both done."
     );
 
-    // One message about two requests is only useful if a reader can tell which
-    // outcome belongs to which.
-    expect(delivered).toContain("turn_first");
-    expect(delivered).toContain("turn_second");
+    // The pairing, not the presence. Asserting that both ids appear somewhere
+    // passes even if the two outcomes are attributed to each other's request,
+    // which is exactly the confusion the tagging is meant to remove.
+    expect(delivered).toContain("turn_first/task_one finished");
+    expect(delivered).toContain("turn_second/task_two finished");
   });
 
   it("RR-27: an empty batch leaves the model's message alone", () => {
@@ -573,5 +611,52 @@ describe("the claim budget is spent once for the whole message", () => {
     // claims section stays inside its budget.
     expect(report).toContain("further recorded claims are not shown here");
     expect(report?.length ?? 0).toBeLessThan(6_000);
+  });
+});
+
+describe("what the channel would change on the way out", () => {
+  it("RR-29: a claim the channel would rewrite is omitted and counted, never sent", () => {
+    // The channel strips artifact image markdown before sending. Carrying this
+    // claim whole would deliver "The order was  submitted" -- the opposite of
+    // what was recorded, with nothing to tell the reader it changed.
+    settle("task_a", "turn_a", [
+      {
+        claim:
+          "The order was ![not](/artifacts/00000000-0000-4000-8000-000000000000) submitted",
+        evidence: "observed",
+      },
+      { claim: "The cart held three items", evidence: "observed" },
+    ]);
+
+    const report = completionReportText(["turn_a"]) ?? "";
+
+    expect(report).not.toContain("The order was");
+    expect(report).toContain("The cart held three items");
+    expect(report).toContain("1 further recorded claims are not shown here");
+  });
+
+  it("RR-30: an uncertain outcome says which request it belongs to", () => {
+    // Two requests in one message, one of them holding an action that must not
+    // be repeated. Untagged, the reader cannot tell which.
+    settle("task_done", "turn_safe", [
+      { claim: "The page was read", evidence: "observed" },
+    ]);
+    settle(
+      "task_dispatched",
+      "turn_risky",
+      [{ claim: "Submitted the form", evidence: "worker_assertion" }],
+      "failed"
+    );
+
+    const report = completionReportText(["turn_safe", "turn_risky"]) ?? "";
+
+    // The sentence about an unconfirmed dispatch must arrive attached to the
+    // request that holds it, not floating between two of them.
+    expect(report).toContain(
+      "turn_risky: Part of this objective stopped before finishing"
+    );
+    // And only that request carries it: the other one finished, so attaching the
+    // same doubt to it would invent one the records do not support.
+    expect(report).not.toContain("turn_safe: Part of this objective stopped");
   });
 });

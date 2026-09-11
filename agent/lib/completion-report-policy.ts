@@ -1,7 +1,6 @@
 import {
-  beginCohortReport,
+  bindCohortReports,
   cohortForReportAttempt,
-  releaseCohortReport,
   reportableCohorts,
 } from "@/agent/lib/completion-obligations";
 import type {
@@ -48,10 +47,9 @@ export function reportPolicyForTurn(): ReportPolicy {
  * Records that this exact call is the attempt at every owed summary, and
  * returns the cohorts it now owns.
  *
- * All or none. A partial bind would leave some cohorts waiting on a message
- * that reports the others, which is the state this whole design exists to
- * prevent -- so if any cohort refuses, the ones already bound are released and
- * the caller is told nothing was taken.
+ * All or none, and the state machine applies it as one write rather than binding
+ * each cohort and undoing the earlier ones, because undoing has to guess at a
+ * phase the cohort may never have been in.
  *
  * An empty result means the caller must not treat this send as a summary.
  */
@@ -60,23 +58,10 @@ export function bindReportAttempt(input: {
   readonly turnId: string;
   readonly callId: string;
 }): readonly string[] {
-  const bound: string[] = [];
-  for (const cohortId of input.cohortIds) {
-    if (
-      beginCohortReport(cohortId, {
-        callId: input.callId,
-        turnId: input.turnId,
-      })
-    ) {
-      bound.push(cohortId);
-      continue;
-    }
-    // Release what was taken. releaseCohortReport only moves a cohort this
-    // exact call holds, so nothing else in the session is disturbed.
-    for (const taken of bound) releaseCohortReport(taken, input.callId);
-    return [];
-  }
-  return bound;
+  return bindCohortReports(input.cohortIds, {
+    callId: input.callId,
+    turnId: input.turnId,
+  });
 }
 
 /**

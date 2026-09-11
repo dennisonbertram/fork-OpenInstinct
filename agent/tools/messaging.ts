@@ -10,6 +10,7 @@ import {
   reportPolicyForTurn,
   type ReportPolicy,
 } from "../lib/completion-report-policy";
+import { cohortsForReportCall } from "../lib/completion-obligations";
 import { reportWithRecordedFacts } from "../lib/completion-report-text";
 import {
   beginFinalDelivery,
@@ -137,6 +138,10 @@ function resolveMessaging(
       // Bound before delivery begins, so a channel result always has a cohort
       // to settle. A refusal means another call in this turn already holds the
       // obligation, and this call must not pass for the summary.
+      // What this call holds, which is not always what it just took: a cohort
+      // already bound to this very call reads as "nothing owed" from the policy,
+      // and its records still have to travel with the message it is about to
+      // send.
       const bound =
         policy.kind === "must_report"
           ? bindReportAttempt({
@@ -144,7 +149,9 @@ function resolveMessaging(
               cohortIds: policy.cohortIds,
               turnId: toolContext.session.turn.id,
             })
-          : [];
+          : cohortsForReportCall(toolContext.callId).map(
+              (cohort) => cohort.cohortId
+            );
       if (policy.kind === "must_report" && bound.length === 0) {
         throw new Error(
           "Another call in this turn already holds the owed completion summary. Do not send it again; finish the turn."

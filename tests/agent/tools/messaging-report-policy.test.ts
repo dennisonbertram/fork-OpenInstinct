@@ -707,3 +707,72 @@ describe("binding the whole backlog, or none of it", () => {
     expect(cohortFor("turn_b")?.report?.callId).toBe("other-call");
   });
 });
+
+describe("a refused bind writes nothing at all", () => {
+  it("RP-29: a cohort this same call already holds keeps the binding it has", () => {
+    owedCohort("turn_a", "task_a");
+    owedCohort("turn_b", "task_b");
+    // This call already holds turn_a from an earlier bind in the same turn.
+    expect(
+      bindReportAttempt({
+        callId: "test-call",
+        cohortIds: ["turn_a"],
+        turnId: "turn_1",
+      })
+    ).toEqual(["turn_a"]);
+    // And another call holds turn_b.
+    bindReportAttempt({
+      callId: "other-call",
+      cohortIds: ["turn_b"],
+      turnId: "turn_1",
+    });
+
+    expect(
+      bindReportAttempt({
+        callId: "test-call",
+        cohortIds: ["turn_a", "turn_b"],
+        turnId: "turn_1",
+      })
+    ).toEqual([]);
+
+    // turn_a accepts a re-announcement from its own call without changing, so
+    // there is nothing to undo. An earlier version undid it anyway by setting it
+    // back to owing a report, which left this call's live attempt unable to
+    // settle the cohort it was delivering.
+    expect(cohortFor("turn_a")?.phase).toBe("delivery_pending");
+    expect(cohortFor("turn_a")?.report?.callId).toBe("test-call");
+  });
+
+  it("RP-30: a cohort bound out of an unconfirmed send is not rewritten to owing one", () => {
+    owedCohort("turn_a", "task_a");
+    owedCohort("turn_b", "task_b");
+    // turn_a's earlier send was never confirmed by the provider.
+    bindReportAttempt({
+      callId: "earlier-call",
+      cohortIds: ["turn_a"],
+      turnId: "turn_0",
+    });
+    settleFinalDelivery("earlier-call", false);
+    expect(cohortFor("turn_a")?.phase).toBe("unconfirmed");
+    // And turn_b is held by someone else, so this bind must fail.
+    bindReportAttempt({
+      callId: "other-call",
+      cohortIds: ["turn_b"],
+      turnId: "turn_1",
+    });
+
+    expect(
+      bindReportAttempt({
+        callId: "test-call",
+        cohortIds: ["turn_a", "turn_b"],
+        turnId: "turn_1",
+      })
+    ).toEqual([]);
+
+    // Still unconfirmed, with its earlier attempt intact. "Put it back to owing
+    // a report" would be a phase it was never in, and would lose the record that
+    // a send may already have reached the user.
+    expect(cohortFor("turn_a")?.phase).toBe("unconfirmed");
+    expect(cohortFor("turn_a")?.report?.callId).toBe("earlier-call");
+  });
+});
