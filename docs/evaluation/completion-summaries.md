@@ -46,6 +46,38 @@ This table is a representative cross-plan index. The complete case tables and na
 | AR-03 | stale approval/change              | no attempt; reapproval needed     | old authorization reused   |
 | AR-05 | cancelled after dispatch           | truthful uncertainty              | erased evidence            |
 
+## Deterministic coverage as it stands
+
+Where each deterministic ID is actually exercised, as of `main` after the
+completion and operating-model slices landed. A row marked **not yet** names what
+it waits on; none is marked covered on the strength of an authored-but-unrun case.
+
+| ID                  | Covered by                                                                                        | Status                                                                                                                                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TA-01, TA-03, TA-05 | `tests/unit/background-task-terminal-adapter.test.ts`                                             | covered                                                                                                                                                                                                                     |
+| CO-01, CO-02, CO-04 | `tests/agent/lib/completion-obligations.test.ts`                                                  | covered                                                                                                                                                                                                                     |
+| CO-06               | same file, cancelled cohort retaining an `executor_receipt`                                       | covered                                                                                                                                                                                                                     |
+| CO-07               | same file, superseded cohort with a late terminal                                                 | covered                                                                                                                                                                                                                     |
+| RP-01               | `tests/agent/tools/messaging-report-policy.test.ts`                                               | covered — the guard names `send_message` and the executor rejects a reaction                                                                                                                                                |
+| RP-06               | `agent/lib/tests/later-summary-request.test.ts`                                                   | covered at the unit layer                                                                                                                                                                                                   |
+| AR-03               | `tests/agent/lib/approval-identity.test.ts`, stale answer against changed terms                   | covered                                                                                                                                                                                                                     |
+| AR-05               | `agent/lib/tests/later-summary-request.test.ts`, plus `agent/lib/tests/recovery-progress.test.ts` | covered at the unit layer                                                                                                                                                                                                   |
+| RP-05               | —                                                                                                 | **not yet**: the pre-provider composition fallback is Plan 006 step 3, which needs grounded composition context                                                                                                             |
+| CS-03, CS-05, CS-06 | —                                                                                                 | **not yet**: these assert mounted provider-call ordering and counts, which needs Plan 007's channel binding. The durable claim record exists and is proven in the real-Postgres lane, but nothing binds it to a channel yet |
+| AR-01               | —                                                                                                 | **not yet**: one approval and one attempt end to end needs the same channel binding                                                                                                                                         |
+
+### What the covered rows do not prove
+
+Every covered row above is a unit-layer assertion over synthetic records. None of
+them shows that a real model writes a grounded summary, that a browser user sees
+it, or that a provider accepted it. Those are the real-model, browser, and native
+layers below, and they remain unrun.
+
+The production behaviour is also still inactive:
+`agent/lib/completion-report-activation.ts` returns false, so none of this
+changes what a user sees yet. Activation is gated on the layers below, not on the
+table above.
+
 ## Real-model cases
 
 Run only after deterministic scenarios are green and an operator supplies a paid-run budget, model settings, and synthetic fixture authorization. Use `evals/agent/conversation.eval.ts` with tag `completion-summary`; do not insert future turns, a reminder to use words, or a model-rescue message. Every case starts in a fresh root session except its stated follow-up turn. The worker fixture is local-only and returns the hidden facts below; it must not call an external site.
