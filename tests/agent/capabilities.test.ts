@@ -1,5 +1,13 @@
 import type { DynamicResolveContext } from "eve/tools";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Forcing now reads the obligation state, so a suite that resolves tools outside
+// an Eve context has to say what is owed. Nothing is: these cases are about the
+// ordinary capability matrix, not about a session with settled work behind it.
+vi.mock("@/agent/lib/completion-report-activation", () => ({
+  completionReportForcingActive: () => false,
+}));
+
 import personalInfoMemory from "@/agent/memory/personal_info";
 import browserAgent from "@/agent/subagents/browser-agent/agent";
 import calendar from "@/agent/tools/calendar";

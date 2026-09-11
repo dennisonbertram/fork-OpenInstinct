@@ -271,11 +271,17 @@ describe("messaging tools while a completion report is owed", () => {
     ).resolves.toEqual({ type: "thumbs_up" });
   });
 });
-describe("forcing stays inactive in production", () => {
-  it("a cohort that genuinely owes a report still does not activate forcing", async () => {
-    const activation = await vi.importActual<{
-      completionReportForcingActive: typeof completionReportForcingActive;
-    }>("@/agent/lib/completion-report-activation");
+/** The real activation function, not the mock the rest of this file uses. */
+async function realActivation() {
+  const activation = await vi.importActual<{
+    completionReportForcingActive: typeof completionReportForcingActive;
+  }>("@/agent/lib/completion-report-activation");
+  return activation.completionReportForcingActive;
+}
+
+describe("forcing follows what is owed, and nothing else", () => {
+  it("RP-31: a cohort that genuinely owes a report activates forcing", async () => {
+    const forcingActive = await realActivation();
 
     expect(
       admitTask({
@@ -299,10 +305,44 @@ describe("forcing stays inactive in production", () => {
     // The obligation is real: the cohort settled and owes a summary.
     expect(outcome.cohortBecameReportable).toBe(true);
     expect(reportableCohorts()).toHaveLength(1);
+    expect(forcingActive()).toBe(true);
+  });
 
-    // Forcing is still off, so nothing a user sees changes yet. Plan 007 binds
-    // settlement and Plan 009 supplies the evidence before this flips.
-    expect(activation.completionReportForcingActive()).toBe(false);
+  it("RP-32: forcing is off whenever nothing is owed, which is every ordinary turn", async () => {
+    const forcingActive = await realActivation();
+
+    // Nothing has settled, so there is no obligation and no reason to constrain
+    // the turn. This is what "ordinary turns are unchanged" rests on, and it is
+    // structural rather than a promise: activation is derived from the
+    // obligation, so it cannot be on while nothing is owed.
+    expect(reportableCohorts()).toEqual([]);
+    expect(forcingActive()).toBe(false);
+
+    // An admitted task that has not reported yet is not an obligation either --
+    // there is nothing to summarise until it settles.
+    admitTask({
+      objectiveRevision: "turn_rp",
+      parentTurnId: "turn_rp",
+      taskId: "task_rp",
+    });
+    expect(forcingActive()).toBe(false);
+  });
+
+  it("RP-33: with forcing live and nothing owed, the turn keeps its reactions and names no tool", async () => {
+    const forcingActive = await realActivation();
+    expect(forcingActive()).toBe(false);
+
+    // The two things a user would actually notice: a reaction is still offered,
+    // and the turn is not steered into send_message.
+    expect("react_to_message" in (await tools(providerContext))).toBe(true);
+    expect(
+      deliveryToolChoiceForInteractiveTurn({
+        channelKind: "channel:linq",
+        deliveryStatus: undefined,
+        mode: undefined,
+        reportOwed: forcingActive(),
+      })
+    ).toEqual({ type: "required" });
   });
 });
 

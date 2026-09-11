@@ -29,6 +29,13 @@ vi.mock("@/db/services/scheduled-agent-jobs", () => ({
   updateScheduledAgentJob: services.update,
 }));
 
+// Forcing now reads the obligation state, so a suite that resolves tools outside
+// an Eve context has to say what is owed. Nothing is: these cases are about the
+// ordinary capability matrix, not about a session with settled work behind it.
+vi.mock("@/agent/lib/completion-report-activation", () => ({
+  completionReportForcingActive: () => false,
+}));
+
 import messaging from "@/agent/tools/messaging";
 import schedules, {
   createSchedule,
