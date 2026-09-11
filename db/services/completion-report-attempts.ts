@@ -170,13 +170,20 @@ export async function claimCompletionReportPart(input: {
 
     if (created) return { claim: projectClaim(created), kind: "claimed" };
 
-    // Another claimer inserted first inside this transaction's window.
+    // Another claimer inserted first inside this transaction's window. It may
+    // already have finished, so classify what is actually there: calling a part
+    // the provider accepted "uncertain" would report doubt about something that
+    // definitely landed.
     const [raced] = await transaction
       .select()
       .from(completionReportAttempts)
       .where(keyMatches(input.key));
     if (!raced) throw new Error("The claimed report part disappeared.");
-    return { claim: projectClaim(raced), kind: "uncertain" };
+    const racedClaim = projectClaim(raced);
+    return {
+      claim: racedClaim,
+      kind: racedClaim.state === "accepted" ? "settled" : "uncertain",
+    };
   });
 }
 
