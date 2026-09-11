@@ -986,6 +986,59 @@ describe("retireCohort (CO-10)", () => {
     expect(retiredSummaries()).toEqual([]);
   });
 
+  it("refuses to retire a delivered cohort that still has an unsettled task, and never claims a unanimous outcome for it", () => {
+    // A task can join a cohort that already owes a report, so a delivered
+    // cohort can still hold a member that never reported. Retiring it would
+    // drop that member's record and claim the whole cohort completed.
+    admit({
+      taskId: "task_reported",
+      parentTurnId: "turn_1",
+      workerSessionId: "session_1",
+    });
+    recordTerminal(
+      terminal({
+        taskId: "task_reported",
+        parentTurnId: "turn_1",
+        childSessionId: "session_1",
+      }),
+      [fact()]
+    );
+    expect(cohortFor("turn_1")?.phase).toBe("must_report");
+
+    admit({
+      taskId: "task_straggler",
+      parentTurnId: "turn_1",
+      workerSessionId: "session_2",
+    });
+    beginCohortReport("turn_1", {
+      turnId: "turn_report",
+      callId: "call_report",
+    });
+    settleCohortReport("turn_1", true);
+    expect(cohortFor("turn_1")?.phase).toBe("delivered");
+
+    expect(retireCohort("turn_1")).toBe(false);
+    expect(retiredSummaries()).toEqual([]);
+    expect(
+      taskRecords("turn_1")
+        .map((task) => task.taskId)
+        .toSorted()
+    ).toEqual(["task_reported", "task_straggler"]);
+
+    // Once the straggler reports, retirement is allowed again.
+    recordTerminal(
+      terminal({
+        taskId: "task_straggler",
+        parentTurnId: "turn_1",
+        childSessionId: "session_2",
+        status: "failed",
+      }),
+      [fact()]
+    );
+    expect(retireCohort("turn_1")).toBe(true);
+    expect(retiredSummaries()[0]?.outcome).toBe("mixed");
+  });
+
   it("33 retirements evict the oldest summary and hold the cap at 32", () => {
     for (let index = 1; index <= 33; index += 1) {
       const cohortId = `turn_${String(index)}`;
