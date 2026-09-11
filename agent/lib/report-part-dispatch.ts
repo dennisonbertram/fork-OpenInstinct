@@ -46,9 +46,37 @@ export async function dispatchReportPart<T>(input: {
   /** Reads the provider's own reference out of the result, when it returns one. */
   readonly providerHandle?: (value: T) => string | undefined;
 }): Promise<ReportPartDispatch<T>> {
-  void permitReportDispatch;
-  void reportPartAccepted;
-  void reportPartUnconfirmed;
-  void input;
-  throw new Error("not implemented");
+  const { identity } = input;
+  if (identity === undefined) {
+    return { kind: "sent", value: await input.dispatch() };
+  }
+
+  const permission = await permitReportDispatch({
+    channel: input.channel,
+    contentDigest: input.contentDigest,
+    conversationId: input.conversationId,
+    identity,
+    leaseOwner: input.leaseOwner,
+  });
+  if (permission.kind === "already_accepted") {
+    return { kind: "not_dispatched", reason: "already_accepted" };
+  }
+  if (permission.kind === "do_not_dispatch") {
+    return { kind: "not_dispatched", reason: "uncertain" };
+  }
+
+  let value: T;
+  try {
+    value = await input.dispatch();
+  } catch (error) {
+    // The attempt is already recorded, so this request may have reached the
+    // provider. Unknown, not failed, and never resent.
+    await reportPartUnconfirmed(permission.claim);
+    throw error;
+  }
+  await reportPartAccepted({
+    claim: permission.claim,
+    providerHandle: input.providerHandle?.(value),
+  });
+  return { kind: "sent", value };
 }

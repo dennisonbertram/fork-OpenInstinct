@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ReportPartIdentity } from "@/agent/lib/completion-report-attempts";
+import type {
+  permitReportDispatch,
+  reportPartAccepted,
+  reportPartUnconfirmed,
+  ReportPartIdentity,
+} from "@/agent/lib/completion-report-attempts";
 
 const claim = vi.hoisted(() => ({
   id: "attempt-1",
@@ -10,10 +15,11 @@ const claim = vi.hoisted(() => ({
   version: 4,
 }));
 
+// Typed against the owning seam, so a signature change there fails here.
 const seam = vi.hoisted(() => ({
-  accepted: vi.fn(),
-  permit: vi.fn(),
-  unconfirmed: vi.fn(),
+  accepted: vi.fn<typeof reportPartAccepted>(),
+  permit: vi.fn<typeof permitReportDispatch>(),
+  unconfirmed: vi.fn<typeof reportPartUnconfirmed>(),
 }));
 
 vi.mock("@/agent/lib/completion-report-attempts", () => ({
@@ -22,9 +28,7 @@ vi.mock("@/agent/lib/completion-report-attempts", () => ({
   reportPartUnconfirmed: seam.unconfirmed,
 }));
 
-const { dispatchReportPart } = await import(
-  "@/agent/lib/report-part-dispatch"
-);
+const { dispatchReportPart } = await import("@/agent/lib/report-part-dispatch");
 
 const identity: ReportPartIdentity = {
   cohortId: "turn_1",
@@ -92,7 +96,7 @@ describe("dispatchReportPart", () => {
       order.push("permit");
       return Promise.resolve({ claim, kind: "may_dispatch" });
     });
-    const send = vi.fn(() => {
+    const send = vi.fn<() => Promise<string>>(() => {
       order.push("send");
       return Promise.resolve("handle-1");
     });
@@ -117,7 +121,10 @@ describe("dispatchReportPart", () => {
 
     const outcome = await dispatchReportPart(request(send));
 
-    expect(outcome).toEqual({ kind: "not_dispatched", reason: "already_accepted" });
+    expect(outcome).toEqual({
+      kind: "not_dispatched",
+      reason: "already_accepted",
+    });
     expect(send).not.toHaveBeenCalled();
   });
 
