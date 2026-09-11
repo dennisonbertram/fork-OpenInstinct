@@ -53,13 +53,71 @@ export default defineEval({
     sourceError.notEvent("action.result");
 
     const rejected = await sendLinqFixture(t, "linq-final-rejected");
+    rejected.succeeded();
     rejected.calledTool("send_message", { count: 1, status: "completed" });
     rejected.eventOrder([
       { type: "action.result" },
-      { type: "turn.failed" },
+      { type: "step.started", data: { stepIndex: 1 } },
+      { type: "turn.completed" },
       { type: "session.waiting" },
     ]);
-    rejected.notEvent("turn.completed");
+    rejected.notEvent("turn.failed");
+    const rejectedSessionId = rejected.sessionId;
+    if (!rejectedSessionId) {
+      throw new Error(
+        "Rejected delivery fixture is missing its session identity."
+      );
+    }
+    const rejectedState = await waitForProviderState(rejectedSessionId, {
+      acknowledged: 0,
+      attempts: 1,
+      completed: 1,
+      duplicateAttempts: 0,
+      modelStepStarts: 2,
+      pending: 0,
+      rejected: 1,
+      requests: 1,
+    });
+    t.check(
+      rejectedState.deliveries.filter(
+        (delivery) =>
+          delivery.deliveryClass === "final" && delivery.state === "rejected"
+      ).length,
+      equals(1)
+    );
+    t.check(
+      rejectedState.deliveries.filter(
+        (delivery) => delivery.deliveryClass === "recovery"
+      ).length,
+      equals(0)
+    );
+
+    const recovered = await rejected.send("linq-final-normal");
+    recovered.succeeded();
+    recovered.calledTool("send_message", { count: 1, status: "completed" });
+    recovered.eventOrder([
+      { type: "action.result" },
+      { type: "turn.completed" },
+      { type: "session.waiting" },
+    ]);
+    const recoveredState = await waitForProviderState(rejectedSessionId, {
+      acknowledged: 1,
+      attempts: 2,
+      completed: 2,
+      duplicateAttempts: 0,
+      modelStepStarts: 3,
+      pending: 0,
+      rejected: 1,
+      requests: 2,
+    });
+    t.check(
+      recoveredState.deliveries.filter(
+        (delivery) =>
+          delivery.deliveryClass === "final" &&
+          delivery.state === "acknowledged"
+      ).length,
+      equals(1)
+    );
 
     const progress = await sendLinqFixture(t, "linq-final-progress");
     progress.succeeded();

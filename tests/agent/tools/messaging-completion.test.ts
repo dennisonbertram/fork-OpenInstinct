@@ -20,6 +20,7 @@ vi.mock("eve/context", () => ({
   },
 }));
 import messaging from "@/agent/tools/messaging";
+import { settleFinalDelivery } from "@/agent/lib/message-delivery";
 const context = {
   channel: { kind: "http" },
   session: {
@@ -60,6 +61,58 @@ describe("final conversation delivery", () => {
         context
       )
     ).toBeNull();
+  });
+  it("does not repeat an unconfirmed provider delivery in the same turn, then opens a new turn", async () => {
+    const providerContext = {
+      ...context,
+      channel: { kind: "channel:sendblue" },
+    } satisfies DynamicResolveContext;
+    const resolve = messaging.events["step.started"];
+    if (!resolve) throw new Error("Missing resolver");
+    const group = await resolve(
+      { data: { turnId: "turn_1" } },
+      providerContext
+    );
+    if (!group) throw new Error("Missing messaging tools");
+    const ctx = {
+      ...toolContextFor({ sessionId: "root" }),
+      session: { ...context.session, turn: { id: "turn_1", sequence: 1 } },
+    };
+
+    await group.send_message.execute(
+      { kind: "message", text: "Screenshot result", final: true },
+      ctx
+    );
+    settleFinalDelivery("test-call", false);
+
+    await expect(
+      Promise.resolve().then(() =>
+        group.send_message.execute(
+          { kind: "message", text: "Screenshot result again" },
+          ctx
+        )
+      )
+    ).rejects.toThrow(/not confirmed|do not resend/i);
+    expect(
+      await resolve({ data: { turnId: "turn_1" } }, providerContext)
+    ).toBeNull();
+    const nextTurnTools = await resolve(
+      { data: { turnId: "turn_2" } },
+      providerContext
+    );
+    if (!nextTurnTools) throw new Error("Missing next-turn messaging tools");
+    expect(
+      await nextTurnTools.send_message.execute(
+        { kind: "message", text: "Next turn result" },
+        {
+          ...toolContextFor({ sessionId: "root" }),
+          session: {
+            ...context.session,
+            turn: { id: "turn_2", sequence: 2 },
+          },
+        }
+      )
+    ).toEqual({ kind: "message", text: "Next turn result" });
   });
   it("allows progress and separate messages before final, then opens the next turn", async () => {
     const group = await tools();

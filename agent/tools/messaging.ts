@@ -23,7 +23,7 @@ export default defineDynamic({
     "step.started": (event, context) => {
       const parsed = stepEventSchema.safeParse(event);
       const turnId = parsed.success ? parsed.data.data.turnId : undefined;
-      return finalDeliveryStatus(turnId) === "completed"
+      return finalDeliveryStatus(turnId) !== undefined
         ? null
         : resolveMessaging(context, turnId);
     },
@@ -40,6 +40,11 @@ function assertDeliveryOpen(turnId: string) {
   if (status === "completed") {
     throw new Error(
       "Final delivery already completed for this turn. Finish with DELIVERY_COMPLETE."
+    );
+  }
+  if (status === "unconfirmed") {
+    throw new Error(
+      "Final delivery was not confirmed. Do not resend automatically; wait for user direction."
     );
   }
 }
