@@ -133,3 +133,16 @@ export function resolveBrowserActionTarget(
   }
   return target;
 }
+
+/**
+ * What to say when an observed control cannot be driven.
+ *
+ * Checkbox, radio and switch controls are observed as targets but fail the
+ * prompt-free reversible-role check, and `commit_browser_action` has no term
+ * that describes toggling one — it classifies submit, order, send and delete.
+ * Naming that tool here would send the worker to an action it cannot express.
+ */
+export function unsupportedControlMessage(role: string) {
+  void role;
+  return "This browser control is not structurally reversible; use commit_browser_action.";
+}
