@@ -4,7 +4,7 @@ GitHub: [#157](https://github.com/dennisonbertram/fork-OpenInstinct/issues/157).
 
 > **Executor instructions:** This plan is a release-critical crash-window boundary. Do not claim restart exactly-once from a call ID, unit mock count, or provider API behavior. First prove whether Eve offers a durable pre-dispatch/checkpoint seam. If it does not, implement the small application report-attempt record specified here; it is limited to interactive completion reports and is not a task engine, outbox, or scheduler.
 >
-> **Drift check:** `git diff --stat c88b8e69325439d503374bf6796befd5f37a585f..HEAD -- agent/channels/eve.ts agent/channels/linq.ts agent/channels/sendblue.ts agent/lib/message-delivery.ts agent/lib/completion-report-attempts.ts db/schema/chats.ts db/schema/index.ts db/services/completion-report-attempts.ts db/migrations/0027_completion_report_attempts.sql db/migrations/meta db/tests/completion-report-attempts.test.ts tests/agent/channels/eve-message-delivery.test.ts tests/agent/channels/linq-message-delivery.test.ts tests/agent/channels/sendblue-channel.test.ts evals/contract/mount-harness/evals/linq-final-delivery.eval.ts`
+> **Drift check:** `git diff --stat c88b8e69325439d503374bf6796befd5f37a585f..HEAD -- agent/channels/eve.ts agent/channels/linq.ts agent/channels/sendblue.ts agent/lib/message-delivery.ts agent/lib/completion-report-attempts.ts db/schema/chats.ts db/schema/index.ts db/services/completion-report-attempts.ts db/migrations/0027_completion_report_attempts.sql db/migrations/meta tests/integration/real-postgres.test.ts tests/unit/completion-report-dispatch-boundary.test.ts tests/agent/channels/eve-message-delivery.test.ts tests/agent/channels/linq-message-delivery.test.ts tests/agent/channels/sendblue-channel.test.ts evals/contract/mount-harness/evals/linq-final-delivery.eval.ts`
 
 ## Status
 
@@ -42,7 +42,7 @@ Create only these new product-owned paths when the probe fails:
 - `db/schema/index.ts` — export the table.
 - `db/services/completion-report-attempts.ts` — transactional compare-and-swap `claim`, `markProviderAttempted`, and `markAccepted` operations with exact ownership/lease checks; no poller, queue, or retry scheduler.
 - `db/migrations/0027_completion_report_attempts.sql` and generated `db/migrations/meta/*` — additive migration only, numbered after `0026`; use the repository migration generator and inspect generated output.
-- `db/tests/completion-report-attempts.test.ts` — real Postgres contention and restore coverage.
+- `tests/integration/real-postgres.test.ts` — required real-Postgres contention and restore coverage. The repository's supervised Real Postgres lane runs this file exclusively; a `db/tests` file run through the ordinary app test command is not that release gate.
 - `agent/lib/completion-report-attempts.ts` — narrow conversion between Plan 005/006 obligation and service identity, not a second task schema.
 
 The unique logical key is `{ cohortId, reportRevision, part }`. `part` is an ordinal/role for each physical side effect: text send, attachment send, media upload, and media send are separate parts. A media send cannot begin before its owned upload part is accepted. Store only a content digest, MIME/size/artifact identity where needed, state, safe provider handle if returned, lease/version, and timestamps; never raw text, provider body, phone, secret, or unbounded artifact data.
@@ -90,7 +90,7 @@ Do not call the new service for non-obligation messages or scheduled reports. Ke
 | CS-11 | upload or media-send part already attempted      | zero reupload/resend on recovery                                                    |
 | CS-12 | scheduled report                                 | existing claim/lease/sequence behavior unchanged                                    |
 
-Run `pnpm test:app -- db/tests/completion-report-attempts.test.ts tests/unit/completion-report-dispatch-boundary.test.ts tests/agent/channels/eve-message-delivery.test.ts tests/agent/channels/linq-message-delivery.test.ts tests/agent/channels/sendblue-channel.test.ts` before source edits for RED and after for green. Run `pnpm eval:contract -- --mount-only --timeout 30000`, `pnpm check`, `pnpm build`, and `git diff --check`; expect exit 0. The DB tests must use the repository’s disposable real-Postgres pattern, not SQLite or a mocked transaction.
+Run the fast unit/boundary tests separately with `pnpm test:unit -- tests/unit/completion-report-dispatch-boundary.test.ts tests/agent/channels/eve-message-delivery.test.ts tests/agent/channels/linq-message-delivery.test.ts tests/agent/channels/sendblue-channel.test.ts`; these tests are useful local feedback but are not the required contention gate. Put the CAS, import, restart, and concurrent-claimer cases in `tests/integration/real-postgres.test.ts` and supervise them with `node scripts/test-real-postgres.ts`, which exclusively runs that integration file and writes `.eve/ci/real-postgres.xml`. A missing/unavailable Compose database or an actual integration skip is a failed release gate, not a pass. Run `pnpm eval:contract -- --mount-only --timeout 30000`, `pnpm check`, `pnpm build`, and `git diff --check`; expect exit 0. The required integration cases must use the repository’s disposable real-Postgres pattern, not SQLite or a mocked transaction.
 
 ## Activation and release staging
 

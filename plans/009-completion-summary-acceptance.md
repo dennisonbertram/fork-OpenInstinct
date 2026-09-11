@@ -65,13 +65,14 @@ The canonical scenario table in `docs/evaluation/completion-summaries.md` owns f
 
 ## Commands
 
-| Purpose             | Command                                                                                                                                                            | Expected result                                               |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| contract            | `pnpm eval:contract -- --mount-only --timeout 30000`                                                                                                               | exit 0 with all scoped cases                                  |
-| model-free tests    | `pnpm test:app -- tests/agent/lib/completion-obligations.test.ts tests/agent/tools/messaging-completion.test.ts tests/agent/channels/eve-message-delivery.test.ts` | all scoped cases pass                                         |
-| browser             | `pnpm test:e2e`                                                                                                                                                    | exit 0, synthetic fixture only                                |
-| real-model behavior | `pnpm eval:agent --tag completion-summary`                                                                                                                         | only after budget/credentials approval; all attempts retained |
-| final checks        | `pnpm check && pnpm build && git diff --check`                                                                                                                     | all exit 0                                                    |
+| Purpose             | Command                                                                                                                                                            | Expected result                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| contract            | `pnpm eval:contract -- --mount-only --timeout 30000`                                                                                                               | exit 0 with all scoped cases                                                             |
+| model-free tests    | `pnpm test:app -- tests/agent/lib/completion-obligations.test.ts tests/agent/tools/messaging-completion.test.ts tests/agent/channels/eve-message-delivery.test.ts` | all scoped cases pass                                                                    |
+| browser             | `pnpm test:e2e`                                                                                                                                                    | exit 0, synthetic fixture only                                                           |
+| real-model behavior | `pnpm eval:agent --tag completion-summary`                                                                                                                         | only after budget/credentials approval; all attempts retained                            |
+| real Postgres       | `node scripts/test-real-postgres.ts`                                                                                                                               | required when Plan 007 database scope is active; unavailable/skip fails the release gate |
+| final checks        | `pnpm check && pnpm build && git diff --check`                                                                                                                     | all exit 0                                                                               |
 
 ## Done criteria
 
