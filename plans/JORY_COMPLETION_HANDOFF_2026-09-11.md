@@ -12,12 +12,13 @@ wrong.
 
 ## The one thing to read first
 
-**Forcing was activated, it failed in production, and it was reverted.** That
-is the most important fact in this file and it is what the rest of it is about.
+**Forcing was activated, it failed in production, it was reverted, and it has
+been re-landed with the two causes fixed.** That sequence is what the rest of
+this file is about. Activation is live on `main` at `c0d0de2` (#211).
 
-The activation merged at `0474ab3` and deployed. One real iMessage turn later,
-the log showed the guard doing exactly what it was built to do -- refusing a
-non-final message while a summary was owed -- and the message that actually
+The first activation merged at `0474ab3` and deployed. One real iMessage turn
+later, the log showed the guard doing exactly what it was built to do -- refusing
+a non-final message while a summary was owed -- and the message that actually
 reached the phone was:
 
 > i'm checking a public time source for Tokyo now.
@@ -25,28 +26,145 @@ reached the phone was:
 It reported nothing about the settled work. It described work that had never
 started: no `browser-agent` call appears in that turn or the next. And
 `final: true` on it closed the turn, so a statement the records did not support
-stood in for the completion report.
+stood in for the completion report. Reverted in #203.
 
-Reverted in #203. `completionReportForcingActive()` returns false again.
-
-The lesson is not that the mechanism was wrong. The obligations, the durable
+The lesson was not that the mechanism was wrong. The obligations, the durable
 claim, the channel binding and the settlement all held. The lesson is that a
 **shape** check -- kind, non-empty text, `final` -- cannot establish that a
-summary was delivered, and handing the model grounded facts does not upgrade
-that guarantee. An outside review put it exactly: the model was certifying its
-own compliance. #204 takes that decision away from it.
+summary was delivered, and handing the model grounded facts does not upgrade that
+guarantee. An outside review put it exactly: the model was certifying its own
+compliance.
 
-**Nothing on `main` now changes what a user sees.**
-`agent/lib/completion-report-activation.ts` returns `false`.
-`reportPolicyForTurn()` therefore returns `none` for every real turn, no
-obligation is ever bound, no claim is ever written, and no channel calls any of
-it. That is deliberate: #159 forbids activating before its paid-model,
-browser-visible, and native acceptance evidence exists, and that evidence needs
-operator authorisation nobody has given.
+### What changed, and why re-landing is not a retry
 
-So the milestone reached is **implemented contract coverage**, not a working
-completion fix. Anyone reading the PR list as evidence that Jory now reports
-truthfully would be reading it wrong.
+Two causes, both named in #203, both now fixed.
+
+**The records no longer depend on the model** (#204 and the work on top of it).
+The messaging tool appends what the state machine holds -- every settled task's
+outcome, what the evidence supports, what it leaves unresolved -- to whatever the
+model wrote. A progress note can still be written; it can no longer be the whole
+message. There is deliberately **no check on the model's prose**, because nothing
+can tell a plausible sentence from a true one, and a rule that deleted prose on
+suspicion would be guessing.
+
+**One report answers the whole backlog** (#210). #203 named this as the likely
+cause of its second symptom: a summary was _still_ owed on the following turn.
+Each turn discharged at most one cohort, so a session with accumulated settled
+work was forced to report on every turn until the backlog drained, with the model
+filling the space because it had nothing grounded to say. Getting this right
+needed more than a loop: binding had to become one atomic state write, settlement
+had to cover every cohort a call bound, and the claim budget had to be one budget
+for the whole message rather than one per cohort.
+
+**Activation is now derived rather than configured** (#211).
+`completionReportForcingActive()` returns `reportableCohorts().length > 0`, so
+forcing is active exactly when something is owed. Ordinary turns are unchanged
+because nothing is owed on one -- a property of the state, not a promise about a
+flag. There is no configuration in which forcing applies to a session with
+nothing to report.
+
+### The live run on the reinstated activation
+
+Driven over iMessage to the operator-supplied line at 21:05–21:10Z on `c0d0de2`,
+the activation commit, which every turn below confirms in its own log line.
+
+| Turn | Tools                           | What it shows                                                                                                                                                                                  |
+| ---- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 15   | `send_message`                  | Forcing engaged on a real backlog. Cohort `turn_4`, settled in an earlier session, still owed a summary, so this turn was steered into a report instead of acting on the message that arrived. |
+| 16   | `browser-agent`, `send_message` | The very next turn was free. It delegated real work and acknowledged in 17 characters, which is the shape of a background-task acknowledgement.                                                |
+| 18   | `send_message`                  | An ordinary message, owing nothing, delivered with nothing appended.                                                                                                                           |
+
+The durable record for turn 15: one row in `completion_report_attempts`, cohort
+`turn_4`, revision 0, part `text`, state **accepted**. Claimed, dispatched, and
+accepted by the provider.
+
+**What this establishes.** Forcing activates from a real obligation rather than a
+flag. A report is composed from the records, claimed durably, and accepted. And
+the backlog behaviour that made the first activation hostile is gone: one message
+discharged it, and turn 16 was immediately free to do real work. Under the old
+code turn 16 would have been forced to report again, and turn 18 after it.
+
+**What it does not establish, and cannot.** What the turn 15 message said. The
+digest is over the rendered payload rather than the text, the receipts are
+metadata only, and the log records tool names and a response length and never
+content. The message is sitting in the operator's conversation; reading it is a
+person's job. Until someone does, the correct statement is that the mechanism
+fired, not that the report was true -- which is precisely the distinction the
+first activation got wrong.
+
+**The next thing to diagnose, found by this run.** Turn 16's browser work
+**completed and produced no obligation**, and that is worth chasing rather than
+filing away.
+
+The turn's own log line records
+`subagents: [{ name: "browser-agent", childSessionId: "wrun_41M294QY…", status:
+"completed" }]`. Yet turns 18 and 19 owed nothing, and no cohort for turn 16 ever
+became reportable. Two explanations fit and this run does not separate them: the
+subagent ran inline within the turn and never entered Eve's task index, in which
+case no cohort can ever form for it; or it did enter and its terminal was rejected
+by the schema check in `background-task-terminal.ts`, which drops any entry whose
+`taskId` and `terminalTaskId` disagree.
+
+Two further facts narrow it, and they point in opposite directions, which is why
+this needs a real diagnosis rather than a guess.
+
+`browser_sessions` has **zero rows** for the whole window, so the worker never
+opened a browser at all — it "completed" without doing the work.
+
+And **nothing in this repository creates a background task explicitly.** There is
+no `execution: "background"` tool, no `task.delegated`, no use of the task inbox.
+Every task must therefore come from Eve's own promotion of subagent calls under
+`experimental.tasks: true`. That makes the turn shape the evidence to read, and
+turn 16's is ambiguous: `steps=3, finish=stop` fits a blocking call (dispatch,
+result, reply) just as well as it fits a background acceptance followed by an
+acknowledgement.
+
+The decisive question is therefore worth stating plainly, because the whole epic
+rests on it: **does a `browser-agent` call in this app become a durable task at
+all?** If it does not, cohorts can never form from browser work, and the
+completion mechanism applies only to whatever path produced cohorts `turn_0`,
+`turn_1` and `turn_4` — which exist, so some path does produce them.
+
+One plausible cause is already eliminated: the dispatch mode is not something the
+instructions choose. `agent/instructions/content/worker-coordination.md` specifies
+the assignment format, the required `outputSchema`, and how the result will be
+recorded, and says nothing about background versus blocking. The root simply calls
+the tool and Eve decides.
+
+That leaves the observable fact, which is worth stating exactly as it stands: with
+`experimental.tasks: true`, the `browser-agent` call in turn 16 produced **no task
+index entry**. `reconcileBackgroundTasks()` runs at every root step and admits
+whatever `backgroundTaskMembers()` returns; turn 18 ran it and admitted nothing, so
+that projection was empty.
+
+Two checks settle the cause. Read child session `wrun_41M294QYSS0GKVQ6KG6BW7BDZ2`
+and see what it returned. Then watch whether any task-triggered parent turn ever
+fires on its own; none did here, across twenty minutes and four subsequent turns.
+
+None of this is caused by the completion mechanism, and the mechanism behaved
+correctly throughout: with nothing settled, nothing was owed, and turns 18 and 19
+went out untouched. But it does mean the sequence _a browser worker settles and
+the next turn carries its records_ has still not been watched end to end. Turn 15
+proves that path with a cohort that settled earlier.
+
+### What is still unproven
+
+**Nobody has read the report.** A completion report was composed, claimed,
+dispatched and accepted by the provider on turn 15 above, so the mechanism
+demonstrably runs end to end in production. What no one has done is look at the
+message and check that what it says is true. That is the only remaining question
+that matters, and it is the exact question the first activation answered wrongly
+from a log.
+
+Nobody should read the PR list, or the accepted claim row, as evidence that Jory
+now reports truthfully. Provider acceptance is acceptance. A person reading the
+conversation is the proof.
+
+#159's model and browser gates remain separately blocked, and the phone run does
+not satisfy them. The browser gate is structurally blocked for the reason recorded
+in #209: a subagent's model comes from the serializable config its resolver
+returns, so a provider object makes Eve omit the subagent entirely, and
+`step.started` is not available to subagents.
 
 ## What merged today
 
@@ -73,6 +191,16 @@ git history; the later ones:
 | #195 | One truthful fallback when a summary could not be composed                     |
 | #196 | The words a cancellation account may not use                                   |
 | #197 | Settle from the call, not the delivery record; stop the fallback over-claiming |
+| #198 | Guard the instruction directives #158 step 4 would have removed                |
+| #200 | Claim every physical effect of a report before the channel dispatches it       |
+| #201 | The first activation, held for a release decision                              |
+| #203 | The revert, on live evidence                                                   |
+| #204 | The records travel with the message, so the model cannot drop them             |
+| #208 | Revert the worker fixture: Eve cannot resolve a subagent's model that way      |
+| #209 | Why the browser gate is blocked, and the journey that found it                 |
+| #210 | One report answers the whole backlog, not one cohort per turn                  |
+| #212 | A budget denial no longer discharges the report it could not send              |
+| #211 | The activation, re-landed                                                      |
 
 Every one ran `pnpm check`, `git diff --check`, its own focused suite, and a
 mutation check, with five green CI lanes. Two Square eval runs were authorised
@@ -138,6 +266,51 @@ In the fallback and the delivery settlement (#197):
 - An unknown-provenance fact was introduced as "Reported by the worker", which
   invents a source.
 - The fact budget was per section, allowing six facts under a ceiling of three.
+
+In the batched report and the activation (#210, #212, #211), an outside review
+found ten more, and the same pattern held -- including in the tests written to
+prevent it:
+
+- Joining each cohort's report produced 35,462 characters against a 20,000
+  channel limit, and appending them one at a time kept only the last four. An
+  obligation discharged by a message that never mentions it is worse than one
+  left owed.
+- Sixty-four outcomes built from 150-character ids came to 20,310 characters
+  before a single claim. Outcomes are never dropped, so their length had to be
+  bounded by something; identifiers are now shortened, which is safe in the way
+  shortening a claim is not.
+- Undoing a partial bind by setting cohorts back to `must_report` guessed at a
+  phase they may never have been in. A cohort can be bound out of `unconfirmed`,
+  and one the same call already holds is accepted without changing at all.
+  Binding is now one state write that does nothing on refusal, so there is no
+  prior phase to reconstruct.
+- The channel strips artifact image markdown on the way out, so a claim reading
+  "The order was ![not](/artifacts/...) submitted" would arrive as "The order was
+  submitted" -- the opposite of what was recorded, with nothing to say it had
+  changed.
+- Two requests in one message produced an unconfirmed-dispatch warning next to a
+  statement that nothing was left unconfirmed, with no way to tell which request
+  held the action that must not be repeated.
+- A budget denial posted its notice through the same callback a real message
+  uses, which marked the send accepted, and the `finally` then settled the
+  obligation as delivered. The user got a usage-limit notice, the records never
+  went out, and nothing was owed any more.
+- A report a prior attempt had already delivered settled as `unconfirmed`,
+  because the dispatch refuses to resend and never invokes the post callback.
+- And four tests that asserted shape rather than substance. RR-23 claimed to
+  prove the largest backlog fits the channel while producing 3,770 characters,
+  and passed with the budget check removed entirely. RR-24 passed if seven of
+  eight outcomes per cohort vanished. RR-26 passed if two outcomes were
+  attributed to each other's request. RP-33 resolved tools through a mock set to
+  false while claiming to run on the live activation, so it passed whether or not
+  report enforcement existed.
+
+**Four separate times in this work, a test of mine checked a signature or a
+field's presence while the behaviour it was named for was broken.** That is the
+single most useful thing in this file. The countermeasure that worked was not
+more care -- it was mutation: break the behaviour on purpose and require a named
+case to fail. Nineteen mutants across these three PRs, each one caught by a case
+that names what it protects.
 
 And two latent defects found by looking for a repeated pattern rather than by
 review: `situationView` (#188) and `recoveryProgress` (#190) both looked a
