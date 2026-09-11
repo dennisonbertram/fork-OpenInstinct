@@ -1,3 +1,5 @@
+import { reportableCohorts } from "@/agent/lib/completion-obligations";
+
 /**
  * Whether forced completion reporting is active for this turn.
  *
@@ -12,5 +14,5 @@
  * report, which `reportableCohorts()` in `./completion-obligations` answers.
  */
 export function completionReportForcingActive(): boolean {
-  return false;
+  return reportableCohorts().length > 0;
 }

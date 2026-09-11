@@ -5,6 +5,22 @@ import type {
 } from "eve/tools";
 import { z } from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("eve/context", () => ({
+  defineState: <T>(_name: string, initial: () => T) => {
+    let value = initial();
+    return {
+      get: () => value,
+      update: (update: (current: T) => T) => {
+        value = update(value);
+      },
+    };
+  },
+  readBackgroundTaskMembers: () => [],
+  readBackgroundTaskTerminals: () => [],
+  requestTurnCompletion: () => undefined,
+}));
+
 import type {
   createScheduledAgentJob,
   getScheduledAgentRunInput,

@@ -21,6 +21,9 @@ vi.mock("@/db/services/settings", () => ({
 // eve context. Mocked at its owning boundary, like the services above.
 vi.mock("@/agent/lib/completion-obligations", () => ({
   reconcileBackgroundTasks: services.reconcile,
+  // Forcing now asks this, so the mock has to answer it. Empty means no turn in
+  // these cases owes a written summary, which is what they are about.
+  reportableCohorts: () => [],
 }));
 vi.mock("@/env", async (importOriginal) => ({
   ...(await importOriginal()),
