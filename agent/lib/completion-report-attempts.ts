@@ -19,8 +19,17 @@ import {
  * that comes back uncertain stays uncertain.
  */
 
-/** One physical effect of one report. A multi-part report claims each separately. */
-export type ReportPart = "text" | "attachment" | "media-upload" | "media-send";
+/**
+ * One physical effect of one report. A multi-part report claims each
+ * separately. A report can carry several media items, so each upload and each
+ * send carries its own ordinal -- otherwise a second image would collide with
+ * the first image's claim, and one accepted upload would look like both were.
+ */
+export type ReportPart =
+  | "text"
+  | "attachment"
+  | `media-upload:${number}`
+  | `media-send:${number}`;
 
 export interface ReportPartIdentity {
   readonly workspaceId: string;

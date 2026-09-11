@@ -169,7 +169,7 @@ describe("dispatchReportPart", () => {
 
     await dispatchReportPart({
       ...request(send),
-      identity: { ...identity, part: "media-send", reportRevision: 2 },
+      identity: { ...identity, part: "media-send:0", reportRevision: 2 },
     });
 
     expect(seam.permit).toHaveBeenCalledWith(
@@ -177,7 +177,7 @@ describe("dispatchReportPart", () => {
         channel: "channel:sendblue",
         contentDigest: "digest-1",
         conversationId: "conversation-1",
-        identity: { ...identity, part: "media-send", reportRevision: 2 },
+        identity: { ...identity, part: "media-send:0", reportRevision: 2 },
         leaseOwner: "owner-a",
       })
     );

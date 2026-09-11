@@ -127,7 +127,7 @@ describe("reportPartIdentityFor", () => {
     owedCohort("turn_1", "task_a");
     beginCohortReport("turn_1", { callId: "call_1", turnId: "turn_1" });
 
-    const parts = (["text", "media-upload", "media-send"] as const).map(
+    const parts = (["text", "media-upload:0", "media-send:0"] as const).map(
       (part) =>
         reportPartIdentityFor({
           ...place,
@@ -141,8 +141,8 @@ describe("reportPartIdentityFor", () => {
     // two effects of one report would land on unrelated durable rows.
     expect(parts.map((identity) => identity?.part)).toEqual([
       "text",
-      "media-upload",
-      "media-send",
+      "media-upload:0",
+      "media-send:0",
     ]);
     expect(new Set(parts.map((identity) => identity?.cohortId)).size).toBe(1);
     expect(
