@@ -164,7 +164,7 @@ with it. Refresh that file through the canonical startup path instead of a
 separate script: `./init.sh` re-pulls the development environment when
 `.env.local` is missing required credentials or is unchanged from
 `.env.example`, and for a customized file you can rerun the same link it uses,
-`pnpm exec eve link --non-interactive --project open-instinct --team dennisons-projects`.
+`pnpm exec eve link --non-interactive --project jory --team dennisons-projects`.
 Back the file up first if it holds local-only values and re-add them by editing
 it afterwards. A local authentication failure can mean an expired OIDC token,
 but also a connector not attached to `development`, a `GOOGLE_CONNECTOR_UID`
@@ -214,7 +214,7 @@ cd fork-OpenInstinct
 ./init.sh
 ```
 
-You must be authorized for the fork's `open-instinct` Vercel project. If the
+You must be authorized for the fork's `jory` Vercel project. If the
 first run reports that authentication is missing, sign in and rerun it:
 
 ```bash

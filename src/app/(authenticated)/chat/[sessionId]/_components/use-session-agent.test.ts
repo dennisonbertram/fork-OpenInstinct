@@ -1,5 +1,6 @@
 /* oxlint-disable vitest/require-mock-type-parameters, anti-slop/no-unknown-parameters, anti-slop/no-unknown-returns, typescript/no-unsafe-type-assertion, anti-slop/require-safety-comment-for-type-assertion, typescript/no-invalid-void-type, eslint/no-unmodified-loop-condition, eslint/no-await-in-loop, react-hooks/rules-of-hooks, anti-slop/no-runtime-typeof, typescript/no-unsafe-call, typescript/unbound-method -- This controlled hook harness executes effects and records state without a DOM; the client stream is the boundary under test. */
 import type { MessageStreamEvent } from "eve/client";
+import type { EveAgentReducerEvent } from "eve/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -48,7 +49,7 @@ vi.mock("../_lib/session-history", () => ({
   readLatestSessionHistory: mocks.readHistory,
   readOlderSessionHistory: vi.fn(),
 }));
-import { useSessionAgent } from "./use-session-agent";
+import { messageProjectionEvents, useSessionAgent } from "./use-session-agent";
 
 function event(type: string, id: string): MessageStreamEvent {
   return {
@@ -56,6 +57,17 @@ function event(type: string, id: string): MessageStreamEvent {
     data: {},
     meta: { id, at: "2026-09-05T13:00:00Z" },
   } as MessageStreamEvent;
+}
+function receivedMessage(
+  id: string,
+  message: string,
+  turnId: string
+): MessageStreamEvent {
+  return {
+    data: { message, parts: [], sequence: 0, turnId },
+    meta: { id, at: "2026-09-05T13:00:00Z" },
+    type: "message.received",
+  };
 }
 function controlledStream() {
   const queue: MessageStreamEvent[] = [];
@@ -117,6 +129,15 @@ function mount() {
 function history() {
   return mocks.states[0] as { events: MessageStreamEvent[]; endIndex: number };
 }
+function messageProjections() {
+  return mocks.states[4] as Parameters<typeof messageProjectionEvents>[1];
+}
+function currentError() {
+  return mocks.states[2] as Error | undefined;
+}
+function eventIdentity(reducerEvent: EveAgentReducerEvent) {
+  return "meta" in reducerEvent ? reducerEvent.meta.id : reducerEvent.type;
+}
 
 describe("mounted session observer", () => {
   beforeEach(() => {
@@ -151,6 +172,76 @@ describe("mounted session observer", () => {
       "later-done",
     ]);
     unmount();
+  });
+
+  it("places a submitted user message before delayed turn progress and confirms it once", () => {
+    const events = [
+      event("session.waiting", "previous-turn"),
+      event("turn.started", "next-turn"),
+      receivedMessage("received-message", "Send this immediately", "next"),
+      event("step.started", "next-step"),
+    ];
+
+    const projection = {
+      afterEventId: "previous-turn",
+      event: {
+        data: {
+          createdAt: 1,
+          message: "Send this immediately",
+          submissionId: "submission-1",
+        },
+        type: "client.message.submitted" as const,
+      },
+      receivedEventId: "received-message",
+    };
+
+    expect(
+      messageProjectionEvents(events, [projection]).map(
+        (streamEvent) => streamEvent.type
+      )
+    ).toEqual([
+      "session.waiting",
+      "message.received",
+      "turn.started",
+      "step.started",
+    ]);
+  });
+
+  it("keeps a failed submission visible while a retry is confirmed once", () => {
+    const events = [
+      event("session.waiting", "previous-turn"),
+      receivedMessage("retry-received", "Retry this", "retry"),
+    ];
+    const failed = {
+      afterEventId: "previous-turn",
+      event: {
+        data: {
+          createdAt: 1,
+          error: { message: "Network unavailable" },
+          message: "Retry this",
+          submissionId: "submission-failed",
+        },
+        type: "client.message.failed" as const,
+      },
+    };
+    const retry = {
+      afterEventId: "previous-turn",
+      event: {
+        data: {
+          createdAt: 2,
+          message: "Retry this",
+          submissionId: "submission-retry",
+        },
+        type: "client.message.submitted" as const,
+      },
+      receivedEventId: "retry-received",
+    };
+
+    expect(
+      messageProjectionEvents(events, [failed, retry]).map(
+        (streamEvent) => streamEvent.type
+      )
+    ).toEqual(["session.waiting", "client.message.failed", "message.received"]);
   });
   it("allows approval responses while the observer remains connected and records each event once", async () => {
     const stream = controlledStream();
@@ -194,9 +285,90 @@ describe("mounted session observer", () => {
       turnPolicy: "steer",
     });
     expect(mocks.stream).toHaveBeenCalledTimes(1);
+    expect(
+      messageProjectionEvents(history().events, messageProjections()).map(
+        (item) => item.type
+      )
+    ).toEqual([
+      "session.waiting",
+      "client.message.submitted",
+      "client.message.submitted",
+    ]);
+    stream.push(event("turn.started", "steered-turn"));
+    stream.push(event("step.started", "steered-step"));
+    await flush();
+    expect(
+      messageProjectionEvents(history().events, messageProjections()).map(
+        (item) => item.type
+      )
+    ).toEqual([
+      "session.waiting",
+      "client.message.submitted",
+      "client.message.submitted",
+      "turn.started",
+      "step.started",
+    ]);
+    stream.push(receivedMessage("original-received", "Original task", "turn"));
+    stream.push(receivedMessage("steer-received", "Correction", "turn"));
+    await flush();
+    expect(
+      messageProjectionEvents(history().events, messageProjections()).map(
+        eventIdentity
+      )
+    ).toEqual([
+      "idle",
+      "original-received",
+      "steer-received",
+      "steered-turn",
+      "steered-step",
+    ]);
     stream.push(event("session.waiting", "steered-done"));
     await flush();
     await Promise.all([first, steer]);
+    unmount();
+  });
+  it("keeps a rejected steer visible as retryable failed input", async () => {
+    const stream = controlledStream();
+    mocks.stream.mockImplementation(stream.iterate);
+    const { agent, unmount } = mount();
+    await flush();
+    const first = agent.send("Original task");
+    await flush();
+    mocks.send.mockRejectedValueOnce(new Error("Steer unavailable"));
+
+    await expect(
+      agent.send("Correction", { turnPolicy: "steer" })
+    ).rejects.toThrow("Steer unavailable");
+    expect(currentError()?.message).toBe("Steer unavailable");
+
+    const [firstProjection, failedProjection] = messageProjections();
+    expect(firstProjection?.event.type).toBe("client.message.submitted");
+    expect(failedProjection?.event.type).toBe("client.message.failed");
+    if (failedProjection?.event.type !== "client.message.failed")
+      throw new Error(
+        "Expected the rejected steer projection to remain failed."
+      );
+    expect(failedProjection.event.data.error.message).toBe("Steer unavailable");
+    expect(failedProjection.event.data.message).toBe("Correction");
+    const retry = agent.send("Correction", { turnPolicy: "steer" });
+    await flush();
+    expect(currentError()).toBeUndefined();
+    stream.push(receivedMessage("original-received", "Original task", "turn"));
+    stream.push(receivedMessage("retry-received", "Correction", "turn"));
+    await flush();
+    expect(
+      messageProjectionEvents(history().events, messageProjections()).map(
+        eventIdentity
+      )
+    ).toEqual([
+      "idle",
+      "original-received",
+      "client.message.failed",
+      "retry-received",
+    ]);
+    stream.push(event("session.waiting", "original-done"));
+    await flush();
+    await Promise.all([first, retry]);
     unmount();
   });
   it("rejects a non-steer send while another operation is pending", async () => {

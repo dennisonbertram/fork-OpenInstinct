@@ -134,7 +134,7 @@ EOF
     exit 1
   fi
 
-  vercel_project="${OPENINSTINCT_VERCEL_PROJECT:-open-instinct}"
+  vercel_project="${OPENINSTINCT_VERCEL_PROJECT:-jory}"
   vercel_team="${OPENINSTINCT_VERCEL_TEAM:-dennisons-projects}"
   env_backup="$(mktemp "${TMPDIR:-/tmp}/openinstinct-env.XXXXXX")"
   cp .env.local "$env_backup"
