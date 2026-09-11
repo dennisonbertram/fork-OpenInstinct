@@ -187,6 +187,74 @@ describe("parking a native approval", () => {
     expect(parkedApprovals()).toHaveLength(1);
   });
 
+  it("PA-13: the stored record cannot be changed through the caller's object", () => {
+    // `readonly` is a compile-time promise about the receiving type, not a
+    // runtime one about the caller's reference. If the record is kept by
+    // reference, a caller can change which action is authorised after a person
+    // was asked about a different one.
+    const pending = {
+      cohortId: "turn_1",
+      fingerprint: materialTermsFingerprint(terms),
+      objectiveRevision: "objective_1",
+      requestId: "request_1",
+      taskId: "task_a",
+    };
+    parkApproval(pending);
+
+    const other = materialTermsFingerprint({
+      ...terms,
+      terms: { message: "Four tickets please" },
+    });
+    pending.fingerprint = other;
+    pending.taskId = "another_task";
+
+    expect(parkedApprovalFor("task_a")?.fingerprint).toBe(
+      materialTermsFingerprint(terms)
+    );
+    expect(
+      resumeParkedApproval({
+        fingerprint: other,
+        requestId: "request_1",
+        taskId: "task_a",
+      }).kind
+    ).toBe("terms_changed");
+  });
+
+  it("PA-14: nothing beyond the declared fields is stored or handed back", () => {
+    // A TypeScript interface does not strip extra properties at runtime, so an
+    // object carrying a secret alongside the declared fields is a valid
+    // argument. Keeping it would put that secret into session state and back
+    // out through the accessors.
+    parkApproval({
+      cohortId: "turn_1",
+      fingerprint: materialTermsFingerprint(terms),
+      objectiveRevision: "objective_1",
+      requestId: "request_1",
+      secretToken: "sk-live-do-not-store",
+      taskId: "task_a",
+    } as Parameters<typeof parkApproval>[0]);
+
+    expect(JSON.stringify(parkedApprovals())).not.toContain("sk-live");
+    expect(Object.keys(parkedApprovalFor("task_a") ?? {}).toSorted()).toEqual([
+      "cohortId",
+      "fingerprint",
+      "objectiveRevision",
+      "requestId",
+      "taskId",
+    ]);
+  });
+
+  it("PA-15: two tasks cannot park the same request id", () => {
+    expect(park()).toBe(true);
+    // Allowing it makes an answer ambiguous in the other direction, and an
+    // authorised answer for one task would retire the other task's unanswered
+    // question along with it.
+    expect(park({ taskId: "task_b" })).toBe(false);
+
+    expect(parkedApprovals()).toHaveLength(1);
+    expect(parkedApprovalFor("task_b")).toBeUndefined();
+  });
+
   it("PA-10: the number of parked requests is bounded", () => {
     for (let index = 0; index < approvalCapacity.parked; index += 1) {
       expect(
