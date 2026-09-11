@@ -92,10 +92,29 @@ person's job. Until someone does, the correct statement is that the mechanism
 fired, not that the report was true -- which is precisely the distinction the
 first activation got wrong.
 
-**Still open from this run.** Turn 16's browser task had not settled when the run
-was written up, so the specific sequence of _worker settles, next turn carries its
-records_ has not yet been watched end to end. Turn 15 proves the same path with an
-older cohort.
+**The next thing to diagnose, found by this run.** Turn 16's browser work
+**completed and produced no obligation**, and that is worth chasing rather than
+filing away.
+
+The turn's own log line records
+`subagents: [{ name: "browser-agent", childSessionId: "wrun_41M294QY…", status:
+"completed" }]`. Yet turns 18 and 19 owed nothing, and no cohort for turn 16 ever
+became reportable. Two explanations fit and this run does not separate them: the
+subagent ran inline within the turn and never entered Eve's task index, in which
+case no cohort can ever form for it; or it did enter and its terminal was rejected
+by the schema check in `background-task-terminal.ts`, which drops any entry whose
+`taskId` and `terminalTaskId` disagree.
+
+A third fact narrows it. `browser_sessions` has **zero rows** for the whole
+window, so the worker never opened a browser at all — it "completed" without doing
+the work. The obvious next step is to look at child session
+`wrun_41M294QYSS0GKVQ6KG6BW7BDZ2` and find out what it returned.
+
+None of this is caused by the completion mechanism, and the mechanism behaved
+correctly throughout: with nothing settled, nothing was owed, and turns 18 and 19
+went out untouched. But it does mean the sequence _a browser worker settles and
+the next turn carries its records_ has still not been watched end to end. Turn 15
+proves that path with a cohort that settled earlier.
 
 ### What is still unproven
 
