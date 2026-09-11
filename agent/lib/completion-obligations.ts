@@ -292,6 +292,11 @@ export function reportableCohorts(): readonly CohortRecord[] {
   });
 }
 
+/** Every cohort this session holds, for a read-only projection over them. */
+export function allCohorts(): readonly CohortRecord[] {
+  return completion.get().cohorts;
+}
+
 export function cohortFor(cohortId: string): CohortRecord | undefined {
   return completion
     .get()
