@@ -99,10 +99,16 @@ older cohort.
 
 ### What is still unproven
 
-**No completion report has reached a phone.** That is the next step and the only
-remaining question that matters. Nobody should read the PR list as evidence that
-Jory now reports truthfully; it is evidence that the mechanism is built, reviewed,
-and switched on.
+**Nobody has read the report.** A completion report was composed, claimed,
+dispatched and accepted by the provider on turn 15 above, so the mechanism
+demonstrably runs end to end in production. What no one has done is look at the
+message and check that what it says is true. That is the only remaining question
+that matters, and it is the exact question the first activation answered wrongly
+from a log.
+
+Nobody should read the PR list, or the accepted claim row, as evidence that Jory
+now reports truthfully. Provider acceptance is acceptance. A person reading the
+conversation is the proof.
 
 #159's model and browser gates remain separately blocked, and the phone run does
 not satisfy them. The browser gate is structurally blocked for the reason recorded
