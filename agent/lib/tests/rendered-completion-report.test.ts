@@ -214,13 +214,37 @@ describe("what an outside review found the renderer still hid", () => {
     // A 165-character worker message that ends in the outcome. Cutting at 120
     // kept the preparation and dropped "The payment failed and no order was
     // placed", while the module's own docstring claimed faithful reproduction.
-    const claim =
-      "Filled in the delivery address, selected standard shipping, and reviewed the basket before submitting. The payment failed and no order was placed.";
+    // Longer than the per-claim cap on purpose, so it is actually shortened.
+    const claim = `Filled in the delivery address, selected standard shipping, reviewed the basket, ${"checked each line item, ".repeat(
+      12
+    )}and submitted. The payment failed and no order was placed.`;
     settle("task_a", "turn_1", [{ claim, evidence: "observed" }]);
 
-    const delivered = reportWithRecordedFacts("turn_1", "Here is where it got to.");
+    const delivered = reportWithRecordedFacts(
+      "turn_1",
+      "Here is where it got to."
+    );
 
+    // Shortened from the middle, so the outcome at the end survives. A worker
+    // puts the decision last; cutting the tail keeps the setup and loses it.
+    expect(claim.length).toBeGreaterThan(240);
     expect(delivered).toContain("The payment failed and no order was placed");
+  });
+
+  it("RR-13: claims that did not fit are counted, not dropped in silence", () => {
+    settle("task_a", "turn_1", [
+      { claim: "One", evidence: "observed" },
+      { claim: "Two", evidence: "observed" },
+      { claim: "Three", evidence: "observed" },
+      { claim: "Four", evidence: "observed" },
+      { claim: "Five", evidence: "observed" },
+    ]);
+
+    const delivered = reportWithRecordedFacts("turn_1", "Done.");
+
+    // Saying how many were left out is what stops the shown list being read as
+    // the whole of what the records hold.
+    expect(delivered).toContain("2 further recorded claims are not shown");
   });
 
   it("RR-11: a report hidden in image markup is not treated as delivered", () => {

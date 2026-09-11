@@ -1,6 +1,8 @@
+import { stripImageArtifactMarkdownReferences } from "@/agent/lib/browser-image-artifact/markdown";
 import {
   taskRecords,
   type BoundedFact,
+  type TaskRecord,
 } from "@/agent/lib/completion-obligations";
 
 /**
@@ -19,29 +21,61 @@ import {
  * model's cooperation: this renders them, and `reportWithRecordedFacts` carries
  * them alongside whatever the model wrote.
  *
- * What that honestly guarantees is narrow, and worth stating plainly. It
- * guarantees the recorded claims and their provenance reach the user. It does
- * not make the model's own sentences true, and it does not make the records
- * true -- a worker's claim carried here is faithfully reproduced, not verified.
+ * **Outcomes first.** Every settled task's status appears, always, before any
+ * supporting claim. An earlier version rendered only the facts, so a failed
+ * task whose facts held an observed checkpoint read as a confirmed success and
+ * a fourth task's failure could be squeezed out by three earlier successes. A
+ * report that can hide a failure is worse than no report.
+ *
+ * What this honestly guarantees is narrow, and worth stating plainly. It
+ * guarantees every settled task's outcome, and as many supporting claims as fit,
+ * reach the user with their provenance. It does not make the model's own
+ * sentences true, and it does not make the records true -- a worker's claim
+ * carried here is reproduced, not verified.
  */
 
 /** The most claim text one report will carry for a single fact. */
-const maximumClaimLength = 120;
-/** The most facts one report will name, across the whole message. */
+const maximumClaimLength = 240;
+/** The most supporting claims one report will name, across the whole message. */
 const maximumClaims = 3;
+/** What the channel accepts, so a carried report can never make a send invalid. */
+const maximumMessageLength = 20_000;
 
 function corroborated(fact: BoundedFact) {
   return fact.evidence === "observed" || fact.evidence === "executor_receipt";
 }
 
+/**
+ * Shortens a claim from the middle, never from the end.
+ *
+ * A worker's message tends to put the outcome last: "…reviewed the basket. The
+ * payment failed and no order was placed." Cutting the tail keeps the setup and
+ * loses the decision, which is the opposite of what a summary is for.
+ */
 function bound(claim: string) {
-  return claim.length <= maximumClaimLength
-    ? claim
-    : `${claim.slice(0, maximumClaimLength)}…`;
+  if (claim.length <= maximumClaimLength) return claim;
+  const half = Math.floor((maximumClaimLength - 1) / 2);
+  return `${claim.slice(0, half)}…${claim.slice(claim.length - half)}`;
 }
 
-function list(facts: readonly BoundedFact[]) {
-  return facts.map((fact) => bound(fact.claim)).join("; ");
+function outcomeOf(task: TaskRecord) {
+  switch (task.terminal?.status) {
+    case "completed":
+      return "finished";
+    case "failed":
+      return "failed";
+    case "cancelled":
+      return "was cancelled";
+    default:
+      return "has not reported";
+  }
+}
+
+function provenanceOf(fact: BoundedFact) {
+  if (corroborated(fact)) return "confirmed";
+  return fact.evidence === "worker_assertion"
+    ? "reported by the worker, not confirmed"
+    : "recorded with no stated source";
 }
 
 /**
@@ -51,36 +85,35 @@ function list(facts: readonly BoundedFact[]) {
  * the obligation before composing: by then the cohort is `delivery_pending` and
  * the policy would correctly say nothing is owed, so re-deriving it here would
  * silently drop every fact.
- *
- * One budget for the whole message rather than one per section, and
- * corroborated facts are taken first because they are the most useful.
  */
 export function completionReportText(cohortId: string): string | undefined {
-  const facts = taskRecords(cohortId).flatMap(
-    (task) => task.terminal?.facts ?? []
-  );
-  const confirmed = facts
-    .filter((fact) => corroborated(fact))
-    .slice(0, maximumClaims);
-  const remaining = maximumClaims - confirmed.length;
-  const asserted = facts
-    .filter((fact) => fact.evidence === "worker_assertion")
-    .slice(0, remaining);
-  const unattributed = facts
-    .filter((fact) => fact.evidence === "unknown")
-    .slice(0, remaining - asserted.length);
+  const tasks = taskRecords(cohortId);
+  if (tasks.length === 0) return undefined;
 
-  const lines: string[] = [];
-  if (confirmed.length > 0) lines.push(`Confirmed: ${list(confirmed)}.`);
-  if (asserted.length > 0) {
-    // Attributed, never stated flatly. A worker's own word reported as a
-    // finding is how an unverified claim becomes something the user believes.
-    lines.push(`Reported by the worker but not confirmed: ${list(asserted)}.`);
+  // Every task's outcome, always. This is the part that may never be trimmed:
+  // trimming it is how a failure disappears behind an earlier success.
+  const outcomes = tasks
+    .map((task) => `${task.taskId} ${outcomeOf(task)}`)
+    .join("; ");
+
+  const facts = tasks.flatMap((task) => task.terminal?.facts ?? []);
+  // Corroborated claims first, then the worker's own word, then unattributed.
+  const ordered = [
+    ...facts.filter((fact) => corroborated(fact)),
+    ...facts.filter((fact) => fact.evidence === "worker_assertion"),
+    ...facts.filter((fact) => fact.evidence === "unknown"),
+  ];
+  const shown = ordered.slice(0, maximumClaims);
+
+  const lines = [`What the records hold: ${outcomes}.`];
+  for (const fact of shown) {
+    lines.push(`${bound(fact.claim)} (${provenanceOf(fact)}).`);
   }
-  if (unattributed.length > 0) {
-    // Unknown provenance does not establish who said it, and naming a source
-    // this does not know would invent one.
-    lines.push(`Recorded with no stated source: ${list(unattributed)}.`);
+  if (ordered.length > shown.length) {
+    // Said rather than silently dropped, so nobody reads the list as complete.
+    lines.push(
+      `${String(ordered.length - shown.length)} further recorded claims are not shown here.`
+    );
   }
   if (facts.length === 0) {
     lines.push("There is no recorded evidence of what the work achieved.");
@@ -96,9 +129,13 @@ export function completionReportText(cohortId: string): string | undefined {
  * reach the user, which is the whole point -- the production failure was a
  * message that kept its words and dropped the facts.
  *
- * Returns the model's text unchanged when the cohort has nothing recorded, and
- * when the model already reported the facts itself. Callers only reach this
- * when a report is owed; an ordinary turn never gets here.
+ * Two things it refuses to assume. That a report appearing anywhere in the
+ * model's text will be seen: the channel strips artifact image markdown before
+ * sending, so a report hidden in an image reference reaches nobody, and the
+ * check runs against the stripped text. And that a longer message is always
+ * deliverable: text is capped at both ends, so the model's own words are
+ * shortened to make room rather than letting the send be rejected after the
+ * obligation was already bound.
  */
 export function reportWithRecordedFacts(
   cohortId: string,
@@ -106,7 +143,22 @@ export function reportWithRecordedFacts(
 ): string {
   const report = completionReportText(cohortId);
   if (report === undefined || report.length === 0) return modelText;
+
   const written = modelText.trim();
-  if (written.includes(report)) return modelText;
-  return written.length === 0 ? report : `${written}\n\n${report}`;
+  // Checked against what survives the channel, not against what the model sent.
+  if (stripImageArtifactMarkdownReferences(written).includes(report)) {
+    return modelText;
+  }
+  if (written.length === 0) return report.slice(0, maximumMessageLength);
+
+  const separator = "\n\n";
+  const room = maximumMessageLength - report.length - separator.length;
+  if (room <= 0) {
+    // The records alone fill the message. Carrying them is the obligation; the
+    // model's words are what gives way.
+    return report.slice(0, maximumMessageLength);
+  }
+  const kept =
+    written.length <= room ? written : `${written.slice(0, room - 1)}…`;
+  return `${kept}${separator}${report}`;
 }
