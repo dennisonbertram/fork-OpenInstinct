@@ -1,10 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type {
+  claimCompletionReportPart,
+  markAccepted,
+  markProviderAttempted,
+  markUnconfirmed,
+} from "@/db/services/completion-report-attempts";
+
+// Typed against the owning service so a signature change here is a type error,
+// and so the recorded call arguments need no assertion to read.
 const service = vi.hoisted(() => ({
-  accepted: vi.fn(),
-  attempted: vi.fn(),
-  claim: vi.fn(),
-  unconfirmed: vi.fn(),
+  accepted: vi.fn<typeof markAccepted>(),
+  attempted: vi.fn<typeof markProviderAttempted>(),
+  claim: vi.fn<typeof claimCompletionReportPart>(),
+  unconfirmed: vi.fn<typeof markUnconfirmed>(),
 }));
 
 vi.mock("@/db/services/completion-report-attempts", () => ({
@@ -64,8 +73,7 @@ describe("permitReportDispatch", () => {
     expect(permission.kind).toBe("may_dispatch");
     // The ordering that matters: the durable record of intent exists before the
     // caller is told it may call a provider.
-    expect(service.attempted).toHaveBeenCalledOnce();
-    expect(service.attempted).toHaveBeenCalledWith(
+    expect(service.attempted).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         id: heldClaim.id,
         leaseOwner: "owner-a",
@@ -116,11 +124,8 @@ describe("permitReportDispatch", () => {
 
     await permitReportDispatch(request());
 
-    const passed = service.claim.mock.calls[0]?.[0] as {
-      key: Record<string, unknown>;
-      id: string;
-    };
-    expect(passed.key).toEqual({
+    const passed = service.claim.mock.calls[0]?.[0];
+    expect(passed?.key).toEqual({
       cohortId: "turn_1",
       part: "text",
       reportRevision: 0,
@@ -128,7 +133,7 @@ describe("permitReportDispatch", () => {
       workspaceId: "workspace-1",
     });
     // The row id may be anything unique; identity is the key above.
-    expect(passed.id).toEqual(expect.any(String));
+    expect(passed?.id).toEqual(expect.any(String));
   });
 });
 
