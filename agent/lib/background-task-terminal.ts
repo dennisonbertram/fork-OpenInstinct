@@ -1,4 +1,7 @@
-import { readBackgroundTaskTerminals } from "eve/context";
+import {
+  readBackgroundTaskMembers,
+  readBackgroundTaskTerminals,
+} from "eve/context";
 import { z } from "zod";
 
 export interface BackgroundTaskTerminalRecord {
@@ -74,4 +77,52 @@ export function backgroundTaskTerminals(expect?: {
   }
 
   return records;
+}
+
+export interface BackgroundTaskMember {
+  taskId: string;
+  parentTurnId: string;
+  workerName: string;
+  /** False while the task is still running; its result is not yet knowable. */
+  settled: boolean;
+}
+
+const backgroundTaskMemberSchema = z.object({
+  taskId: z.string().min(1),
+  parentTurnId: z.string().min(1),
+  workerName: z.string().min(1),
+  settled: z.boolean(),
+});
+
+/**
+ * Every background task this root session owns, settled or still running.
+ *
+ * Membership answers a different question from evidence: a cohort owes one
+ * summary when its last member settles, so the root must be able to see a
+ * sibling that has not finished. A member record asserts only that a task
+ * exists — never anything about its result.
+ */
+export function backgroundTaskMembers(expect?: {
+  parentTurnId?: string;
+}): readonly BackgroundTaskMember[] {
+  const seen = new Set<string>();
+  const members: BackgroundTaskMember[] = [];
+
+  for (const raw of readBackgroundTaskMembers()) {
+    const parsed = backgroundTaskMemberSchema.safeParse(raw);
+    if (!parsed.success) continue;
+    const member = parsed.data;
+
+    if (
+      expect?.parentTurnId !== undefined &&
+      member.parentTurnId !== expect.parentTurnId
+    )
+      continue;
+    if (seen.has(member.taskId)) continue;
+    seen.add(member.taskId);
+
+    members.push(member);
+  }
+
+  return members;
 }

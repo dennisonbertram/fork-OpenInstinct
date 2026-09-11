@@ -71,6 +71,7 @@ describe("Eve patch boundary", () => {
     expect(patch).toContain("requestTurnCompletion");
     expect(patch).toContain("consumeTurnCompletionRequest");
     expect(patch).toContain("readBackgroundTaskTerminals");
+    expect(patch).toContain("readBackgroundTaskMembers");
     expect(patch).toContain("setSessionTaskTerminals(l,c.state)");
     expect(patch).not.toContain("diff --git a/package.json");
   });
@@ -84,6 +85,9 @@ describe("Eve patch boundary", () => {
     // The projection must never publish the private task inbox routing
     // credential, and it must not rewrite the runtime's cohort instructions.
     expect(projection).not.toContain("taskInboxToken");
+    // A member record says only that a task exists and whether it settled; it
+    // must never carry a result or a child identity.
+    expect(projection).toContain("settled:e.terminalView!==void 0");
     expect(patch).not.toContain("TASK_DELIVERY_SETTLED_INSTRUCTION");
     expect(patch).not.toContain("TASK_DELIVERY_PENDING_INSTRUCTION");
   });
