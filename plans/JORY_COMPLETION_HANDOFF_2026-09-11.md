@@ -252,6 +252,55 @@ check is. That is a product decision.
 
 **A decision on #136** — sequencing it unblocks #165.
 
+## The browser gate: what is actually blocking it
+
+Plan 009 step 3 needs a settled worker cohort in the end-to-end environment,
+and the obstacle turned out to be structural rather than a matter of effort. It
+was worth finding out by building the thing rather than by reasoning about it.
+
+The Playwright harness itself works. `tests/e2e/` already runs the real app with
+`EVAL_CONTRACT_FIXTURE=1` and `KERNEL_API_KEY` set, and a journey spec drives it
+end to end. Use `PLAYWRIGHT_PORT` if something already holds 3000.
+
+Three routes are closed:
+
+**The mount harness runs its own agent.** `evals/contract/mount-harness/agent/`
+is a separate minimal agent, not Jory's, so a contract eval cannot exercise the
+real root delegating to the real worker.
+
+**A subagent's model cannot be swapped inside its resolver.** Attempting it
+produced, at runtime: `Dynamic model selection returned a provider object, but
+durable model selections must be serializable.` The subagent is then omitted
+from the model-visible surface entirely, silently. This was merged as #206 and
+reverted in #208.
+
+**`step.started` is not available to fix it.** The runtime error suggests that
+resolver, but `node_modules/eve/docs/subagents/index.mdx` says resolvers run at
+`session.started` or `turn.started` and "step.started is not supported for
+subagents". The root works because it is not a subagent.
+
+One route remains open, and it has a real cost:
+
+**A static agent config may hold a direct provider.**
+`node_modules/eve/docs/agent-config.md` says a config containing a
+direct-provider `LanguageModel` "remains a runtime entry because eve must
+resolve that authored value while the agent runs". The serialization constraint
+applies to configs a _resolver returns_, not to authored static ones. So a
+browser-agent whose model is set statically could hold the fixture.
+
+The cost is that `agent/subagents/browser-agent/agent.ts` currently builds its
+`defineAgent` inside a `turn.started` resolver in order to gate the worker by
+mode through `resolveModeValue`, and `model` is required in that returned
+config. Taking the model out means restructuring how the worker is defined and
+moving the mode gating somewhere else -- a change to production delegation made
+to suit a test. That is a design decision, not a mechanical edit, and it should
+be made deliberately rather than at the end of a long session.
+
+If that restructure is unattractive, the other direction worth considering is
+settling a cohort in end-to-end without a live worker at all. Note that Plan 009
+step 1 forbids fabricating event state in runtime source, so a test-only route
+that admits a synthetic task is not a way around this.
+
 ## Exact next steps
 
 1. **Do not reactivate until the browser journey exists.** Forcing was switched
