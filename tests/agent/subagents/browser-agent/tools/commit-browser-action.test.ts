@@ -282,6 +282,14 @@ describe("typed browser commit boundary", () => {
     });
     expect(JSON.stringify(result)).not.toContain("vault-sentinel");
     expect(JSON.stringify(result)).not.toContain("secret.example");
+
+    // The receipt names what was authorised, so a later answer resuming this
+    // request against different terms can be refused. It is a digest, so it
+    // cannot carry the terms themselves back out.
+    expect(JSON.stringify(result)).toMatch(
+      /"approval_fingerprint":"[a-f0-9]{64}"/u
+    );
+    expect(JSON.stringify(result)).not.toContain("vault-candidate");
   });
 
   it("rejects a ref bound to another frame before any browser execution", async () => {
