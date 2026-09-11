@@ -20,7 +20,7 @@ import {
  */
 
 /** One physical effect of one report. A multi-part report claims each separately. */
-type ReportPart = "text" | "attachment" | "media-upload" | "media-send";
+export type ReportPart = "text" | "attachment" | "media-upload" | "media-send";
 
 export interface ReportPartIdentity {
   readonly workspaceId: string;
