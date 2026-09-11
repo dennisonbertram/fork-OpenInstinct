@@ -9,7 +9,10 @@ import {
   type BackgroundTaskTerminal,
 } from "../../node_modules/eve/dist/src/tasks/terminal-projection.js";
 import type { SessionStateMap } from "../../node_modules/eve/dist/src/harness/types.js";
-import { backgroundTaskTerminals } from "../../agent/lib/background-task-terminal";
+import {
+  backgroundTaskMembers,
+  backgroundTaskTerminals,
+} from "../../agent/lib/background-task-terminal";
 
 const subagentMetadata = {
   agentId: "browser-agent",
@@ -386,5 +389,90 @@ describe("backgroundTaskTerminals", () => {
         output: { ok: true },
       },
     ]);
+  });
+});
+
+describe("backgroundTaskMembers", () => {
+  it("TM-01: enumerates a pending sibling alongside a settled task", () => {
+    const state = {
+      "eve.tasks": {
+        tasks: [
+          indexEntry({
+            taskId: "task_settled",
+            terminalView: completedView(
+              "task_settled",
+              { ok: true },
+              {
+                childSessionId: "session_child",
+              }
+            ),
+          }),
+          indexEntry({ taskId: "task_pending" }),
+        ],
+      },
+    };
+
+    const context = new ContextContainer();
+    setSessionTaskTerminals(context, state);
+    const members = contextStorage.run(context, () => backgroundTaskMembers());
+
+    // A cohort owes one summary only when its LAST member settles, so the root
+    // must be able to see that task_pending has not finished.
+    expect(members).toEqual([
+      {
+        taskId: "task_settled",
+        parentTurnId: "turn_1",
+        workerName: "browser",
+        settled: true,
+      },
+      {
+        taskId: "task_pending",
+        parentTurnId: "turn_1",
+        workerName: "browser",
+        settled: false,
+      },
+    ]);
+  });
+
+  it("TM-02: filters members to one parent turn", () => {
+    const state = {
+      "eve.tasks": {
+        tasks: [
+          indexEntry({ taskId: "from_turn_1", createdByTurnId: "turn_1" }),
+          indexEntry({ taskId: "from_turn_2", createdByTurnId: "turn_2" }),
+        ],
+      },
+    };
+
+    const context = new ContextContainer();
+    setSessionTaskTerminals(context, state);
+    const members = contextStorage.run(context, () =>
+      backgroundTaskMembers({ parentTurnId: "turn_2" })
+    );
+
+    expect(members.map((member) => member.taskId)).toEqual(["from_turn_2"]);
+  });
+
+  it("TM-03: a member record carries no result and no private routing token", () => {
+    const state = {
+      "eve.tasks": {
+        tasks: [
+          indexEntry({
+            taskId: "task_settled",
+            terminalView: completedView("task_settled", {
+              secretish: "result payload",
+            }),
+          }),
+        ],
+      },
+    };
+
+    const context = new ContextContainer();
+    setSessionTaskTerminals(context, state);
+    const members = contextStorage.run(context, () => backgroundTaskMembers());
+
+    const serialized = JSON.stringify(members);
+    expect(serialized).not.toContain("result payload");
+    expect(serialized).not.toContain("private-routing-credential");
   });
 });

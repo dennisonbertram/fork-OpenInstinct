@@ -75,3 +75,30 @@ export function backgroundTaskTerminals(expect?: {
 
   return records;
 }
+
+export interface BackgroundTaskMember {
+  taskId: string;
+  parentTurnId: string;
+  workerName: string;
+  /** False while the task is still running; its result is not yet knowable. */
+  settled: boolean;
+}
+
+/**
+ * Every background task this root session owns, settled or still running.
+ *
+ * Membership answers a different question from evidence: a cohort owes one
+ * summary when its last member settles, so the root must be able to see a
+ * sibling that has not finished. A member record asserts only that a task
+ * exists — never anything about its result.
+ */
+export function backgroundTaskMembers(expect?: {
+  parentTurnId?: string;
+}): readonly BackgroundTaskMember[] {
+  return backgroundTaskTerminals(expect).map((terminal) => ({
+    taskId: terminal.taskId,
+    parentTurnId: terminal.parentTurnId,
+    workerName: terminal.workerName,
+    settled: true,
+  }));
+}
