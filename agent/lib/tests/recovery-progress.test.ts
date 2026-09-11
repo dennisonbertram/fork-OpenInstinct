@@ -300,3 +300,69 @@ describe("recoveryProgress", () => {
     expect(progress.tasksSpent).toBe(0);
   });
 });
+
+describe("a cancelled objective", () => {
+  it("RP-10: a cancellation after a dispatch receipt is reported as uncertain, never rolled back", () => {
+    admit("task_a", "turn_1");
+    settle("task_a", "turn_1", "cancelled", [
+      { claim: "Dispatched the submission", evidence: "executor_receipt" },
+    ]);
+    cancelCohort("turn_1");
+
+    const progress = recoveryProgress({ turnId: "turn_1" });
+
+    expect(progress.disposition).toBe("cancelled_after_dispatch");
+    expect(progress.nextStep).toBe("report_uncertain");
+    // The receipt survives cancellation: it is the only thing that says an
+    // effect may exist in the world.
+    expect(progress.verifiedCheckpoints).toEqual(["Dispatched the submission"]);
+    expect(progress.unknownRemainder.join(" ")).not.toMatch(
+      /rolled back|reversed|undone|cancelled successfully/i
+    );
+  });
+
+  it("RP-11: a cancellation with no recorded dispatch says exactly that, and no more", () => {
+    admit("task_a", "turn_1");
+    settle("task_a", "turn_1", "cancelled", []);
+    cancelCohort("turn_1");
+
+    const progress = recoveryProgress({ turnId: "turn_1" });
+
+    expect(progress.disposition).toBe("cancelled_with_no_recorded_dispatch");
+    // Named for what the records show, not for what happened. An absent receipt
+    // is not proof that nothing was dispatched, so the account must not claim
+    // the action was prevented.
+    expect(progress.unknownRemainder.join(" ")).toMatch(
+      /no recorded|not the same as proof|nothing recorded/i
+    );
+    expect(progress.unknownRemainder.join(" ")).not.toMatch(
+      /prevented|nothing happened|rolled back|did not reach/i
+    );
+  });
+
+  it("RP-12: cancelling a cohort cannot turn a confirmed completion into a cancellation", () => {
+    // The work finished and was corroborated before the cancellation arrived.
+    // Relabelling it would erase an outcome the records actually establish.
+    admit("task_a", "turn_1");
+    settle("task_a", "turn_1", "completed", [
+      { claim: "Submitted the order", evidence: "observed" },
+    ]);
+    cancelCohort("turn_1");
+
+    const progress = recoveryProgress({ turnId: "turn_1" });
+
+    expect(progress.disposition).toBe("cancelled_after_dispatch");
+    expect(progress.verifiedCheckpoints).toEqual(["Submitted the order"]);
+  });
+
+  it("RP-13: a cohort that was never cancelled is unaffected", () => {
+    admit("task_a", "turn_1");
+    settle("task_a", "turn_1", "completed", [
+      { claim: "Submitted the order", evidence: "observed" },
+    ]);
+
+    expect(recoveryProgress({ turnId: "turn_1" }).disposition).toBe(
+      "verified_success"
+    );
+  });
+});
