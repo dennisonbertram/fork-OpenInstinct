@@ -34,8 +34,16 @@ beforeEach(() => {
   for (const reset of state.resets) reset();
 });
 
+// turnId is the cohort key (the parent turn that started the work);
+// objectiveRevision is the record's own label for which objective it serves.
+// They are deliberately distinct strings here: setting them equal is exactly
+// the fixture bug that let the same conflation hide in situationView.
 function admit(taskId: string, turnId: string) {
-  admitTask({ objectiveRevision: turnId, parentTurnId: turnId, taskId });
+  admitTask({
+    objectiveRevision: `objective_of_${turnId}`,
+    parentTurnId: turnId,
+    taskId,
+  });
 }
 
 function settle(
@@ -57,6 +65,24 @@ function settle(
 }
 
 describe("recoveryProgress", () => {
+  it("RP-09: the cohort is found by the turn that started the work", () => {
+    // The records key a cohort by its parent turn and carry the objective
+    // revision as a separate label. Looking the tasks up by the revision finds
+    // nothing whenever the two differ, and an empty task list reads as
+    // "awaiting" -- so a root whose work had finished and gone wrong would be
+    // told to keep waiting, with no report and no question to the user.
+    admit("task_a", "turn_1");
+    settle("task_a", "turn_1", "failed", [
+      { claim: "The form rejected the address", evidence: "observed" },
+    ]);
+
+    const progress = recoveryProgress({ turnId: "turn_1" });
+
+    expect(progress.disposition).not.toBe("awaiting");
+    expect(progress.nextStep).not.toBe("wait");
+    expect(progress.tasksSpent).toBe(1);
+  });
+
   it("RP-01: an uncertain write is never offered a retry", () => {
     // The worker got a receipt for a dispatch and then failed. The effect may
     // already have reached the world, so repeating it is the one thing that
@@ -70,7 +96,7 @@ describe("recoveryProgress", () => {
       },
     ]);
 
-    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+    const progress = recoveryProgress({ turnId: "turn_1" });
 
     expect(progress.disposition).toBe("uncertain_effect");
     expect(progress.nextStep).toBe("report_uncertain");
@@ -86,7 +112,7 @@ describe("recoveryProgress", () => {
     ]);
     cancelCohort("turn_1");
 
-    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+    const progress = recoveryProgress({ turnId: "turn_1" });
 
     // Cancelling does not unsend anything, so this cannot be reported as
     // "cancelled, nothing happened".
@@ -102,7 +128,7 @@ describe("recoveryProgress", () => {
     ]);
     cancelCohort("turn_1");
 
-    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+    const progress = recoveryProgress({ turnId: "turn_1" });
 
     // The work finished before the cancellation arrived. Calling that uncertain
     // would be its own untruth; what cancellation forbids is claiming rollback.
@@ -124,7 +150,7 @@ describe("recoveryProgress", () => {
       { claim: "The report page never loaded", evidence: "observed" },
     ]);
 
-    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+    const progress = recoveryProgress({ turnId: "turn_1" });
 
     // task_stalled never dispatched anything, so nothing here is uncertain.
     expect(progress.disposition).toBe("stopped_incomplete");
@@ -137,7 +163,7 @@ describe("recoveryProgress", () => {
       { claim: "Dispatched the request", evidence: "executor_receipt" },
     ]);
 
-    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+    const progress = recoveryProgress({ turnId: "turn_1" });
 
     expect(progress.disposition).toBe("uncertain_effect");
     const said = progress.unknownRemainder.join(" ");
@@ -153,7 +179,7 @@ describe("recoveryProgress", () => {
       { claim: "The login form never appeared", evidence: "observed" },
     ]);
 
-    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+    const progress = recoveryProgress({ turnId: "turn_1" });
 
     expect(progress.disposition).toBe("stopped_incomplete");
     // No automatic retry: whether this is worth another attempt is a judgement
@@ -177,7 +203,7 @@ describe("recoveryProgress", () => {
       { claim: "The second form never loaded", evidence: "observed" },
     ]);
 
-    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+    const progress = recoveryProgress({ turnId: "turn_1" });
     const said = progress.unknownRemainder.join(" ");
 
     expect(progress.disposition).toBe("stopped_incomplete");
@@ -191,7 +217,7 @@ describe("recoveryProgress", () => {
     admit("task_bare", "turn_1");
     settle("task_bare", "turn_1", "completed", []);
 
-    const bare = recoveryProgress({ objectiveRevision: "turn_1" });
+    const bare = recoveryProgress({ turnId: "turn_1" });
 
     // "Unverified" would imply the worker vouched for it. Nothing did.
     expect(bare.disposition).toBe("settled_without_evidence");
@@ -204,7 +230,7 @@ describe("recoveryProgress", () => {
       { claim: "Something happened", evidence: "unknown" },
     ]);
 
-    expect(recoveryProgress({ objectiveRevision: "turn_1" }).disposition).toBe(
+    expect(recoveryProgress({ turnId: "turn_1" }).disposition).toBe(
       "settled_without_evidence"
     );
   });
@@ -215,7 +241,7 @@ describe("recoveryProgress", () => {
       { claim: "The receipt page shows the order", evidence: "observed" },
     ]);
 
-    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+    const progress = recoveryProgress({ turnId: "turn_1" });
 
     expect(progress.disposition).toBe("verified_success");
     expect(progress.nextStep).toBe("report");
@@ -228,7 +254,7 @@ describe("recoveryProgress", () => {
       { claim: "I submitted it successfully", evidence: "worker_assertion" },
     ]);
 
-    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+    const progress = recoveryProgress({ turnId: "turn_1" });
 
     expect(progress.disposition).toBe("settled_unverified");
     expect(progress.nextStep).toBe("report");
@@ -246,7 +272,7 @@ describe("recoveryProgress", () => {
       { claim: "Submitted the form", evidence: "executor_receipt" },
     ]);
 
-    const progress = recoveryProgress({ objectiveRevision: "turn_1" });
+    const progress = recoveryProgress({ turnId: "turn_1" });
 
     expect(progress.disposition).toBe("awaiting");
     expect(progress.nextStep).toBe("wait");
@@ -264,13 +290,11 @@ describe("recoveryProgress", () => {
       { claim: "Checked the other", evidence: "observed" },
     ]);
 
-    expect(recoveryProgress({ objectiveRevision: "turn_1" }).tasksSpent).toBe(
-      2
-    );
+    expect(recoveryProgress({ turnId: "turn_1" }).tasksSpent).toBe(2);
   });
 
-  it("RP-08: an objective that started no work has nothing to recover", () => {
-    const progress = recoveryProgress({ objectiveRevision: "turn_quiet" });
+  it("RP-08: a turn that started no work has nothing to recover", () => {
+    const progress = recoveryProgress({ turnId: "turn_quiet" });
 
     expect(progress.disposition).toBe("awaiting");
     expect(progress.tasksSpent).toBe(0);
