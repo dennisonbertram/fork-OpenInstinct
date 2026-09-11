@@ -2,6 +2,7 @@ import { resolveBrowserActionTarget } from "../lib/browser-action-targets";
 import { defineTool } from "eve/tools";
 import { always } from "eve/tools/approval";
 import { z } from "zod";
+import { materialTermsFingerprint } from "@/agent/lib/approval-identity";
 import { requireOwnedBrowserSession } from "@/agent/subagents/browser-agent/lib/owned-browser";
 import { requireWorkerScope } from "@/agent/subagents/browser-agent/lib/access";
 import { readVaultItem } from "@/db/services/vault";
@@ -231,6 +232,16 @@ export default defineTool({
     return {
       observation: observation.success ? observation.data : undefined,
       action: input.action,
+      // The identity of what was actually authorised, so the root can refuse a
+      // later answer that resumes this request against different terms. Derived
+      // from the approved fields only; payment and vault values are excluded.
+      approval_fingerprint: materialTermsFingerprint({
+        action: input.action,
+        origin: input.origin,
+        target_ref: input.target_ref,
+        target_token: input.target_token,
+        terms: input.terms,
+      }),
       frame_id: target.frameId,
       origin: currentOrigin,
       status: result.details.isError ? "uncertain" : "dispatched",
