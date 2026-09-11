@@ -54,7 +54,7 @@ describe("init.sh", () => {
     expect(await readFile(join(directory, "commands.log"), "utf8")).toBe(
       [
         "pnpm install --frozen-lockfile",
-        "pnpm exec eve link --non-interactive --project open-instinct --team dennisons-projects",
+        "pnpm exec eve link --non-interactive --project jory --team dennisons-projects",
         "",
       ].join("\n")
     );
@@ -124,7 +124,7 @@ describe("init.sh", () => {
     expect(result.code).toBe(0);
     expect(result.stdout).not.toContain("KERNEL_API_KEY=");
     expect(await readFile(join(directory, "commands.log"), "utf8")).toBe(
-      "pnpm exec eve link --non-interactive --project open-instinct --team dennisons-projects\n"
+      "pnpm exec eve link --non-interactive --project jory --team dennisons-projects\n"
     );
   });
 

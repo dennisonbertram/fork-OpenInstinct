@@ -26,6 +26,7 @@ import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AgentMessage } from "./message";
+import { MessageAvatar } from "./message/avatar";
 import type { ChatAgent } from "../chat-agent";
 import styles from "./typing-indicator.module.css";
 
@@ -193,24 +194,32 @@ export function ChatConversation({
         {traceView === "imessage" &&
         !errorMessage &&
         (isBusy || hasPendingWorker) ? (
-          <output
-            className="flex w-fit items-center gap-1.5 rounded-bubble rounded-bl-md bg-bubble-assistant px-5 py-4 text-muted-foreground"
-            data-slot="typing-indicator"
-          >
-            <span className="sr-only">
-              {hasPendingWorker
-                ? "Working in the browser…"
-                : "Jory is working…"}
-            </span>
-            {[0, 1, 2].map((dot) => (
-              <span
-                aria-hidden="true"
-                className={styles.dot}
-                data-slot="typing-dot"
-                key={dot}
-              />
-            ))}
-          </output>
+          <div className="flex items-start gap-2">
+            <MessageAvatar kind="assistant" />
+            <div className="flex max-w-[calc(100%-2.75rem)] min-w-0 flex-col gap-2">
+              <span className="pl-1 type-caption text-muted-foreground">
+                Jory
+              </span>
+              <output
+                className="flex w-fit items-center gap-1.5 rounded-bubble rounded-bl-md bg-bubble-assistant px-5 py-4 text-muted-foreground"
+                data-slot="typing-indicator"
+              >
+                <span className="sr-only">
+                  {hasPendingWorker
+                    ? "Working in the browser…"
+                    : "Jory is working…"}
+                </span>
+                {[0, 1, 2].map((dot) => (
+                  <span
+                    aria-hidden="true"
+                    className={styles.dot}
+                    data-slot="typing-dot"
+                    key={dot}
+                  />
+                ))}
+              </output>
+            </div>
+          </div>
         ) : null}
         {traceView === "imessage" && errorMessage ? (
           <Alert variant="destructive">
@@ -268,12 +277,18 @@ function ErrorMessage({ message }: { readonly message: string }) {
 function PendingThinking() {
   return (
     <Message aria-live="polite" from="assistant">
-      <MessageContent>
-        <div className="type-supporting-body mb-4 flex w-full items-center gap-2 text-muted-foreground">
-          <BrainIcon className="size-4" />
-          <Shimmer duration={1}>Thinking</Shimmer>
+      <div className="flex w-full items-start gap-2">
+        <MessageAvatar kind="assistant" />
+        <div className="flex max-w-[calc(100%-2.75rem)] min-w-0 flex-col gap-2">
+          <span className="pl-1 type-caption text-muted-foreground">Jory</span>
+          <MessageContent>
+            <div className="type-supporting-body mb-4 flex w-full items-center gap-2 text-muted-foreground">
+              <BrainIcon className="size-4" />
+              <Shimmer duration={1}>Thinking</Shimmer>
+            </div>
+          </MessageContent>
         </div>
-      </MessageContent>
+      </div>
     </Message>
   );
 }

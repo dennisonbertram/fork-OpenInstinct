@@ -6,6 +6,34 @@ import { ChatConversation } from ".";
 import type { ChatAgent } from "../chat-agent";
 
 describe("chat conversation", () => {
+  it("keeps an immediately submitted user bubble ahead of named Jory progress", () => {
+    const agent = {
+      data: {
+        messages: [
+          message("optimistic:submission:user", "Send this immediately"),
+        ],
+      },
+      error: undefined,
+      events: [],
+      respond: async () => undefined,
+      status: "submitted",
+    } satisfies Pick<
+      ChatAgent,
+      "data" | "error" | "events" | "respond" | "status"
+    >;
+
+    const markup = renderToStaticMarkup(
+      <ChatConversation agent={agent} traceView="imessage" />
+    );
+
+    expect(markup.indexOf("Send this immediately")).toBeLessThan(
+      markup.indexOf('aria-label="Jory"')
+    );
+    expect(markup).toContain('data-slot="typing-indicator"');
+    expect(markup).toContain('aria-label="Jory"');
+    expect(markup).toContain("Jory</span>");
+  });
+
   it.each(["submitted", "streaming"] as const)(
     "shows quiet user-facing progress while %s without exposing internal text",
     (status) => {

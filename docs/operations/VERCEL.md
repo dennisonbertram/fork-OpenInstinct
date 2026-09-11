@@ -56,6 +56,14 @@ known-good reference, not an eternal assertion:
 | Linq connector UID | `linq/open-instinct-line`                                |
 | Linq trigger       | `/eve/v1/linq`                                           |
 
+The project name in this verification table is the historical name recorded
+on 2026-08-29. Vercel rename verification completed at
+`2026-09-11T01:39:33Z` (2026-09-10 EDT): project ID
+`prj_GIIYS7WKKuY0400OCVVFntPw1H0r` is now named `jory`, while the canonical
+domain `open-instinct-ashy.vercel.app` and deployment
+`dpl_GDYY9CgFLKqawsxfz5RaQDtfVtPT` remain intact. The verification also
+observed health `200` and an unsigned SendBlue webhook response `401`.
+
 The health endpoint returned `200` with Eve status `ready`, the sign-in page
 rendered the phone form, the connector existed in the Vercel Connect registry,
 and Vercel reported no recent error logs. No live OTP/message is implied by
@@ -106,7 +114,7 @@ Signing in grants access; it does not require manual project configuration.
 2. installs the locked dependency graph;
 3. creates a private `.env.local` from the template only when none exists;
 4. when that file is fresh or still identical to the template, links the
-   canonical `open-instinct` project in team `dennisons-projects` through Eve
+   canonical `jory` project in team `dennisons-projects` through Eve
    and pulls its development environment;
 5. requires `KERNEL_API_KEY` plus either `AI_GATEWAY_API_KEY` or
    `VERCEL_OIDC_TOKEN` before starting infrastructure;
@@ -421,10 +429,10 @@ environment, branch-scoped to `pilot-sendblue`:
 
 ```bash
 # OPERATOR ACTION: enter each value at its interactive prompt.
-pnpm exec vercel env add PHONE_OTP_PROVIDER preview --git-branch pilot-sendblue --project open-instinct --scope dennisons-projects --no-sensitive
-pnpm exec vercel env add SENDBLUE_API_KEY_ID preview --git-branch pilot-sendblue --project open-instinct --scope dennisons-projects --sensitive
-pnpm exec vercel env add SENDBLUE_API_SECRET_KEY preview --git-branch pilot-sendblue --project open-instinct --scope dennisons-projects --sensitive
-pnpm exec vercel env add SENDBLUE_FROM_NUMBER preview --git-branch pilot-sendblue --project open-instinct --scope dennisons-projects --sensitive
+pnpm exec vercel env add PHONE_OTP_PROVIDER preview --git-branch pilot-sendblue --project jory --scope dennisons-projects --no-sensitive
+pnpm exec vercel env add SENDBLUE_API_KEY_ID preview --git-branch pilot-sendblue --project jory --scope dennisons-projects --sensitive
+pnpm exec vercel env add SENDBLUE_API_SECRET_KEY preview --git-branch pilot-sendblue --project jory --scope dennisons-projects --sensitive
+pnpm exec vercel env add SENDBLUE_FROM_NUMBER preview --git-branch pilot-sendblue --project jory --scope dennisons-projects --sensitive
 ```
 
 For an explicitly approved Production webchat release, repeat the provider
@@ -435,10 +443,10 @@ database and canonical
 
 ```bash
 # OPERATOR ACTION: enter each value at its interactive prompt.
-pnpm exec vercel env add PHONE_OTP_PROVIDER production --project open-instinct --scope dennisons-projects --no-sensitive
-pnpm exec vercel env add SENDBLUE_API_KEY_ID production --project open-instinct --scope dennisons-projects --sensitive
-pnpm exec vercel env add SENDBLUE_API_SECRET_KEY production --project open-instinct --scope dennisons-projects --sensitive
-pnpm exec vercel env add SENDBLUE_FROM_NUMBER production --project open-instinct --scope dennisons-projects --sensitive
+pnpm exec vercel env add PHONE_OTP_PROVIDER production --project jory --scope dennisons-projects --no-sensitive
+pnpm exec vercel env add SENDBLUE_API_KEY_ID production --project jory --scope dennisons-projects --sensitive
+pnpm exec vercel env add SENDBLUE_API_SECRET_KEY production --project jory --scope dennisons-projects --sensitive
+pnpm exec vercel env add SENDBLUE_FROM_NUMBER production --project jory --scope dennisons-projects --sensitive
 ```
 
 `SENDBLUE_FROM_NUMBER` is the registered SendBlue sending line for the account.
@@ -655,7 +663,7 @@ pnpm exec vercel connect attach <google-connector-uid> --project <vercel-project
 pnpm exec vercel env add GOOGLE_CONNECTOR_UID development
 
 # Refresh the local environment through the canonical startup path.
-pnpm exec eve link --non-interactive --project open-instinct --team dennisons-projects
+pnpm exec eve link --non-interactive --project jory --team dennisons-projects
 ```
 
 `./init.sh` only re-pulls the development environment when `.env.local` is

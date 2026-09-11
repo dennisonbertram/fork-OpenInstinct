@@ -10,6 +10,11 @@ import {
   type SendTurnOptions,
 } from "eve/client";
 import type { EveMessageData, UseEveAgentStatus } from "eve/react";
+import type {
+  ClientMessageFailedEvent,
+  ClientMessageSubmittedEvent,
+  EveAgentReducerEvent,
+} from "eve/react";
 import type { UserContent } from "ai";
 import {
   type Dispatch,
@@ -31,11 +36,20 @@ import type { ChatAgent } from "./chat-agent";
 const client = new Client({ host: "" });
 const messageReducer = defaultMessageReducer();
 
+interface MessageProjection {
+  readonly afterEventId?: string;
+  readonly event: ClientMessageFailedEvent | ClientMessageSubmittedEvent;
+  readonly receivedEventId?: string;
+}
+
 export function useSessionAgent(sessionId: string): ChatAgent {
   const [history, setHistory] = useState<SessionHistoryPage>();
   const [status, setStatus] = useState<UseEveAgentStatus>("resuming");
   const [error, setError] = useState<Error>();
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const [messageProjections, setMessageProjections] = useState<
+    readonly MessageProjection[]
+  >([]);
   const historyRef = useRef(history);
   const loadedSessionId = useRef<string | undefined>(undefined);
   const operationRef = useRef<Promise<void> | undefined>(undefined);
@@ -121,6 +135,9 @@ export function useSessionAgent(sessionId: string): ChatAgent {
         if (observedIds.has(event.meta.id)) continue;
         observedIds.add(event.meta.id);
         nextIndex += 1;
+        if (event.type === "message.received") {
+          confirmMessageProjection(setMessageProjections, event);
+        }
         appendSessionEvent(historyRef, setHistory, event, nextIndex);
         if (
           event.type === "authorization.required" &&
@@ -203,13 +220,26 @@ export function useSessionAgent(sessionId: string): ChatAgent {
         if (!current) throw new Error("The conversation is still loading.");
         if (!observerRunning.current)
           throw new Error("Reconnect the conversation before responding.");
+        setError(undefined);
+        const projection = createMessageProjection(
+          message,
+          current.events.at(-1)?.meta.id
+        );
+        appendMessageProjection(setMessageProjections, projection);
         const session = client.sessions.attach(sessionId, {
           streamIndex: current.endIndex,
         });
-        await session.send(message, {
-          ...options,
-          turnPolicy: "steer",
-        });
+        try {
+          await session.send(message, {
+            ...options,
+            turnPolicy: "steer",
+          });
+        } catch (cause) {
+          const failure = toError(cause);
+          failMessageProjection(setMessageProjections, projection, failure);
+          setError(failure);
+          throw cause;
+        }
         await activeOperation;
         return;
       }
@@ -221,6 +251,11 @@ export function useSessionAgent(sessionId: string): ChatAgent {
           throw new Error("Reconnect the conversation before responding.");
         setError(undefined);
         setStatus("submitted");
+        const projection = createMessageProjection(
+          message,
+          current.events.at(-1)?.meta.id
+        );
+        appendMessageProjection(setMessageProjections, projection);
         const session = client.sessions.attach(sessionId, {
           streamIndex: current.endIndex,
         });
@@ -240,6 +275,11 @@ export function useSessionAgent(sessionId: string): ChatAgent {
           await completion.promise;
           setStatus("ready");
         } catch (cause) {
+          failMessageProjection(
+            setMessageProjections,
+            projection,
+            toError(cause)
+          );
           setError(toError(cause));
           setStatus("error");
           throw cause;
@@ -330,11 +370,11 @@ export function useSessionAgent(sessionId: string): ChatAgent {
   const events = history?.events ?? emptyEvents;
   const data = useMemo<EveMessageData>(
     () =>
-      events.reduce(
+      messageProjectionEvents(events, messageProjections).reduce(
         (current, event) => messageReducer.reduce(current, event),
         messageReducer.initial()
       ),
-    [events]
+    [events, messageProjections]
   );
 
   return {
@@ -356,6 +396,141 @@ export function useSessionAgent(sessionId: string): ChatAgent {
 }
 
 const emptyEvents: readonly MessageStreamEvent[] = [];
+
+function createMessageProjection(
+  message: string | UserContent,
+  afterEventId?: string
+): MessageProjection {
+  return {
+    afterEventId,
+    event: {
+      data: {
+        createdAt: Date.now(),
+        message: summarizeUserContent(message),
+        submissionId: createSubmissionId(),
+      },
+      type: "client.message.submitted",
+    },
+  };
+}
+
+function appendMessageProjection(
+  setMessageProjections: Dispatch<SetStateAction<readonly MessageProjection[]>>,
+  projection: MessageProjection
+) {
+  setMessageProjections((current) => {
+    return [...current, projection];
+  });
+}
+
+function confirmMessageProjection(
+  setMessageProjections: Dispatch<SetStateAction<readonly MessageProjection[]>>,
+  event: MessageStreamEvent
+) {
+  setMessageProjections((current) => {
+    const index = current.findIndex(
+      (projection) =>
+        projection.event.type === "client.message.submitted" &&
+        projection.receivedEventId === undefined
+    );
+    if (index === -1) return current;
+    const projection = current[index];
+    if (!projection) return current;
+    const next = [
+      ...current.slice(0, index),
+      { ...projection, receivedEventId: event.meta.id },
+      ...current.slice(index + 1),
+    ];
+    return next;
+  });
+}
+
+function failMessageProjection(
+  setMessageProjections: Dispatch<SetStateAction<readonly MessageProjection[]>>,
+  projection: MessageProjection,
+  cause: Error
+) {
+  setMessageProjections((current) => {
+    const next = current.map((candidate) => {
+      if (
+        candidate.event.data.submissionId !==
+          projection.event.data.submissionId ||
+        candidate.receivedEventId !== undefined
+      )
+        return candidate;
+      const event: ClientMessageFailedEvent = {
+        data: {
+          createdAt: candidate.event.data.createdAt,
+          error: { message: cause.message },
+          message: candidate.event.data.message,
+          submissionId: candidate.event.data.submissionId,
+        },
+        type: "client.message.failed",
+      };
+      return {
+        ...candidate,
+        event,
+      };
+    });
+    return next;
+  });
+}
+
+export function messageProjectionEvents(
+  events: readonly MessageStreamEvent[],
+  projections: readonly MessageProjection[]
+): readonly EveAgentReducerEvent[] {
+  const receivedEventIds = new Set(
+    projections.flatMap((projection) =>
+      projection.receivedEventId === undefined
+        ? []
+        : [projection.receivedEventId]
+    )
+  );
+  const projectionsAfterEvent = new Map<
+    string | undefined,
+    MessageProjection[]
+  >();
+  for (const projection of projections) {
+    const current = projectionsAfterEvent.get(projection.afterEventId) ?? [];
+    current.push(projection);
+    projectionsAfterEvent.set(projection.afterEventId, current);
+  }
+  const projectionEvent = (projection: MessageProjection) =>
+    projection.receivedEventId === undefined
+      ? projection.event
+      : (events.find((event) => event.meta.id === projection.receivedEventId) ??
+        projection.event);
+  const result: EveAgentReducerEvent[] = [];
+  for (const projection of projectionsAfterEvent.get(undefined) ?? []) {
+    result.push(projectionEvent(projection));
+  }
+  for (const event of events) {
+    if (!receivedEventIds.has(event.meta.id)) result.push(event);
+    for (const projection of projectionsAfterEvent.get(event.meta.id) ?? []) {
+      result.push(projectionEvent(projection));
+    }
+  }
+  return result;
+}
+
+function summarizeUserContent(message: string | UserContent) {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Eve accepts either its string protocol form or structured user parts.
+  if (typeof message === "string") return message;
+  return message
+    .map((part) => {
+      if (part.type === "text") return part.text;
+      if (part.type === "file")
+        return part.filename ? `[file: ${part.filename}]` : "[file]";
+      return undefined;
+    })
+    .filter((part): part is string => part !== undefined)
+    .join("\n");
+}
+
+function createSubmissionId() {
+  return crypto.randomUUID();
+}
 
 function appendSessionEvent(
   historyRef: RefObject<SessionHistoryPage | undefined>,
