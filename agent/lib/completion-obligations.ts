@@ -362,6 +362,25 @@ export function beginCohortReport(
   return didBind;
 }
 
+/**
+ * The cohort whose report attempt is exactly this turn and call.
+ *
+ * Both parts must match. A result carrying another call's id belongs to another
+ * attempt, and settling this cohort from it would record an outcome this report
+ * never had.
+ */
+export function cohortForReportAttempt(
+  report: CohortReport
+): CohortRecord | undefined {
+  return completion
+    .get()
+    .cohorts.find(
+      (candidate) =>
+        candidate.report?.turnId === report.turnId &&
+        candidate.report.callId === report.callId
+    );
+}
+
 /** Records whether the channel accepted the bound report attempt. */
 export function settleCohortReport(cohortId: string, accepted: boolean): void {
   setPhase(cohortId, accepted ? "delivered" : "unconfirmed", {

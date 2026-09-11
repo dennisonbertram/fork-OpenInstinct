@@ -45,9 +45,7 @@ const context = {
   },
   messages: [],
 } satisfies DynamicResolveContext;
-async function tools(
-  resolveContext: DynamicResolveContext = context
-) {
+async function tools(resolveContext: DynamicResolveContext = context) {
   const resolve = messaging.events["step.started"];
   if (!resolve) throw new Error("Missing resolver");
   const group = await resolve({ data: { turnId: "turn_1" } }, resolveContext);
@@ -314,7 +312,9 @@ describe("the policy follows what is actually owed, not only the switch", () => 
     policy.owed.mockReturnValue(true);
     owedCohort("turn_1", "task_a");
 
-    const group = await tools();
+    // A provider channel, so the obligation is observable while acceptance is
+    // still outstanding rather than settled the moment the tool returns.
+    const group = await tools(providerContext);
     expect("react_to_message" in group).toBe(false);
 
     const text = "The upload finished; the log confirms it landed.";
@@ -377,7 +377,7 @@ describe("the policy follows what is actually owed, not only the switch", () => 
     owedCohort("turn_1", "task_a");
     owedCohort("turn_2", "task_b");
 
-    const group = await tools();
+    const group = await tools(providerContext);
     await group.send_message.execute(
       {
         final: true,
