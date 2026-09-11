@@ -1,5 +1,6 @@
 import { defineState, requestTurnCompletion } from "eve/context";
 import {
+  abandonBoundReport,
   cohortsForReportCall,
   settleCohortReport,
 } from "@/agent/lib/completion-obligations";
@@ -73,6 +74,21 @@ export function settleFinalDelivery(callId: string, accepted: boolean) {
   // later turn. A call id identifies one attempt, so this reaches exactly the
   // obligation this result is about and no other.
   settleBoundReport(callId, accepted);
+}
+
+/**
+ * Records that this turn's final send provably did not happen.
+ *
+ * Distinct from `settleFinalDelivery(callId, false)`, which means the send may
+ * have reached the user: this one is for a refusal that occurred before anything
+ * was dispatched, so the obligation goes back to owed and a later turn can
+ * answer it.
+ */
+export function abandonFinalDelivery(callId: string) {
+  finalDelivery.update((current) =>
+    current?.callId === callId && current.status === "pending" ? null : current
+  );
+  abandonBoundReport(callId);
 }
 
 /** Suppress an automatic fallback after a provider request may have reached it. */

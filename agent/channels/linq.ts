@@ -1,6 +1,7 @@
 import {
   finalDeliveryStatus,
   requestFinalDeliveryCompletion,
+  abandonFinalDelivery,
   settleFinalDelivery,
 } from "@/agent/lib/message-delivery";
 import { connectLinqCredentials } from "@vercel/connect/eve";
@@ -280,6 +281,9 @@ export const linqChannelConfig = {
       if (event.status === "completed" && message.success) {
         let accepted = false;
         let completed = false;
+        // Provably not sent, as distinct from possibly sent: a refusal that
+        // happened before anything was dispatched leaves the report owed.
+        let abandoned = false;
         try {
           const { thread } = context;
           if (!thread) {
@@ -486,18 +490,30 @@ export const linqChannelConfig = {
               }))
             )
               return;
+            // A part a prior attempt already delivered never reaches the post
+            // callback, so `accepted` would still be false and a report the
+            // records show was accepted would settle as never confirmed.
+            accepted = true;
           } catch (error) {
             if (
               error instanceof BudgetExceededError ||
               error instanceof WorkspaceNotOperableError
-            )
+            ) {
+              // The denial notice went out through the same callback as a real
+              // message, which marked the send accepted. Nothing was dispatched:
+              // the budget check runs first, so no part was claimed and the
+              // records did not leave. Settling as delivered here handed the user
+              // a usage-limit notice and cleared the obligation behind it.
+              abandoned = true;
               return;
+            }
             throw error;
           }
           await finalizeScheduledReportDelivery(session);
           completed = true;
         } finally {
-          settleFinalDelivery(event.result.callId, accepted);
+          if (abandoned) abandonFinalDelivery(event.result.callId);
+          else settleFinalDelivery(event.result.callId, accepted);
           if (completed && accepted && !scheduledReportFromSession(session)) {
             requestFinalDeliveryCompletion(
               event.result.callId,

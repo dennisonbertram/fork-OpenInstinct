@@ -470,6 +470,32 @@ export function cohortsForReportCall(callId: string): readonly CohortRecord[] {
     .cohorts.filter((candidate) => candidate.report?.callId === callId);
 }
 
+/**
+ * Returns every cohort this call bound to owing a report again.
+ *
+ * For the one case that knows the send never happened: the budget check rejects
+ * before anything is dispatched, so no part was claimed and no message left. The
+ * cohort must go back to owing a summary rather than be recorded as delivered
+ * (the user never got it) or as unconfirmed (that means a send may have arrived
+ * and must not be repeated, which would strand the obligation for good).
+ *
+ * Only for a caller that can prove nothing was dispatched. Anything uncertain
+ * belongs in `unconfirmed`, where it is never resent automatically.
+ */
+export function abandonBoundReport(callId: string): void {
+  for (const cohort of cohortsForReportCall(callId)) {
+    if (cohort.phase !== "delivery_pending") continue;
+    completion.update((current) => ({
+      ...current,
+      cohorts: current.cohorts.map((candidate) =>
+        candidate.cohortId === cohort.cohortId
+          ? { ...candidate, phase: "must_report" as const, report: undefined }
+          : candidate
+      ),
+    }));
+  }
+}
+
 /** Records whether the channel accepted the bound report attempt. */
 export function settleCohortReport(cohortId: string, accepted: boolean): void {
   setPhase(cohortId, accepted ? "delivered" : "unconfirmed", {
