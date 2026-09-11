@@ -35,6 +35,15 @@ import {
   hasSendblueWebhookSecret,
   validateSendblueInboundPayload,
 } from "@/agent/lib/sendblue/admission";
+import { maximumWorkerCompletionImages } from "@/lib/worker-completion";
+import {
+  prepareBrowserImageArtifactDelivery,
+  type BrowserImageArtifactFile,
+} from "@/agent/lib/browser-image-artifact/delivery";
+import {
+  extractImageArtifactMarkdownReferences,
+  stripImageArtifactMarkdownReferences,
+} from "@/agent/lib/browser-image-artifact/markdown";
 
 const verifiedPhoneUserSchema = z.object({
   id: z.string().min(1),
@@ -53,6 +62,18 @@ const pendingInputTtlMs = 86_400_000;
 const pendingInputLockTtlMs = 30_000;
 const pendingInputLockRetryMs = 250;
 const maxWebhookBytes = 65_536;
+const sendblueFileUploadUrl = "https://api.sendblue.com/api/upload-file";
+const sendblueFileUploadTimeoutMs = 30_000;
+const maximumSendblueUploadResponseBytes = 16 * 1024;
+const sendblueFileUploadSchema = z.object({
+  media_url: z.url().refine((url) => new URL(url).protocol === "https:", {
+    message: "SendBlue uploaded media must use HTTPS.",
+  }),
+  status: z.literal("OK"),
+});
+type SendblueMedia =
+  | { readonly file: BrowserImageArtifactFile }
+  | { readonly attachment: { readonly url: string } };
 const pendingSendblueInputSchema = z.object({
   generation: z.string().min(1).default("legacy"),
   requests: z.array(
@@ -326,11 +347,39 @@ const bridge = chatSdkChannel({
             return;
         } else {
           const attachments = message.data.output.attachments ?? [];
-          if (attachments.length === 0) {
+          const requestedText = message.data.output.text ?? "";
+          const rootSessionId = session.session.id;
+          const artifactDelivery =
+            scope && rootSessionId
+              ? await prepareBrowserImageArtifactDelivery(requestedText, {
+                  rootSessionId,
+                  scope,
+                })
+              : {
+                  failedArtifactIds: extractImageArtifactMarkdownReferences(
+                    requestedText
+                  ).map((reference) => reference.id),
+                  files: [],
+                  text: stripImageArtifactMarkdownReferences(requestedText),
+                };
+          const requestedMedia: readonly SendblueMedia[] = [
+            ...artifactDelivery.files.map((file) => ({ file })),
+            ...attachments.map((attachment) => ({ attachment })),
+          ];
+          const media = requestedMedia.slice(0, maximumWorkerCompletionImages);
+          const failureMessage = imageDeliveryFailureMessage(
+            artifactDelivery.failedArtifactIds.length +
+              requestedMedia.length -
+              media.length
+          );
+          const attachmentCaption = [artifactDelivery.text, failureMessage]
+            .filter(Boolean)
+            .join("\n\n");
+          if (media.length === 0) {
             if (
               !(await postSendblueReply(
                 context.thread,
-                { raw: message.data.output.text ?? "" },
+                { raw: attachmentCaption },
                 scope
               ))
             )
@@ -345,18 +394,42 @@ const bridge = chatSdkChannel({
               throw new Error(
                 "SendBlue delivery requires the configured 1:1 sender line."
               );
-            const attachmentCaption = z
-              .string()
-              .catch("")
-              .parse(message.data.output.text);
             /* oxlint-disable eslint/no-await-in-loop -- Each accepted media message must be ledgered before the next budget check. */
-            for (const [index, attachment] of attachments.entries()) {
+            for (const [index, mediaItem] of media.entries()) {
               if (!(await checkSendblueMessageBudget(context.thread, scope)))
                 return;
+              let mediaUrl: string;
+              try {
+                mediaUrl =
+                  "file" in mediaItem
+                    ? await uploadSendblueFile(mediaItem.file)
+                    : mediaItem.attachment.url;
+              } catch (error) {
+                if (!("file" in mediaItem)) throw error;
+                const failureText = [
+                  index === 0 ? attachmentCaption : "",
+                  imageDeliveryFailureMessage(media.length - index),
+                ]
+                  .filter(Boolean)
+                  .join("\n\n");
+                if (
+                  !(await postSendblueReply(
+                    context.thread,
+                    { raw: failureText },
+                    scope
+                  ))
+                )
+                  return;
+                break;
+              }
+              if (!mediaUrl)
+                throw new Error(
+                  "SendBlue media delivery requires a valid URL."
+                );
               const response = await adapter.getSdk().messages.send({
                 content: index === 0 ? attachmentCaption : "",
                 from_number: configured.fromNumber,
-                media_url: attachment.url,
+                media_url: mediaUrl,
                 number: contactNumber,
               });
               if (!response.message_handle)
@@ -679,6 +752,87 @@ function scopeForSession(
   const caller =
     session?.session.auth.current ?? session?.session.auth.initiator;
   return caller ? scopeFromPrincipal(caller) : undefined;
+}
+
+async function uploadSendblueFile(file: BrowserImageArtifactFile) {
+  const bytes = new Uint8Array(new ArrayBuffer(file.data.byteLength));
+  bytes.set(file.data);
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([bytes.buffer], { type: file.mimeType }),
+    file.filename
+  );
+  let response: Response;
+  try {
+    response = await fetch(sendblueFileUploadUrl, {
+      body: form,
+      headers: {
+        "sb-api-key-id": env.SENDBLUE_API_KEY_ID ?? "",
+        "sb-api-secret-key": env.SENDBLUE_API_SECRET_KEY ?? "",
+      },
+      method: "POST",
+      redirect: "error",
+      signal: AbortSignal.timeout(sendblueFileUploadTimeoutMs),
+    });
+  } catch {
+    throw new Error("SendBlue could not upload the image for delivery.");
+  }
+  if (response.status !== 201)
+    throw new Error("SendBlue could not upload the image for delivery.");
+  const uploaded = sendblueFileUploadSchema.safeParse(
+    await readBoundedSendblueUploadResponse(response)
+  );
+  if (!uploaded.success)
+    throw new Error("SendBlue could not upload the image for delivery.");
+  return uploaded.data.media_url;
+}
+
+async function readBoundedSendblueUploadResponse(response: Response) {
+  const contentLength = Number(response.headers.get("content-length"));
+  if (
+    Number.isFinite(contentLength) &&
+    contentLength > maximumSendblueUploadResponseBytes
+  )
+    return undefined;
+  if (!response.body) return undefined;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    /* oxlint-disable eslint/no-await-in-loop -- A response body is an ordered stream and must be read and cancelled sequentially. */
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maximumSendblueUploadResponseBytes) {
+        await reader.cancel();
+        return undefined;
+      }
+      chunks.push(value);
+    }
+    /* oxlint-enable eslint/no-await-in-loop */
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    // SAFETY: The provider body remains untrusted until the upload schema validates it.
+    return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function imageDeliveryFailureMessage(failedImageCount: number) {
+  if (failedImageCount === 0) return "";
+  if (failedImageCount === 1) return "I couldn't attach one image.";
+  return `I couldn't attach ${String(failedImageCount)} images.`;
 }
 
 function normalizeInputReply(text: string) {

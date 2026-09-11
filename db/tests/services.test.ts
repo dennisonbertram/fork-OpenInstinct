@@ -122,6 +122,11 @@ describe("database services", () => {
       await browserImages.readReadyBrowserImageArtifact(bob, image.id)
     ).toBeUndefined();
     expect(
+      await browserImages.readReadyBrowserImageArtifact(alice, image.id, {
+        rootSessionId: "other-root-session",
+      })
+    ).toBeUndefined();
+    expect(
       await browserImages.reserveBrowserImageArtifact(alice, imageInput)
     ).toEqual({ image, status: "ready" });
     await expect(

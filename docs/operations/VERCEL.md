@@ -544,6 +544,13 @@ Automated checks cover the native text path and the adapter's media, reaction,
 and approval contracts. Live provider acceptance still requires the designated
 user's message, same-number reply, duplicate and wrong-line negatives, and a
 webchat OTP regression. Track only the adapter patch version in `EVE_PATCHES`.
+Browser screenshots remain private artifacts. For a SendBlue reply, the channel
+reads only a manifest owned by the current scope and root session, verifies its
+private Blob bytes, then uploads the file directly to SendBlue before sending
+the returned media URL from the configured line to the verified recipient. Do
+not expose an `/artifacts/` route or use it as a provider media URL. A known
+upload failure sends a clear status message; a message send with no confirmed
+provider handle remains unconfirmed and is not retried automatically.
 Scheduled reminders are not supported on SendBlue, so schedule tools remain
 hidden for this channel and webchat is the current path. Group chats,
 iPhone-specific behavior, and animation are outside this slice. Synthetic

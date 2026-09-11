@@ -1,5 +1,9 @@
 import type { Thread } from "chat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  beginFinalDelivery,
+  finalDeliveryStatus,
+} from "@/agent/lib/message-delivery";
 
 // oxlint-disable anti-slop/no-chained-type-assertions, anti-slop/no-unknown-parameters, anti-slop/no-unsafe-type-assertion, anti-slop/require-safety-comment-for-type-assertion, typescript/no-unsafe-assignment, typescript/no-unsafe-member-access, vitest/require-mock-type-parameters -- adapter and Eve are owning boundaries; this suite uses only synthetic fixtures.
 
@@ -11,14 +15,25 @@ const capture = vi.hoisted(() => ({
   decodeThreadId: vi.fn(),
   deleteState: vi.fn(),
   extendLock: vi.fn(),
+  fetch: vi.fn<typeof fetch>(),
   findIdentity: vi.fn(),
   findOne: vi.fn(),
   getState: vi.fn(),
   markRead: vi.fn(),
-  mediaSend: vi.fn(),
+  mediaSend:
+    vi.fn<
+      (message: {
+        readonly content?: string;
+        readonly from_number: string;
+        readonly media_url?: string;
+        readonly number: string;
+      }) => Promise<{ readonly message_handle?: string }>
+    >(),
   post: vi.fn(),
   checkBudget: vi.fn(),
   recordUsageEvent: vi.fn(),
+  prepareBrowserImageArtifactDelivery: vi.fn(),
+  requestTurnCompletion: vi.fn(),
   BudgetExceededError: class BudgetExceededError extends Error {},
   resolveBinding: vi.fn(),
   resolveVerifiedBinding: vi.fn(),
@@ -40,7 +55,7 @@ vi.mock("eve/context", () => ({
       },
     };
   },
-  requestTurnCompletion: vi.fn(),
+  requestTurnCompletion: capture.requestTurnCompletion,
 }));
 
 vi.mock("@/env", () => ({
@@ -110,6 +125,10 @@ vi.mock("@/db/services/usage", () => ({
   BudgetExceededError: capture.BudgetExceededError,
   checkBudget: capture.checkBudget,
   recordUsageEvent: capture.recordUsageEvent,
+}));
+vi.mock("@/agent/lib/browser-image-artifact/delivery", () => ({
+  prepareBrowserImageArtifactDelivery:
+    capture.prepareBrowserImageArtifactDelivery,
 }));
 
 const { dispatchSendblueMessage } = await import("@/agent/channels/sendblue");
@@ -185,6 +204,14 @@ beforeEach(() => {
   capture.getState.mockResolvedValue(null);
   capture.checkBudget.mockResolvedValue(undefined);
   capture.recordUsageEvent.mockResolvedValue(undefined);
+  capture.requestTurnCompletion.mockReset();
+  capture.prepareBrowserImageArtifactDelivery.mockResolvedValue({
+    failedArtifactIds: [],
+    files: [],
+    text: "",
+  });
+  capture.fetch.mockReset();
+  vi.stubGlobal("fetch", capture.fetch);
 });
 
 describe("SendBlue channel", () => {
@@ -715,7 +742,8 @@ describe("SendBlue channel", () => {
           kind: "message",
         },
       }),
-      { thread }
+      { thread },
+      sessionContext()
     );
     expect(capture.mediaSend).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -725,6 +753,420 @@ describe("SendBlue channel", () => {
       })
     );
     expect(capture.post).not.toHaveBeenCalled();
+  });
+
+  it("uploads an owned private screenshot then sends it once with clean text", async () => {
+    const artifactId = "0d01e667-d128-4bb7-a248-1ae21db72f4f";
+    capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+      failedArtifactIds: [],
+      files: [
+        {
+          data: Buffer.from([1, 2, 3]),
+          filename: "demo.png",
+          mimeType: "image/png",
+        },
+      ],
+      text: "Here is the demo form.",
+    });
+    capture.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          media_url: "https://sendblue.example/media/demo.png",
+          status: "OK",
+        }),
+        { headers: { "content-type": "application/json" }, status: 201 }
+      )
+    );
+
+    await getSendblueEvent("action.result")(
+      action({
+        output: {
+          kind: "message",
+          text: `Here is the demo form.\n\n![Demo](/artifacts/${artifactId})`,
+        },
+      }),
+      { thread },
+      sessionContext()
+    );
+
+    expect(capture.prepareBrowserImageArtifactDelivery).toHaveBeenCalledWith(
+      `Here is the demo form.\n\n![Demo](/artifacts/${artifactId})`,
+      {
+        rootSessionId: "root-session-1",
+        scope: { workspaceId },
+      }
+    );
+    expect(capture.fetch).toHaveBeenCalledTimes(1);
+    const [url, request] = capture.fetch.mock.calls[0] ?? [];
+    expect(url).toBe("https://api.sendblue.com/api/upload-file");
+    expect(request).toMatchObject({ method: "POST", redirect: "error" });
+    expect(request?.body).toBeInstanceOf(FormData);
+    expect(new Headers(request?.headers).get("sb-api-key-id")).toBe("key");
+    expect(new Headers(request?.headers).get("sb-api-secret-key")).toBe(
+      "secret"
+    );
+    expect(capture.mediaSend).toHaveBeenCalledTimes(1);
+    expect(capture.mediaSend).toHaveBeenCalledWith({
+      content: "Here is the demo form.",
+      from_number: "+12025550123",
+      media_url: "https://sendblue.example/media/demo.png",
+      number: "+12025550199",
+    });
+    expect(capture.post).not.toHaveBeenCalled();
+    expect(capture.checkBudget).toHaveBeenCalledTimes(1);
+    expect(capture.recordUsageEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not read or send a screenshot when the root session is absent", async () => {
+    const artifactId = "0d01e667-d128-4bb7-a248-1ae21db72f4f";
+
+    await getSendblueEvent("action.result")(
+      action({
+        output: {
+          kind: "message",
+          text: `Here is the demo form.\n\n![Demo](/artifacts/${artifactId})`,
+        },
+      }),
+      { thread },
+      {
+        session: {
+          auth: {
+            current: {
+              attributes: { workspaceId },
+              principalId: "better-auth:alice",
+              principalType: "user",
+            },
+          },
+        },
+      }
+    );
+
+    expect(capture.prepareBrowserImageArtifactDelivery).not.toHaveBeenCalled();
+    expect(capture.fetch).not.toHaveBeenCalled();
+    expect(capture.mediaSend).not.toHaveBeenCalled();
+    expect(capture.post).toHaveBeenCalledWith({
+      raw: "Here is the demo form.\n\nI couldn't attach one image.",
+    });
+  });
+
+  it("does not upload or send an unavailable private screenshot", async () => {
+    const artifactId = "0d01e667-d128-4bb7-a248-1ae21db72f4f";
+    capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+      failedArtifactIds: [artifactId],
+      files: [],
+      text: "Here is the demo form.",
+    });
+
+    await getSendblueEvent("action.result")(
+      action({
+        output: {
+          kind: "message",
+          text: `Here is the demo form.\n\n![Demo](/artifacts/${artifactId})`,
+        },
+      }),
+      { thread },
+      sessionContext()
+    );
+
+    expect(capture.fetch).not.toHaveBeenCalled();
+    expect(capture.mediaSend).not.toHaveBeenCalled();
+    expect(capture.post).toHaveBeenCalledWith({
+      raw: "Here is the demo form.\n\nI couldn't attach one image.",
+    });
+  });
+
+  it("does not upload or send a private screenshot when its budget is denied", async () => {
+    capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+      failedArtifactIds: [],
+      files: [
+        {
+          data: Buffer.from([1, 2, 3]),
+          filename: "demo.png",
+          mimeType: "image/png",
+        },
+      ],
+      text: "Here is the demo form.",
+    });
+    capture.checkBudget.mockRejectedValueOnce(
+      new capture.BudgetExceededError("Workspace usage limit reached.")
+    );
+
+    await getSendblueEvent("action.result")(
+      action({ output: { kind: "message", text: "Here is the demo form." } }),
+      { thread },
+      sessionContext()
+    );
+
+    expect(capture.fetch).not.toHaveBeenCalled();
+    expect(capture.mediaSend).not.toHaveBeenCalled();
+    expect(capture.post).toHaveBeenCalledWith({
+      raw: "Workspace usage limit reached.",
+    });
+  });
+
+  it("reports a known first-image upload failure with a clean caption", async () => {
+    capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+      failedArtifactIds: [],
+      files: [
+        {
+          data: Buffer.from([1, 2, 3]),
+          filename: "demo.png",
+          mimeType: "image/png",
+        },
+      ],
+      text: "Here is the demo form.",
+    });
+    capture.fetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: "ERROR" }), { status: 500 })
+    );
+    beginFinalMessageDelivery();
+
+    await getSendblueEvent("action.result")(
+      action({ output: { kind: "message", text: "Here is the demo form." } }),
+      { thread },
+      sessionContext()
+    );
+
+    expect(capture.fetch).toHaveBeenCalledTimes(1);
+    expect(capture.mediaSend).not.toHaveBeenCalled();
+    expect(capture.post).toHaveBeenCalledWith({
+      raw: "Here is the demo form.\n\nI couldn't attach one image.",
+    });
+    expect(capture.checkBudget).toHaveBeenCalledTimes(2);
+    expect(capture.recordUsageEvent).toHaveBeenCalledTimes(1);
+    expect(finalDeliveryStatus("turn-1")).toBe("completed");
+    expect(capture.requestTurnCompletion).toHaveBeenCalledWith({
+      callId: "call-1",
+      stepIndex: 0,
+    });
+  });
+
+  it("does not send when SendBlue returns an oversized upload response", async () => {
+    capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+      failedArtifactIds: [],
+      files: [
+        {
+          data: Buffer.from([1, 2, 3]),
+          filename: "demo.png",
+          mimeType: "image/png",
+        },
+      ],
+      text: "Here is the demo form.",
+    });
+    capture.fetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: "OK" }), {
+        headers: { "content-length": "16385" },
+        status: 201,
+      })
+    );
+    beginFinalMessageDelivery();
+
+    await getSendblueEvent("action.result")(
+      action({ output: { kind: "message", text: "Here is the demo form." } }),
+      { thread },
+      sessionContext()
+    );
+
+    expect(capture.mediaSend).not.toHaveBeenCalled();
+    expect(capture.post).toHaveBeenCalledWith({
+      raw: "Here is the demo form.\n\nI couldn't attach one image.",
+    });
+    expect(finalDeliveryStatus("turn-1")).toBe("completed");
+    expect(capture.requestTurnCompletion).toHaveBeenCalledWith({
+      callId: "call-1",
+      stepIndex: 0,
+    });
+  });
+
+  it("reports a later known upload failure without repeating accepted images", async () => {
+    capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+      failedArtifactIds: [],
+      files: [
+        {
+          data: Buffer.from([1, 2, 3]),
+          filename: "one.png",
+          mimeType: "image/png",
+        },
+        {
+          data: Buffer.from([4, 5, 6]),
+          filename: "two.png",
+          mimeType: "image/png",
+        },
+      ],
+      text: "Here are the images.",
+    });
+    capture.fetch
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            media_url: "https://sendblue.example/media/one.png",
+            status: "OK",
+          }),
+          { status: 201 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: "ERROR" }), { status: 500 })
+      );
+    beginFinalMessageDelivery();
+
+    await getSendblueEvent("action.result")(
+      action({ output: { kind: "message", text: "Here are the images." } }),
+      { thread },
+      sessionContext()
+    );
+
+    expect(capture.fetch).toHaveBeenCalledTimes(2);
+    expect(capture.mediaSend).toHaveBeenCalledTimes(1);
+    expect(capture.post).toHaveBeenCalledWith({
+      raw: "I couldn't attach one image.",
+    });
+    expect(capture.checkBudget).toHaveBeenCalledTimes(3);
+    expect(capture.recordUsageEvent).toHaveBeenCalledTimes(2);
+    expect(finalDeliveryStatus("turn-1")).toBe("completed");
+    expect(capture.requestTurnCompletion).toHaveBeenCalledWith({
+      callId: "call-1",
+      stepIndex: 0,
+    });
+  });
+
+  it("marks delivery unconfirmed if the known-upload failure status cannot post", async () => {
+    capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+      failedArtifactIds: [],
+      files: [
+        {
+          data: Buffer.from([1, 2, 3]),
+          filename: "demo.png",
+          mimeType: "image/png",
+        },
+      ],
+      text: "Here is the demo form.",
+    });
+    capture.fetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: "ERROR" }), { status: 500 })
+    );
+    capture.post.mockRejectedValueOnce(new Error("provider timeout"));
+    beginFinalMessageDelivery();
+
+    await expect(
+      getSendblueEvent("action.result")(
+        action({ output: { kind: "message", text: "Here is the demo form." } }),
+        { thread },
+        sessionContext()
+      )
+    ).rejects.toThrow("provider timeout");
+    await getSendblueEvent("turn.failed")({ turnId: "turn-1" }, { thread });
+
+    expect(capture.fetch).toHaveBeenCalledTimes(1);
+    expect(capture.mediaSend).not.toHaveBeenCalled();
+    expect(capture.post).toHaveBeenCalledTimes(1);
+    expect(finalDeliveryStatus("turn-1")).toBe("unconfirmed");
+  });
+
+  it("does not retry a private image after SendBlue accepts no message handle", async () => {
+    capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+      failedArtifactIds: [],
+      files: [
+        {
+          data: Buffer.from([1, 2, 3]),
+          filename: "demo.png",
+          mimeType: "image/png",
+        },
+      ],
+      text: "Here is the demo form.",
+    });
+    capture.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          media_url: "https://sendblue.example/media/demo.png",
+          status: "OK",
+        }),
+        { status: 201 }
+      )
+    );
+    capture.mediaSend.mockResolvedValueOnce({});
+
+    await expect(
+      getSendblueEvent("action.result")(
+        action({ output: { kind: "message", text: "Here is the demo form." } }),
+        { thread },
+        sessionContext()
+      )
+    ).rejects.toThrow("SendBlue did not accept the media message.");
+    await getSendblueEvent("turn.failed")({ turnId: "turn-1" }, { thread });
+
+    expect(capture.fetch).toHaveBeenCalledTimes(1);
+    expect(capture.mediaSend).toHaveBeenCalledTimes(1);
+    expect(capture.post).not.toHaveBeenCalled();
+    expect(finalDeliveryStatus("turn-1")).toBe("unconfirmed");
+  });
+
+  it("bounds mixed public and private images to four distinct sends", async () => {
+    capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({
+      failedArtifactIds: [],
+      files: [
+        {
+          data: Buffer.from([1, 2, 3]),
+          filename: "one.png",
+          mimeType: "image/png",
+        },
+        {
+          data: Buffer.from([4, 5, 6]),
+          filename: "two.png",
+          mimeType: "image/png",
+        },
+      ],
+      text: "Here are the images.",
+    });
+    capture.fetch
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            media_url: "https://sendblue.example/media/one.png",
+            status: "OK",
+          }),
+          { status: 201 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            media_url: "https://sendblue.example/media/two.png",
+            status: "OK",
+          }),
+          { status: 201 }
+        )
+      );
+
+    await getSendblueEvent("action.result")(
+      action({
+        output: {
+          attachments: [
+            { kind: "image", url: "https://media.example/three.png" },
+            { kind: "image", url: "https://media.example/four.png" },
+            { kind: "image", url: "https://media.example/five.png" },
+          ],
+          kind: "message",
+          text: "Here are the images.",
+        },
+      }),
+      { thread },
+      sessionContext()
+    );
+
+    expect(capture.fetch).toHaveBeenCalledTimes(2);
+    expect(capture.mediaSend).toHaveBeenCalledTimes(4);
+    expect(
+      capture.mediaSend.mock.calls.map(([message]) => message.media_url)
+    ).toEqual([
+      "https://sendblue.example/media/one.png",
+      "https://sendblue.example/media/two.png",
+      "https://media.example/three.png",
+      "https://media.example/four.png",
+    ]);
+    expect(capture.mediaSend.mock.calls[0]?.[0]).toMatchObject({
+      content: "Here are the images.\n\nI couldn't attach one image.",
+    });
   });
 
   it("checks before sending and records after acceptance for a SendBlue text action", async () => {
@@ -854,7 +1296,7 @@ describe("SendBlue channel", () => {
   it("treats a HTTP-success text post without a provider handle as unconfirmed", async () => {
     capture.post.mockResolvedValueOnce({ id: "" });
     await expect(
-      getSendblueEvent("action.result")(action(), { thread })
+      getSendblueEvent("action.result")(action(), { thread }, sessionContext())
     ).rejects.toThrow(/did not accept/iu);
     await getSendblueEvent("turn.failed")({ turnId: "turn-1" }, { thread });
     expect(capture.post).toHaveBeenCalledTimes(1);
@@ -871,7 +1313,7 @@ describe("SendBlue channel", () => {
   it("suppresses the automatic fallback after an unconfirmed progress send", async () => {
     capture.post.mockRejectedValueOnce(new Error("provider timeout"));
     await expect(
-      getSendblueEvent("action.result")(action(), { thread })
+      getSendblueEvent("action.result")(action(), { thread }, sessionContext())
     ).rejects.toThrow("provider timeout");
     await getSendblueEvent("turn.failed")({ turnId: "turn-1" }, { thread });
     expect(capture.post).toHaveBeenCalledTimes(1);
@@ -889,7 +1331,8 @@ describe("SendBlue channel", () => {
             kind: "message",
           },
         }),
-        { thread }
+        { thread },
+        sessionContext()
       )
     ).rejects.toThrow(/did not accept/iu);
     await getSendblueEvent("turn.failed")({ turnId: "turn-1" }, { thread });
@@ -973,6 +1416,7 @@ function sessionContext() {
           principalType: "user",
         },
       },
+      id: "root-session-1",
     },
   };
 }
@@ -1000,4 +1444,8 @@ function action(
     stepIndex: 0,
     turnId: "turn-1",
   };
+}
+
+function beginFinalMessageDelivery() {
+  beginFinalDelivery("turn-1", "call-1", true);
 }
