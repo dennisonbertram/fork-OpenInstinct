@@ -105,10 +105,29 @@ case no cohort can ever form for it; or it did enter and its terminal was reject
 by the schema check in `background-task-terminal.ts`, which drops any entry whose
 `taskId` and `terminalTaskId` disagree.
 
-A third fact narrows it. `browser_sessions` has **zero rows** for the whole
-window, so the worker never opened a browser at all — it "completed" without doing
-the work. The obvious next step is to look at child session
-`wrun_41M294QYSS0GKVQ6KG6BW7BDZ2` and find out what it returned.
+Two further facts narrow it, and they point in opposite directions, which is why
+this needs a real diagnosis rather than a guess.
+
+`browser_sessions` has **zero rows** for the whole window, so the worker never
+opened a browser at all — it "completed" without doing the work.
+
+And **nothing in this repository creates a background task explicitly.** There is
+no `execution: "background"` tool, no `task.delegated`, no use of the task inbox.
+Every task must therefore come from Eve's own promotion of subagent calls under
+`experimental.tasks: true`. That makes the turn shape the evidence to read, and
+turn 16's is ambiguous: `steps=3, finish=stop` fits a blocking call (dispatch,
+result, reply) just as well as it fits a background acceptance followed by an
+acknowledgement.
+
+The decisive question is therefore worth stating plainly, because the whole epic
+rests on it: **does a `browser-agent` call in this app become a durable task at
+all?** If it does not, cohorts can never form from browser work, and the
+completion mechanism applies only to whatever path produced cohorts `turn_0`,
+`turn_1` and `turn_4` — which exist, so some path does produce them.
+
+Two checks settle it. Read child session `wrun_41M294QYSS0GKVQ6KG6BW7BDZ2` and see
+what it returned. Then watch whether any task-triggered parent turn ever fires on
+its own; none did here, across twenty minutes and four subsequent turns.
 
 None of this is caused by the completion mechanism, and the mechanism behaved
 correctly throughout: with nothing settled, nothing was owed, and turns 18 and 19
