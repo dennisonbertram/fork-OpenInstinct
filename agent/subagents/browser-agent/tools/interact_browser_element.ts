@@ -16,6 +16,7 @@ import {
   resolveBrowserActionTarget,
   browserActionTargets,
   browserActionTargetsJson,
+  unsupportedControlMessage,
 } from "../lib/browser-action-targets";
 import { isVaultFilledBrowserSession } from "../lib/vault-browser-guard";
 
@@ -67,9 +68,7 @@ export default defineTool({
     const refState = browserRefStateForSession(input.browser_session_id);
     const target = resolveBrowserActionTarget(input, refState);
     if (!reversibleRole(input.action.kind, target.role)) {
-      throw new Error(
-        "This browser control is not structurally reversible; use commit_browser_action."
-      );
+      throw new Error(unsupportedControlMessage(target.role));
     }
     const currentOrigin = await currentKernelPageOrigin({
       browserSessionId: input.browser_session_id,

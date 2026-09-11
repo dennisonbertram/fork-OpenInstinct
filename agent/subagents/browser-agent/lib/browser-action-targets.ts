@@ -133,3 +133,15 @@ export function resolveBrowserActionTarget(
   }
   return target;
 }
+
+/**
+ * What to say when an observed control cannot be driven.
+ *
+ * Checkbox, radio and switch controls are observed as targets but fail the
+ * prompt-free reversible-role check, and `commit_browser_action` has no term
+ * that describes toggling one — it classifies submit, order, send and delete.
+ * Naming that tool here would send the worker to an action it cannot express.
+ */
+export function unsupportedControlMessage(role: string) {
+  return `This ${role} control cannot be driven by any available browser action, and nothing about it has changed. There is no approved action that describes setting one: commit covers submitting, ordering, sending and deleting only. Leave the browser session open and either request a user takeover at this point, or take another supported route to the same outcome, and say which you did.`;
+}
