@@ -124,7 +124,6 @@ describe("the one bounded fallback when a summary could not be composed", () => 
     // "no", which the word "not" in the first line satisfies, so it passed even
     // when the absence of evidence went unmentioned.
     expect(text).toContain("no recorded evidence of what the work achieved");
-    expect(text?.length).toBeLessThan(400);
   });
 
   it("FB-05: a worker's own word is not stated as a finding", () => {
@@ -141,7 +140,9 @@ describe("the one bounded fallback when a summary could not be composed", () => 
     // uncorroborated claim reported flatly is how a worker's word becomes a
     // fact the user believes. So the attribution is asserted as adjacent to the
     // claim, not merely present somewhere in the message.
-    expect(text).toContain("not confirmed: Definitely completed the purchase");
+    expect(text).toContain(
+      "Definitely completed the purchase (reported by the worker, not confirmed)"
+    );
     expect(text).not.toContain("Confirmed: Definitely completed the purchase");
   });
 
@@ -158,11 +159,11 @@ describe("the one bounded fallback when a summary could not be composed", () => 
     const text = completionFallbackText("turn_1");
 
     expect(text).toBeDefined();
-    expect(text?.length).toBeLessThan(700);
-    // Both ceilings, because either alone leaves the other free. Counting the
-    // named steps catches an unbounded list of individually short claims.
+    // Claims are carried whole now -- shortening one can reverse it -- so the
+    // bound is on how many are named, with the rest counted rather than cut.
     const named = (text?.match(/Step \d/g) ?? []).length;
     expect(named).toBe(3);
+    expect(text).toContain("further recorded claims are not shown");
   });
 
   it("FB-07: a turn that owes nothing gets no fallback", () => {
@@ -201,8 +202,8 @@ describe("what the fallback may and may not assert", () => {
       { claim: "I completed the purchase", evidence: "worker_assertion" },
     ]);
 
-    expect(completionFallbackText("turn_1")).toMatch(
-      /worker.*I completed the purchase/u
+    expect(completionFallbackText("turn_1")).toContain(
+      "I completed the purchase (reported by the worker, not confirmed)"
     );
   });
 

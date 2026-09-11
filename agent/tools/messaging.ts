@@ -10,6 +10,7 @@ import {
   reportPolicyForTurn,
   type ReportPolicy,
 } from "../lib/completion-report-policy";
+import { reportWithRecordedFacts } from "../lib/completion-report-text";
 import {
   beginFinalDelivery,
   finalDeliveryStatus,
@@ -154,7 +155,17 @@ function resolveMessaging(
           toolContext.callId,
           isProviderChannel
         );
-      return message;
+      // The records travel with the report. A shape check can see that text
+      // exists, never what it says, so leaving the facts to the model's
+      // cooperation is what let a progress note stand in for a summary in
+      // production. Nothing is owed on an ordinary turn, and then this returns
+      // the model's message exactly as written.
+      return policy.kind === "must_report" && message.kind === "message"
+        ? {
+            ...message,
+            text: reportWithRecordedFacts(policy.cohortId, message.text ?? ""),
+          }
+        : message;
     },
     toModelOutput() {
       return toolOutput.text(
