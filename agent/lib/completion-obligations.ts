@@ -1,5 +1,9 @@
 import { defineState } from "eve/context";
-import type { BackgroundTaskTerminalRecord } from "@/agent/lib/background-task-terminal";
+import {
+  backgroundTaskMembers,
+  backgroundTaskTerminals,
+  type BackgroundTaskTerminalRecord,
+} from "@/agent/lib/background-task-terminal";
 import { taskCompletionOutputSchema } from "@/lib/worker-completion";
 
 /**
@@ -542,4 +546,34 @@ export function factsFromWorkerCompletion(
         reference: image.id,
       })),
   ]);
+}
+
+/**
+ * Brings this session's obligation records in line with what the framework
+ * says about its background tasks.
+ *
+ * Called once per root step. Admission and terminal promotion are both
+ * idempotent, so repeating this is free and a replayed step cannot double
+ * count.
+ *
+ * Facts are deliberately conservative here: no artifact ownership is supplied,
+ * so a worker's images stay `worker_assertion` rather than being promoted to
+ * `observed`. Under-claiming is the safe direction; a caller that can verify
+ * the root session owns an artifact may classify it more strongly.
+ */
+export function reconcileBackgroundTasks(): void {
+  for (const member of backgroundTaskMembers()) {
+    admitTask({
+      taskId: member.taskId,
+      parentTurnId: member.parentTurnId,
+      // A cohort is its parent turn, so that turn identifies the objective the
+      // task was started for. Detecting a *newer* objective is steering, which
+      // Plan 008 owns.
+      objectiveRevision: member.parentTurnId,
+    });
+  }
+
+  for (const terminal of backgroundTaskTerminals()) {
+    recordTerminal(terminal, factsFromWorkerCompletion(terminal.output).facts);
+  }
 }

@@ -1,11 +1,13 @@
 import type { DynamicResolveContext } from "eve";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { isScheduledAgentRunLeaseActive } from "@/db/services/scheduled-agent-run-leases";
+import type { reconcileBackgroundTasks } from "@/agent/lib/completion-obligations";
 import type { getGatewayModel } from "@/db/services/settings";
 
 const services = vi.hoisted(() => ({
   getModel: vi.fn<typeof getGatewayModel>(),
   isActive: vi.fn<typeof isScheduledAgentRunLeaseActive>(),
+  reconcile: vi.fn<typeof reconcileBackgroundTasks>(),
 }));
 const fixture = vi.hoisted(() => ({ enabled: false }));
 
@@ -14,6 +16,11 @@ vi.mock("@/db/services/scheduled-agent-run-leases", () => ({
 }));
 vi.mock("@/db/services/settings", () => ({
   getGatewayModel: services.getModel,
+}));
+// Reconciliation reads the framework's task projections, which need an active
+// eve context. Mocked at its owning boundary, like the services above.
+vi.mock("@/agent/lib/completion-obligations", () => ({
+  reconcileBackgroundTasks: services.reconcile,
 }));
 vi.mock("@/env", async (importOriginal) => ({
   ...(await importOriginal()),
@@ -33,6 +40,16 @@ beforeEach(() => {
 });
 
 describe("root agent model resolution", () => {
+  it("reconciles background-task obligations before resolving the model", async () => {
+    services.isActive.mockResolvedValue(true);
+
+    await agent.model.events["step.started"]?.({}, scheduledWorkerContext());
+
+    // The root must know what background work is owed before anything decides
+    // what to say about it.
+    expect(services.reconcile).toHaveBeenCalledOnce();
+  });
+
   it("accepts a valid retry lease forwarded into an older Eve session", async () => {
     services.isActive.mockImplementation(async (_runId, leaseToken) => {
       return leaseToken === retryLeaseToken;

@@ -3,9 +3,23 @@ import type { BackgroundTaskTerminalRecord } from "@/agent/lib/background-task-t
 import { browserImageArtifactUrl } from "@/lib/browser-artifact";
 import { maximumWorkerCompletionImages } from "@/lib/worker-completion";
 
+/** What the framework's two task projections would hand authored code. */
+interface ProjectionFixtures {
+  terminals: readonly unknown[];
+  members: readonly unknown[];
+}
+
 const state = vi.hoisted(() => {
   const resets: (() => void)[] = [];
-  return { resets };
+  // SAFETY: these stand in for the framework's own projections, which reach
+  // authored code untyped. Each test assigns records the adapters then
+  // validate, which is exactly the boundary under test.
+  const projections: ProjectionFixtures = { terminals: [], members: [] };
+  resets.push(() => {
+    projections.terminals = [];
+    projections.members = [];
+  });
+  return { resets, projections };
 });
 
 vi.mock("eve/context", () => ({
@@ -21,7 +35,8 @@ vi.mock("eve/context", () => ({
       },
     };
   },
-  readBackgroundTaskTerminals: () => [],
+  readBackgroundTaskTerminals: () => state.projections.terminals,
+  readBackgroundTaskMembers: () => state.projections.members,
 }));
 
 import {
@@ -33,6 +48,7 @@ import {
   completionCapacity,
   factsFromWorkerCompletion,
   recordTerminal,
+  reconcileBackgroundTasks,
   reportableCohorts,
   retireCohort,
   retiredSummaries,
@@ -1248,5 +1264,134 @@ describe("factsFromWorkerCompletion (CO-05)", () => {
 
     expect(result.facts).toHaveLength(maximumWorkerCompletionImages + 1);
     expect(result.truncatedUnknown).toBeUndefined();
+  });
+});
+
+function member(taskId: string, parentTurnId: string, settled: boolean) {
+  return { taskId, parentTurnId, workerName: "browser", settled };
+}
+
+function projected(
+  taskId: string,
+  parentTurnId: string,
+  output: { status: "success" | "failure"; message: string; images?: [] }
+) {
+  return {
+    taskId,
+    terminalTaskId: taskId,
+    parentTurnId,
+    childSessionId: `${taskId}_session`,
+    childTurnId: `${taskId}_turn`,
+    workerName: "browser",
+    status: "completed" as const,
+    output,
+  };
+}
+
+describe("reconcileBackgroundTasks (the root registration)", () => {
+  it("RG-01: a pending sibling keeps the cohort from owing a report", () => {
+    state.projections.members = [
+      member("task_a", "turn_1", true),
+      member("task_b", "turn_1", false),
+    ];
+    state.projections.terminals = [
+      projected("task_a", "turn_1", {
+        status: "success",
+        message: "first done",
+      }),
+    ];
+
+    reconcileBackgroundTasks();
+
+    expect(
+      taskRecords("turn_1")
+        .map((task) => task.taskId)
+        .toSorted()
+    ).toEqual(["task_a", "task_b"]);
+    expect(cohortFor("turn_1")?.phase).toBe("awaiting_terminal");
+    expect(reportableCohorts()).toEqual([]);
+  });
+
+  it("RG-02: once the sibling settles, the cohort owes exactly one report", () => {
+    state.projections.members = [
+      member("task_a", "turn_1", true),
+      member("task_b", "turn_1", false),
+    ];
+    state.projections.terminals = [
+      projected("task_a", "turn_1", { status: "success", message: "first" }),
+    ];
+    reconcileBackgroundTasks();
+    expect(reportableCohorts()).toEqual([]);
+
+    state.projections.members = [
+      member("task_a", "turn_1", true),
+      member("task_b", "turn_1", true),
+    ];
+    state.projections.terminals = [
+      projected("task_a", "turn_1", { status: "success", message: "first" }),
+      projected("task_b", "turn_1", { status: "success", message: "second" }),
+    ];
+    reconcileBackgroundTasks();
+
+    expect(cohortFor("turn_1")?.phase).toBe("must_report");
+    expect(reportableCohorts().map((cohort) => cohort.cohortId)).toEqual([
+      "turn_1",
+    ]);
+  });
+
+  it("RG-03: repeating reconciliation on an unchanged projection changes nothing", () => {
+    state.projections.members = [member("task_a", "turn_1", true)];
+    state.projections.terminals = [
+      projected("task_a", "turn_1", { status: "success", message: "done" }),
+    ];
+
+    reconcileBackgroundTasks();
+    const afterFirst = {
+      tasks: taskRecords("turn_1"),
+      cohort: cohortFor("turn_1"),
+    };
+    reconcileBackgroundTasks();
+    reconcileBackgroundTasks();
+
+    expect(taskRecords("turn_1")).toEqual(afterFirst.tasks);
+    expect(cohortFor("turn_1")).toEqual(afterFirst.cohort);
+  });
+
+  it("RG-04: a worker's own result is only ever a worker_assertion here", () => {
+    state.projections.members = [member("task_a", "turn_1", true)];
+    state.projections.terminals = [
+      projected("task_a", "turn_1", {
+        status: "success",
+        message: "submitted the form",
+        images: [],
+      }),
+    ];
+
+    reconcileBackgroundTasks();
+
+    const facts =
+      taskRecords("turn_1").find((task) => task.taskId === "task_a")?.terminal
+        ?.facts ?? [];
+    expect(facts).toEqual([
+      { claim: "submitted the form", evidence: "worker_assertion" },
+    ]);
+  });
+
+  it("RG-05: two parent turns stay independent", () => {
+    state.projections.members = [
+      member("task_a", "turn_1", true),
+      member("task_b", "turn_2", false),
+    ];
+    state.projections.terminals = [
+      projected("task_a", "turn_1", { status: "success", message: "one" }),
+    ];
+
+    reconcileBackgroundTasks();
+
+    expect(cohortFor("turn_1")?.phase).toBe("must_report");
+    expect(cohortFor("turn_2")?.phase).toBe("awaiting_terminal");
+    expect(reportableCohorts().map((cohort) => cohort.cohortId)).toEqual([
+      "turn_1",
+    ]);
   });
 });

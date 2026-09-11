@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { contractFixtureModel } from "@/evals/contract/fixture-model";
 import type { LinqLatencyStages } from "@/agent/lib/linq/timing";
 import type { finalDeliveryStatus } from "@/agent/lib/message-delivery";
+import type { reconcileBackgroundTasks } from "@/agent/lib/completion-obligations";
 import type { getGatewayModel } from "@/db/services/settings";
 import type { isScheduledAgentRunLeaseActive } from "@/db/services/scheduled-agent-run-leases";
 
@@ -18,12 +19,14 @@ interface TestServices {
   gateway: ReturnType<typeof vi.fn<(modelId: string) => LanguageModel>>;
   getModel: ReturnType<typeof vi.fn<typeof getGatewayModel>>;
   isActive: ReturnType<typeof vi.fn<typeof isScheduledAgentRunLeaseActive>>;
+  reconcile: ReturnType<typeof vi.fn<typeof reconcileBackgroundTasks>>;
 }
 
 const services = vi.hoisted<TestServices>(() => ({
   getModel: vi.fn<typeof getGatewayModel>(),
   isActive: vi.fn<typeof isScheduledAgentRunLeaseActive>(),
   deliveryStatus: vi.fn<typeof finalDeliveryStatus>(),
+  reconcile: vi.fn<typeof reconcileBackgroundTasks>(),
   gateway: vi.fn<(modelId: string) => LanguageModel>(),
   contractFixtureEnabled: true,
   evlogContext: {},
@@ -60,6 +63,11 @@ vi.mock("@/db/services/scheduled-agent-run-leases", () => ({
 }));
 vi.mock("@/agent/lib/message-delivery", () => ({
   finalDeliveryStatus: services.deliveryStatus,
+}));
+// Reconciliation reads the framework's task projections, which need an active
+// eve context. Mocked at its owning boundary, like the delivery status above.
+vi.mock("@/agent/lib/completion-obligations", () => ({
+  reconcileBackgroundTasks: services.reconcile,
 }));
 
 const agent = await import("./agent");
