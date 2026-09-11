@@ -40,6 +40,12 @@ import {
   settleCohortReport,
 } from "@/agent/lib/completion-obligations";
 import type { completionReportForcingActive } from "@/agent/lib/completion-report-activation";
+/** The shape a message-kind send_message call returns. */
+const deliveredMessageSchema = z.object({
+  kind: z.literal("message"),
+  text: z.string(),
+});
+
 const context = {
   channel: { kind: "http" },
   session: {
@@ -240,12 +246,20 @@ describe("messaging tools while a completion report is owed", () => {
     owedCohort("turn_1", "task_rp06");
     const group = await tools();
     const text = "The upload finished; the log confirms it landed.";
-    expect(
+    // Parsed rather than asserted: the executor returns the tool's union, and
+    // this is the shape a message-kind call produces.
+    const delivered = deliveredMessageSchema.parse(
       await group.send_message.execute(
         { kind: "message", text, final: true },
         executorContext()
       )
-    ).toEqual({ kind: "message", text });
+    );
+
+    // The model's words are kept. What changed is that the records now travel
+    // with them rather than depending on the model to carry them.
+    expect(delivered.kind).toBe("message");
+    expect(delivered.text).toContain(text);
+    expect(delivered.text).toContain("The worker finished the upload.");
   });
   it("RP-07: with no report owed the reaction tool is still offered and succeeds", async () => {
     const group = await tools();
@@ -423,6 +437,47 @@ describe("the policy follows what is actually owed, not only the switch", () => 
     expect(reportableCohorts().map((cohort) => cohort.cohortId)).toEqual([
       "turn_2",
     ]);
+  });
+});
+
+describe("the message that reached a real phone", () => {
+  it("RP-21: the exact production progress note cannot be delivered without the records", async () => {
+    // 2026-09-11, session wrun_41M270VCEE0GJ0MK899TKWFBHN turn_13. A summary was
+    // owed. The model's first send was rejected for not being final; its second
+    // set final: true on this text and was accepted, so it stood in for the
+    // completion report. It reports nothing about the settled work, and it
+    // describes work that was never started -- no worker ran in that turn.
+    policy.owed.mockReturnValue(true);
+    owedCohort("turn_1", "task_prod");
+
+    const group = await tools(providerContext);
+    const delivered = await group.send_message.execute(
+      {
+        final: true,
+        kind: "message",
+        text: "i'm checking a public time source for Tokyo now.",
+      },
+      executorContext()
+    );
+
+    const { text } = deliveredMessageSchema.parse(delivered);
+    // The model keeps its words. What it no longer decides is whether the
+    // records reach the user.
+    expect(text).toContain("i'm checking a public time source for Tokyo");
+    expect(text).toContain("The worker finished the upload.");
+  });
+
+  it("RP-22: an ordinary turn's message is delivered exactly as the model wrote it", async () => {
+    policy.owed.mockReturnValue(true);
+    // Nothing settled, so nothing is owed and nothing is added.
+    const group = await tools(providerContext);
+
+    const delivered = await group.send_message.execute(
+      { final: true, kind: "message", text: "Sure, on it." },
+      executorContext()
+    );
+
+    expect(delivered).toEqual({ kind: "message", text: "Sure, on it." });
   });
 });
 
