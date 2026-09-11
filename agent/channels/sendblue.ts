@@ -4,6 +4,7 @@ import type { Lock, Message, Thread } from "chat";
 import { chatSdkChannel, messageToUserContent } from "eve/channels/chat-sdk";
 import {
   finalDeliveryStatus,
+  hasUnconfirmedProviderAttempt,
   recordUnconfirmedDelivery,
   requestFinalDeliveryCompletion,
   settleFinalDelivery,
@@ -458,7 +459,11 @@ const bridge = chatSdkChannel({
       await Promise.resolve();
     },
     async "turn.failed"(event, context, session) {
-      if (!context.thread || finalDeliveryStatus(event.turnId) !== undefined)
+      if (
+        !context.thread ||
+        finalDeliveryStatus(event.turnId) !== undefined ||
+        hasUnconfirmedProviderAttempt(event.turnId)
+      )
         return;
       await postSendblueReply(
         context.thread,
