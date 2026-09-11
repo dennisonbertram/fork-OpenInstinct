@@ -25,6 +25,10 @@ vi.mock("@/agent/lib/completion-report-activation", () => ({
   completionReportForcingActive: policy.owed,
 }));
 import messaging from "@/agent/tools/messaging";
+import {
+  recordUnconfirmedDelivery,
+  settleFinalDelivery,
+} from "@/agent/lib/message-delivery";
 import { deliveryToolChoiceForInteractiveTurn } from "@/agent/lib/delivery-guard";
 import {
   admitTask,
@@ -41,13 +45,24 @@ const context = {
   },
   messages: [],
 } satisfies DynamicResolveContext;
-async function tools() {
+async function tools(
+  resolveContext: DynamicResolveContext = context
+) {
   const resolve = messaging.events["step.started"];
   if (!resolve) throw new Error("Missing resolver");
-  const group = await resolve({ data: { turnId: "turn_1" } }, context);
+  const group = await resolve({ data: { turnId: "turn_1" } }, resolveContext);
   if (!group) throw new Error("Missing messaging tools");
   return group;
 }
+
+/**
+ * A channel whose provider confirms separately, so submitting a message is not
+ * the same event as the provider accepting it.
+ */
+const providerContext = {
+  ...context,
+  channel: { kind: "channel:linq" },
+} satisfies DynamicResolveContext;
 // The reaction tool's union input schema leaves its `execute` signature
 // unresolvable to the type checker, so parse the resolved set the same way the
 // channel delivery tests do to get a callable shape.
@@ -378,5 +393,67 @@ describe("the policy follows what is actually owed, not only the switch", () => 
     expect(reportableCohorts().map((cohort) => cohort.cohortId)).toEqual([
       "turn_2",
     ]);
+  });
+});
+
+describe("settling the report the channel actually carried", () => {
+  async function bindOneReport(taskId: string) {
+    policy.owed.mockReturnValue(true);
+    owedCohort("turn_1", taskId);
+    const group = await tools(providerContext);
+    await group.send_message.execute(
+      {
+        final: true,
+        kind: "message",
+        text: "The upload finished; the log confirms it landed.",
+      },
+      executorContext()
+    );
+    return executorContext().callId;
+  }
+
+  it("RP-14: provider acceptance settles the bound cohort as delivered", async () => {
+    const callId = await bindOneReport("task_rp14");
+    expect(cohortFor("turn_1")?.phase).toBe("delivery_pending");
+
+    settleFinalDelivery(callId, true);
+
+    expect(cohortFor("turn_1")?.phase).toBe("delivered");
+    expect(reportableCohorts()).toEqual([]);
+  });
+
+  it("RP-15: a provider that never confirmed leaves the report unconfirmed", async () => {
+    const callId = await bindOneReport("task_rp15");
+
+    recordUnconfirmedDelivery("turn_1", callId);
+    settleFinalDelivery(callId, false);
+
+    // The send may have landed, so this is not a failure and not a success.
+    // Nothing may resend it, which is why the cohort does not go back to owed.
+    expect(cohortFor("turn_1")?.phase).toBe("unconfirmed");
+    expect(reportableCohorts()).toEqual([]);
+  });
+
+  it("RP-16: a result for a different call cannot settle this report", async () => {
+    await bindOneReport("task_rp16");
+
+    settleFinalDelivery("some-other-call", true);
+
+    expect(cohortFor("turn_1")?.phase).toBe("delivery_pending");
+  });
+
+  it("RP-17: a channel with no separate acceptance settles at submission", async () => {
+    // Web chat has no provider step to wait for, so the delivery state is
+    // already complete when the tool returns. Leaving the cohort pending here
+    // would leave an obligation nothing can ever settle.
+    policy.owed.mockReturnValue(true);
+    owedCohort("turn_1", "task_rp17");
+    const group = await tools();
+    await group.send_message.execute(
+      { final: true, kind: "message", text: "Finished; the log confirms it." },
+      executorContext()
+    );
+
+    expect(cohortFor("turn_1")?.phase).toBe("delivered");
   });
 });
