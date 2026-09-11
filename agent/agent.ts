@@ -6,6 +6,7 @@ import {
   wrapInteractiveDeliveryGuard,
 } from "@/agent/lib/delivery-guard";
 import { reconcileBackgroundTasks } from "@/agent/lib/completion-obligations";
+import { completionReportForcingActive } from "@/agent/lib/completion-report-activation";
 import { finalDeliveryStatus } from "@/agent/lib/message-delivery";
 import { wrapLinqModelDurationProbe } from "@/agent/lib/linq/timing";
 import { scheduledRunIdentity } from "@/agent/lib/schedules/identity";
@@ -43,6 +44,7 @@ export default defineAgent({
         const toolChoice = deliveryToolChoiceForInteractiveTurn({
           channelKind: ctx.channel.kind,
           deliveryStatus: finalDeliveryStatus(turnId),
+          reportOwed: completionReportForcingActive(),
           mode:
             caller.authenticator === "scheduled-result"
               ? "scheduled-report"
