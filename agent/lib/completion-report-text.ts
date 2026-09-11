@@ -4,6 +4,7 @@ import {
   type BoundedFact,
   type TaskRecord,
 } from "@/agent/lib/completion-obligations";
+import { recoveryProgress } from "@/agent/lib/recovery-progress";
 
 /**
  * The part of a completion summary the records can vouch for.
@@ -21,8 +22,11 @@ import {
  * model's cooperation: this renders them, and `reportWithRecordedFacts` carries
  * them alongside whatever the model wrote.
  *
- * **Outcomes first.** Every settled task's status appears, always, before any
- * supporting claim. An earlier version rendered only the facts, so a failed
+ * **Outcomes first, then what is still unknown.** Every settled task's status
+ * appears, always, before any supporting claim, and the unresolved remainder
+ * comes from `recoveryProgress` rather than being written here -- that module
+ * already decides what the records do and do not establish, and a second
+ * opinion about the same records would be a second source of truth. An earlier version rendered only the facts, so a failed
  * task whose facts held an observed checkpoint read as a confirmed success and
  * a fourth task's failure could be squeezed out by three earlier successes. A
  * report that can hide a failure is worse than no report.
@@ -118,6 +122,10 @@ export function completionReportText(cohortId: string): string | undefined {
   if (facts.length === 0) {
     lines.push("There is no recorded evidence of what the work achieved.");
   }
+  // What the records leave unresolved, in the words of the module that decides
+  // it. Empty for a corroborated completion, so nothing invents a doubt that
+  // the records do not support.
+  lines.push(...recoveryProgress({ turnId: cohortId }).unknownRemainder);
   return lines.join(" ");
 }
 

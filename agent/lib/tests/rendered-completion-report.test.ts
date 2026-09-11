@@ -280,3 +280,57 @@ describe("what an outside review found the renderer still hid", () => {
     expect(delivered).toContain("Submitted the order form");
   });
 });
+
+describe("the uncertainty the report has to carry", () => {
+  it("RR-14: a dispatched action with no confirmation is stated as unknown", () => {
+    // Plan 014 step 3: root synthesis must identify partial work, uncertainty
+    // and the exact user action. recoveryProgress already decides all three and
+    // had no caller, so the report listed facts and said nothing about what was
+    // still unknown -- the single most important thing after a dispatch that
+    // was never confirmed.
+    settle(
+      "task_a",
+      "turn_1",
+      [{ claim: "Dispatched the submission", evidence: "executor_receipt" }],
+      "failed"
+    );
+
+    const delivered = reportWithRecordedFacts(
+      "turn_1",
+      "Here's where it got to."
+    );
+
+    expect(delivered).toMatch(/never confirmed|cannot establish|unknown/iu);
+    // And never as a claim that it was undone.
+    expect(delivered).not.toMatch(/rolled back|reversed|undone/iu);
+  });
+
+  it("RR-15: work that stopped short says so rather than implying nothing ran", () => {
+    settle("task_a", "turn_1", [
+      { claim: "Checked the first page", evidence: "observed" },
+    ]);
+    settle(
+      "task_b",
+      "turn_1",
+      [{ claim: "The report page never loaded", evidence: "observed" }],
+      "failed"
+    );
+
+    const delivered = reportWithRecordedFacts("turn_1", "Partly there.");
+
+    expect(delivered).toMatch(
+      /stopped before finishing|not the same as proof/iu
+    );
+  });
+
+  it("RR-16: a corroborated completion carries no invented uncertainty", () => {
+    settle("task_a", "turn_1", [
+      { claim: "Submitted the order form", evidence: "observed" },
+    ]);
+
+    const delivered = reportWithRecordedFacts("turn_1", "Done.");
+
+    // Nothing is unresolved here, and saying otherwise would be its own untruth.
+    expect(delivered).not.toMatch(/never confirmed|stopped before finishing/iu);
+  });
+});
