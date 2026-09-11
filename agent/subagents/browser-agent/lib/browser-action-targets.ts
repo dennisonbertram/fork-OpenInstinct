@@ -143,6 +143,5 @@ export function resolveBrowserActionTarget(
  * Naming that tool here would send the worker to an action it cannot express.
  */
 export function unsupportedControlMessage(role: string) {
-  void role;
-  return "This browser control is not structurally reversible; use commit_browser_action.";
+  return `This ${role} control cannot be driven by any available browser action, and nothing about it has changed. There is no approved action that describes setting one: commit covers submitting, ordering, sending and deleting only. Leave the browser session open and either request a user takeover at this point, or take another supported route to the same outcome, and say which you did.`;
 }

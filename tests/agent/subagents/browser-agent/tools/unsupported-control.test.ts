@@ -1,3 +1,4 @@
+import type { BrowserRefState } from "@onkernel/browser-loop";
 import { describe, expect, it } from "vitest";
 import {
   browserActionTargets,
@@ -43,35 +44,38 @@ describe("unsupported browser controls", () => {
     // Preserve the session and hand over, or take a supported route. Both are
     // real dispositions; "use commit_browser_action" was not.
     expect(message).toMatch(/takeover|hand over|another supported route/iu);
-    // It must not imply the control changed state.
+    // It must not imply the control changed state, and it must say so outright:
+    // a worker that is merely not told of a change can still report one.
     expect(message).not.toMatch(/\b(checked|enabled|toggled|set to)\b/iu);
+    expect(message).toMatch(/nothing about it has changed|was never changed/iu);
   });
 
   it("UC-04: these roles are still observed, so the model is not lied to about what exists", () => {
-    const refs = undrivableRoles.map((role, index) => [
-      `e${String(index + 1)}`,
-      {
-        frameId: "frame-1",
-        name: `${role} control`,
-        role,
-        targetId: "page-1",
-      },
-    ]);
-    const snapshot = refs.map(([ref]) => `[${String(ref)}]`).join(" ");
+    const state: BrowserRefState = {
+      activeTargetId: "page-1",
+      generations: [["page-1", 1]],
+      refCounter: undrivableRoles.length,
+      refs: undrivableRoles.map((role, index) => [
+        `e${String(index + 1)}`,
+        {
+          backendNodeId: index + 1,
+          cohort: 1,
+          frameId: "frame-1",
+          generation: 1,
+          name: `${role} control`,
+          nth: 0,
+          role,
+          targetId: "page-1",
+        },
+      ]),
+    };
+    const snapshot = undrivableRoles
+      .map((_role, index) => `[e${String(index + 1)}]`)
+      .join(" ");
 
     // Hiding them would be the other way to lie: they exist on the page, and a
     // worker that cannot see them cannot report why it is stuck.
-    const observed = browserActionTargets(
-      "session-1",
-      snapshot,
-      // SAFETY: a minimal synthetic ref state shaped like the browser loop's,
-      // carrying only the fields this builder reads.
-      {
-        activeTargetId: "page-1",
-        generations: [],
-        refs,
-      } as unknown as Parameters<typeof browserActionTargets>[2]
-    );
+    const observed = browserActionTargets("session-1", snapshot, state);
 
     for (const role of undrivableRoles) {
       expect(
