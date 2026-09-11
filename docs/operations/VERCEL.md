@@ -544,6 +544,8 @@ Automated checks cover the native text path and the adapter's media, reaction,
 and approval contracts. Live provider acceptance still requires the designated
 user's message, same-number reply, duplicate and wrong-line negatives, and a
 webchat OTP regression. Track only the adapter patch version in `EVE_PATCHES`.
+Approval prompts use “no” for refusal because SendBlue treats “cancel” as an
+opt-out keyword.
 Browser screenshots remain private artifacts. For a SendBlue reply, the channel
 reads only a manifest owned by the current scope and root session, verifies its
 private Blob bytes, then uploads the file directly to SendBlue before sending
