@@ -9,9 +9,10 @@ const margaret = {
 };
 function call(
   name: string,
-  output: EveEvalToolCall["output"]
+  output: EveEvalToolCall["output"],
+  status: EveEvalToolCall["status"] = "completed"
 ): EveEvalToolCall {
-  return { input: {}, name, output, status: "completed", turnIndex: 0 };
+  return { input: {}, name, output, status, turnIndex: 0 };
 }
 function invoiceCall(customerId = "CUST_MARGARET", status = "UNPAID") {
   return call("square__ListInvoices", {
@@ -20,11 +21,73 @@ function invoiceCall(customerId = "CUST_MARGARET", status = "UNPAID") {
 }
 
 describe("invoiceRecipientsAreResolved", () => {
+  it("rejects a missing invoice read", () => {
+    expect(invoiceRecipientsAreResolved([])).toBe(false);
+  });
+
+  it("rejects a failed invoice read", () => {
+    expect(
+      invoiceRecipientsAreResolved([
+        call("square__ListInvoices", undefined, "failed"),
+      ])
+    ).toBe(false);
+  });
+
+  it("rejects a completed invoice read with an error-shaped result", () => {
+    expect(
+      invoiceRecipientsAreResolved([
+        call("square__ListInvoices", { errors: [{ code: "BAD_REQUEST" }] }),
+      ])
+    ).toBe(false);
+  });
+
+  it("rejects a completed invoice read with malformed output", () => {
+    expect(
+      invoiceRecipientsAreResolved([call("square__ListInvoices", "invalid")])
+    ).toBe(false);
+  });
+
+  it("accepts a completed empty invoice list", () => {
+    expect(
+      invoiceRecipientsAreResolved([
+        call("square__ListInvoices", { invoices: [] }),
+      ])
+    ).toBe(true);
+  });
+
+  it("accepts a later usable invoice read after an earlier failed read", () => {
+    expect(
+      invoiceRecipientsAreResolved([
+        call("square__ListInvoices", undefined, "failed"),
+        invoiceCall(),
+        call("square__RetrieveCustomer", { customer: margaret }),
+      ])
+    ).toBe(true);
+  });
+
   it("accepts a direct RetrieveCustomer result for an id-only invoice recipient", () => {
     expect(
       invoiceRecipientsAreResolved([
         invoiceCall(),
         call("square__RetrieveCustomer", { customer: margaret }),
+      ])
+    ).toBe(true);
+  });
+
+  it("accepts a body-wrapped invoice result", () => {
+    expect(
+      invoiceRecipientsAreResolved([
+        call("square__ListInvoices", {
+          body: {
+            invoices: [
+              {
+                primary_recipient: { customer_id: "CUST_MARGARET" },
+                status: "UNPAID",
+              },
+            ],
+          },
+        }),
+        call("square__RetrieveCustomer", { body: { customer: margaret } }),
       ])
     ).toBe(true);
   });

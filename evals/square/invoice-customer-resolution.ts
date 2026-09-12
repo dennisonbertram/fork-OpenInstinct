@@ -16,14 +16,10 @@ const customerReadOutputSchema = z.object({
   customer: z.unknown().optional(),
   customers: z.array(z.unknown()).optional(),
 });
-const invoiceRecipientOutputSchema = z.object({
-  body: z
-    .object({
-      invoices: z.array(z.unknown()).optional(),
-    })
-    .optional(),
-  invoices: z.array(z.unknown()).optional(),
-});
+const invoiceRecipientOutputSchema = z.union([
+  z.object({ invoices: z.array(z.unknown()) }),
+  z.object({ body: z.object({ invoices: z.array(z.unknown()) }) }),
+]);
 const invoiceRecipientSchema = z.object({
   primary_recipient: z.object({ customer_id: z.string().min(1) }),
   status: z.string(),
@@ -38,25 +34,27 @@ const reportableInvoiceStatuses = new Set([
 export function invoiceRecipientsAreResolved(
   calls: readonly EveEvalToolCall[]
 ): boolean {
-  const invoiceRecipientIds = calls
+  const invoiceReads = calls
     .filter(
       (call) =>
         call.name === "square__ListInvoices" && call.status === "completed"
     )
     .flatMap((call) => {
       const parsed = invoiceRecipientOutputSchema.safeParse(call.output);
-      if (!parsed.success) return [];
-      return [
-        ...(parsed.data.invoices ?? []),
-        ...(parsed.data.body?.invoices ?? []),
-      ].flatMap((invoice) => {
-        const recipient = invoiceRecipientSchema.safeParse(invoice);
-        return recipient.success &&
-          reportableInvoiceStatuses.has(recipient.data.status)
-          ? [recipient.data.primary_recipient.customer_id]
-          : [];
-      });
+      return parsed.success ? [parsed.data] : [];
     });
+  if (invoiceReads.length === 0) return false;
+
+  const invoiceRecipientIds = invoiceReads.flatMap((read) => {
+    const invoices = "invoices" in read ? read.invoices : read.body.invoices;
+    return invoices.flatMap((invoice) => {
+      const recipient = invoiceRecipientSchema.safeParse(invoice);
+      return recipient.success &&
+        reportableInvoiceStatuses.has(recipient.data.status)
+        ? [recipient.data.primary_recipient.customer_id]
+        : [];
+    });
+  });
 
   const customerIds = new Set(
     calls
