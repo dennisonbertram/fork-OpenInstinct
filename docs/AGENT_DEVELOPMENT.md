@@ -1,9 +1,10 @@
 # Agent development system
 
-Status: **Locally verified implementation; CI and deployed acceptance pending**,
-2026-09-12. The commands below exist in this change. Their owning runbooks
-distinguish focused tests, observed local behavior, CI, and deployed acceptance.
-A command's presence is not proof that its target is ready.
+Status: **Implemented; acceptance is revision-specific**, 2026-09-12. The
+commands below exist in this change. Their owning runbooks distinguish focused
+tests, observed local behavior, CI, and deployed acceptance. Record hosted or
+deployed evidence against the delivered revision in [PR #223](https://github.com/dennisonbertram/fork-OpenInstinct/pull/223); a command's presence
+is not proof that its target is ready.
 
 ## Start with the operation
 

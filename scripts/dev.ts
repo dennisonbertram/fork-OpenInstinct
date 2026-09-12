@@ -144,13 +144,13 @@ function requestedPort(name: "PORT" | "MARKETING_PORT") {
 }
 
 async function freePort(port: number) {
-  return (
-    await Promise.all(
-      ["127.0.0.1", "::1", "0.0.0.0", "::"].map((host) =>
-        freePortOnHost(port, host)
-      )
-    )
-  ).every(Boolean);
+  for (const host of ["127.0.0.1", "::1", "0.0.0.0", "::"]) {
+    // The wildcard listeners overlap with their loopback family, so each probe
+    // must close before the next starts.
+    // oxlint-disable-next-line no-await-in-loop -- Socket ownership must end before the overlapping bind probe starts.
+    if (!(await freePortOnHost(port, host))) return false;
+  }
+  return true;
 }
 
 async function freePortOnHost(port: number, host: string) {

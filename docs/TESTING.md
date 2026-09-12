@@ -1,22 +1,20 @@
 # Testing and verification
 
-Use `pnpm verify` for the deterministic pull-request gate. The command is now
+Use `pnpm verify` for the deterministic pull-request gate. The command is
 implemented in this worktree and shares its five lane recipes with GitHub
-Actions. The latest complete local acceptance passed for receipt
-`df87a3e9-eca9-471b-9f0c-2b1a398a0ecd` on base
-`7875a08348adf2d567120e7e7f3d803b101aa45a`, with source fingerprint
-`a37b4e519e6b2a45e568f69dfaaf7571fec9cf252e193b38087e9dbea4709b1c` unchanged
-through the run. The receipt is under
-`.eve/verify/df87a3e9-eca9-471b-9f0c-2b1a398a0ecd/receipt.json`.
-
-The run completed from 2026-09-12 22:57:28.102 UTC to 23:00:16.475 UTC. Checks
+Actions. The latest complete local acceptance is receipt
+`3885ff46-b569-477e-b977-5257ceb1df41`, recorded from 2026-09-12 23:14:40.380
+UTC to 23:17:31.415 UTC at HEAD
+`9e93174f8af452cda738d65a13267244523e90e9`, with `scripts/dev.ts` and
+`tests/local-development.test.ts` modified, and source fingerprint
+`add35d91612b007a39cff4b2532da5ab704c9db675c0fbbe29193fff928e6c79` unchanged
+at the end. Checks
 reported 1,949 passed and six intentional real-Postgres skips; both app builds
-passed; real Postgres passed 6/6; contract evals passed 15/15; and E2E passed
-26 cases with one documented skip and no flaky cases. Cleanup passed in all
-lanes and the verification lease was released. This establishes local acceptance
-for that exact source fingerprint only. Hosted CI evidence must identify a
-delivered revision; this receipt establishes no hosted run, and no deployment is
-promised.
+passed; real Postgres passed 6/6; contract evals passed 15/15; E2E passed 26
+cases with one documented skip and no flaky cases; cleanup passed in all lanes;
+and the verification lease was released. This is local evidence for that exact
+fingerprint. Hosted CI and deployed behavior must be recorded against the
+delivered revision in [PR #223](https://github.com/dennisonbertram/fork-OpenInstinct/pull/223); this receipt establishes neither.
 
 The repository still requires `pnpm check`, `pnpm build`, and
 `git diff --check` before handoff. `pnpm verify` includes those checks in its

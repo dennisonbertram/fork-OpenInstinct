@@ -138,7 +138,7 @@ describe(
       expectIsolatedLifecycle(result.commands);
     });
 
-    it("cleans owned fixture resources when a process-group signal reaches both supervisor layers", async () => {
+    it("starts fixture services on isolated explicit ports and cleans them after a process-group signal", async () => {
       const directory = await mkdtemp(
         join(tmpdir(), "open-instinct-group-stop-")
       );
@@ -206,6 +206,14 @@ http.createServer((_, response) => response.end("ok")).listen(port, "127.0.0.1")
           .slice(0, 12)}`;
         expect(record.composeProject).toBe(expectedProject);
         expect(record.volume).toBe(`${expectedProject}_postgres-data`);
+        expect(record.ports).toEqual({
+          app: appPort,
+          marketing: marketingPort,
+        });
+        expect(record.origins).toEqual({
+          app: `http://127.0.0.1:${String(appPort)}`,
+          marketing: `http://127.0.0.1:${String(marketingPort)}`,
+        });
 
         process.kill(-supervisor.pid, "SIGTERM");
 
