@@ -3,6 +3,7 @@ import {
   stripImageArtifactMarkdownReferences,
 } from "@/agent/lib/browser-image-artifact/markdown";
 import {
+  allCohorts,
   taskRecords,
   type BoundedFact,
   type TaskRecord,
@@ -57,6 +58,12 @@ import { recoveryProgress } from "@/agent/lib/recovery-progress";
 const maximumClaims = 3;
 /** What one automatic report body may take, as a whole, including any omission notice. */
 const maximumReportBodyLength = 900;
+/**
+ * Room held back for the "N further recorded claims are not shown here."
+ * sentence, which is mandatory whenever anything was omitted: the count is how
+ * a reader learns detail exists that they cannot see.
+ */
+const claimNoticeReserve = 48;
 /** What the channel accepts, so a carried report can never make a send invalid. */
 const maximumMessageLength = 20_000;
 
@@ -166,8 +173,13 @@ function outcomeBody(tasks: readonly TaskRecord[]): string {
   return present
     .map((status) => {
       const count = counts.get(status) ?? 0;
+      // The verb has to agree with the count, not with the group. A mixed
+      // request with exactly one cancellation rendered "1 task were cancelled"
+      // -- visible only by printing the message, since every assertion about
+      // this sentence was checking which words appeared, not whether it reads.
       const noun = count === 1 ? "task" : "tasks";
-      return `${String(count)} ${noun} ${groupVerb[status]}`;
+      const verb = count === 1 ? singleTaskVerb[status] : groupVerb[status];
+      return `${String(count)} ${noun} ${verb}`;
     })
     .join("; ");
 }
@@ -184,6 +196,14 @@ function outcomeBody(tasks: readonly TaskRecord[]): string {
 function endedSentence(claim: string) {
   const text = claim.trim();
   return text.length === 0 || /[.!?]$/u.test(text) ? text : `${text}.`;
+}
+
+/** Where a cohort sits among every cohort this session has opened, oldest first. */
+function chronologicalPosition(cohortId: string): number {
+  const position = allCohorts().findIndex(
+    (candidate) => candidate.cohortId === cohortId
+  );
+  return position === -1 ? 0 : position;
 }
 
 /** One sentence for one request's tasks, labelled only when more than one request is in play. */
@@ -286,8 +306,15 @@ export function completionReportText(
     // "the first request" mean "the first failure", so a request the user made
     // second was described to them as their first -- a label that reads as fact
     // and is wrong. Failures still lead; only the wording is anchored.
-    .map((request, index) => ({
-      askedAt: index,
+    .map((request) => ({
+      // Position among EVERY cohort this session holds, in creation order --
+      // not the index in the array handed to this function. The policy supplies
+      // only the cohorts that are reportable, so if the user's first request is
+      // still running and their second and third are ready, numbering the
+      // supplied array called those "the first" and "the second". The label
+      // reads as a plain fact about their own conversation and pointed at the
+      // wrong request.
+      askedAt: chronologicalPosition(request.cohortId),
       cohortId: request.cohortId,
       tasks: request.tasks,
     }));
@@ -332,7 +359,11 @@ export function completionReportText(
 
   let text = appendBounded(
     body,
-    maximumReportBodyLength,
+    // Reserved so the claim-omission notice appended below always fits. Without
+    // it the loop accepted an over-long body once every claim had already been
+    // dropped, and a mixed-status batch rendered 948 characters against this
+    // 900-character bound.
+    maximumReportBodyLength - claimNoticeReserve,
     uncertaintySentences,
     (omitted) =>
       `(${String(omitted)} further unresolved-outcome note${omitted === 1 ? " is" : "s are"} not shown here.)`

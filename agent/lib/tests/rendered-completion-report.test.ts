@@ -733,6 +733,108 @@ describe("uncertainty shared by several requests is stated once", () => {
     expect(report.indexOf("failed")).toBeLessThan(report.indexOf("finished"));
   });
 
+  it("RR-36: a mixed-status batch still fits the 900-character body", () => {
+    // RR-23 cancels every task, which renders one short sentence per request. A
+    // mixed batch renders three counts per request instead. An outside review
+    // reproduced 948 characters against this 900 bound with the exact
+    // (failed, cancelled, completed) split below: outcomes and uncertainty spent
+    // the whole budget, then the claim-omission notice was appended anyway
+    // because every claim had already been dropped.
+    const splits: [number, number, number][] = [
+      [1, 2, 5],
+      [1, 7, 0],
+      [4, 4, 0],
+      [3, 5, 0],
+      [2, 0, 6],
+      [6, 1, 1],
+      [0, 4, 4],
+      [0, 2, 6],
+    ];
+    const ids = splits.map(([failed, cancelled, completed], cohort) => {
+      const turnId = `turn_${String(cohort)}`;
+      const statuses: ("completed" | "failed" | "cancelled")[] = [
+        ...Array.from<"failed">({ length: failed }).fill("failed"),
+        ...Array.from<"cancelled">({ length: cancelled }).fill("cancelled"),
+        ...Array.from<"completed">({ length: completed }).fill("completed"),
+      ];
+      statuses.forEach((status, task) => {
+        settle(
+          `task_${String(cohort)}_${String(task)}`,
+          turnId,
+          [
+            {
+              claim: "x".repeat(2000),
+              evidence:
+                cohort === 2 || cohort === 7 ? "executor_receipt" : "observed",
+            },
+          ],
+          status
+        );
+      });
+      return turnId;
+    });
+
+    const report = completionReportText(ids) ?? "";
+
+    expect(report.length).toBeLessThanOrEqual(900);
+    // And the omission is still declared rather than dropped to make room.
+    expect(report).toMatch(/not shown here/u);
+  });
+
+  it("RR-38: the verb agrees with the count in a mixed request", () => {
+    // "6 tasks failed; 1 task were cancelled; 1 task finished" reached a real
+    // message. Every assertion about this sentence checked which words appeared,
+    // so none of them noticed it does not read as English. Found by printing the
+    // message instead of the test output.
+    settle(
+      "task_f1",
+      "turn_mixed",
+      [{ claim: "First attempt", evidence: "observed" }],
+      "failed"
+    );
+    settle(
+      "task_c1",
+      "turn_mixed",
+      [{ claim: "Second attempt", evidence: "observed" }],
+      "cancelled"
+    );
+    settle("task_d1", "turn_mixed", [
+      { claim: "Third attempt", evidence: "observed" },
+    ]);
+
+    const report = completionReportText(["turn_mixed"]) ?? "";
+
+    expect(report).toContain("1 task was cancelled");
+    expect(report).not.toContain("1 task were cancelled");
+    expect(report).toContain("1 task failed");
+    expect(report).toContain("1 task finished");
+  });
+
+  it("RR-37: a request is numbered among every request, not among the reportable ones", () => {
+    // The policy hands this function only the cohorts that are ready. If the
+    // user's first request is still running, the second and third were being
+    // called "the first request" and "the second request" -- a label that reads
+    // as a plain fact about their own conversation and names the wrong one.
+    admitTask({
+      objectiveRevision: "turn_running",
+      parentTurnId: "turn_running",
+      taskId: "task_still_going",
+    });
+    settle("task_two", "turn_second", [
+      { claim: "Ordered the part", evidence: "observed" },
+    ]);
+    settle("task_three", "turn_third", [
+      { claim: "Cancelled the other", evidence: "observed" },
+    ]);
+
+    // Only the settled two are reportable, and they are requests two and three.
+    const report = completionReportText(["turn_second", "turn_third"]) ?? "";
+
+    expect(report).toContain("The second request");
+    expect(report).toContain("The third request");
+    expect(report).not.toContain("The first request");
+  });
+
   it("RR-34: requests with the same unresolved disposition share one sentence", () => {
     // Two requests that both dispatched an action nothing corroborated. The
     // sentence describing that is fixed text from recoveryProgress -- it does
