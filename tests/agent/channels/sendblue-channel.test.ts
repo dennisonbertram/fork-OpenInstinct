@@ -1,5 +1,6 @@
 import type { Thread } from "chat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { sendMessageOutputSchema } from "@/agent/lib/send-message";
 import {
   beginFinalDelivery,
   finalDeliveryStatus,
@@ -1849,14 +1850,15 @@ describe("SendBlue channel", () => {
         sessionContext()
       );
 
-      expect(output).toMatchObject({
+      const message = sendMessageOutputSchema.parse(output);
+      expect(message).toMatchObject({
         kind: "message",
         text: expect.stringContaining("The first historical task finished."),
       });
-      if (output.kind !== "message") throw new Error("Expected a message.");
-      expect(output.text).toContain("The second historical task finished.");
+      if (message.kind !== "message") throw new Error("Expected a message.");
+      expect(message.text).toContain("The second historical task finished.");
       expect(capture.post).toHaveBeenCalledExactlyOnceWith({
-        raw: output.text,
+        raw: message.text,
       });
       expect(cohortFor(firstCohortId)).toMatchObject({ phase: "delivered" });
       expect(cohortFor(secondCohortId)).toMatchObject({ phase: "delivered" });
