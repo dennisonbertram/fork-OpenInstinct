@@ -260,15 +260,52 @@ const jcr02 = defineEval({
     deferred.calledSubagent("browser-agent", { count: 1 });
     await requireDeliveredText(t, deferred);
 
-    const unrelated = await t.send("What is 15 percent of 240?");
+    // A question this turn cannot answer without a tool of its own. An
+    // outside review found the arithmetic this case used to ask ("15 percent
+    // of 240") could not detect the defect at all: the model can produce "36"
+    // with send_message as its only permitted tool, so the case passed
+    // whether or not the owed report had blocked every other call.
+    const unrelated = await t.send(
+      "Separate question, not about that: look up the current local time in " +
+        "Berlin on a public website and tell me what it is."
+    );
     unrelated.expectOk();
     unrelated.succeeded();
     unrelated.calledTool("send_message", { count: 1, status: "completed" });
-    unrelated.maxToolCalls(1);
+    // The whole point of the case. A report owed for older work must not be
+    // the only thing this turn is allowed to do; the new request has to be
+    // able to make the call it needs.
+    unrelated.eventsSatisfy(
+      "a lookup action runs before the send_message action",
+      (events) => {
+        const lookupIndex = events.findIndex(
+          (event) =>
+            event.type === "actions.requested" &&
+            event.data.actions.some(
+              (action) =>
+                action.kind === "tool-call" &&
+                ["web_search", "web_fetch"].includes(action.toolName)
+            )
+        );
+        const sendIndex = events.findIndex(
+          (event) =>
+            event.type === "actions.requested" &&
+            event.data.actions.some(
+              (action) =>
+                action.kind === "tool-call" &&
+                action.toolName === "send_message"
+            )
+        );
+        return (
+          lookupIndex !== -1 && (sendIndex === -1 || lookupIndex < sendIndex)
+        );
+      }
+    );
+    // Staying on topic still matters: answering the new question must not
+    // re-run the parked background work.
     unrelated.notEvent("subagent.called");
     const text = await requireDeliveredText(t, unrelated);
     assertPlainTextDelivery(t, text);
-    t.check(text, includes("36"));
     t.check(
       text,
       satisfies<string>(

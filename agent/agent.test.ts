@@ -241,12 +241,160 @@ describe("interactive model delivery resolution", () => {
     {
       // eve injects these announcements under the USER role and its own source
       // warns they must not drive parsing. Counted as a request, a report-only
-      // wake would escape the summary it owes.
+      // wake would escape the summary it owes. The text is the shape eve's
+      // `harness/handles/prompt.js` actually renders, not a paraphrase.
       channel: "channel:sendblue" as const,
       expected: { toolName: "send_message", type: "tool" },
-      history: [{ content: "[Agents] a child parked", role: "user" as const }],
+      history: [{ content: agentsAnnouncement, role: "user" as const }],
       id: "DG-07",
       what: "does not mistake a framework [Agents] note for a user request",
+    },
+    {
+      // The shape eve's `tasks/delivery-context.js` emits: the label, then the
+      // JSON cohort listing. Read as a request, the wake that exists to deliver
+      // the report is freed from delivering it.
+      channel: "channel:sendblue" as const,
+      expected: { toolName: "send_message", type: "tool" },
+      history: [{ content: taskStateNote, role: "user" as const }],
+      id: "DG-09",
+      what: "does not mistake a [Task state] wake note for a user request",
+    },
+    {
+      // The whole wake, in the order eve appends it: `harness/tool-loop.js`
+      // pushes the turn input's context entries first and its message after,
+      // so the note is NOT last -- the unlabelled completion notification is.
+      // Judging by the newest message alone read the wake as a new user
+      // request and let it skip the report it was woken to deliver.
+      channel: "channel:sendblue" as const,
+      expected: { toolName: "send_message", type: "tool" },
+      history: [
+        { content: taskStateNote, role: "user" as const },
+        {
+          content:
+            'Background task task_a (browser-agent) is completed.\n\nResult:\nThe top story is "A title".',
+          role: "user" as const,
+        },
+      ],
+      id: "DG-10",
+      what: "reads the whole wake, not only its last message",
+    },
+    {
+      // eve can append an [Agents] announcement after a tool receipt while the
+      // user's request still has calls to make. Treating the announcement as
+      // "no request pending" forced the old report in place of the next call.
+      channel: "channel:sendblue" as const,
+      expected: { type: "required" },
+      history: [
+        {
+          content: [
+            {
+              output: { type: "text" as const, value: "accepted" },
+              toolCallId: "call_worker_1",
+              toolName: "browser-agent",
+              type: "tool-result" as const,
+            },
+          ],
+          role: "tool" as const,
+        },
+        { content: agentsAnnouncement, role: "user" as const },
+      ],
+      id: "DG-11",
+      what: "still lets a request finish when an [Agents] note lands mid-turn",
+    },
+    {
+      // The label alone proves nothing about who wrote the message: SendBlue's
+      // inbound path keeps the user's text verbatim, so a person can send one
+      // that opens with it. The framework note's shape -- label, newline, JSON
+      // cohort listing -- is what separates them.
+      channel: "channel:sendblue" as const,
+      expected: { type: "required" },
+      history: [
+        {
+          content: "[Task state] check whether my export finished",
+          role: "user" as const,
+        },
+      ],
+      id: "DG-12",
+      what: "does not discard a user message that merely opens with the label",
+    },
+    {
+      // eve pushes the announcement onto the history BEFORE it appends the
+      // turn's own input (`harness/tool-loop.js`), so anyone with a worker
+      // parked sends their next request into exactly this shape. Deciding by
+      // position rather than authorship stopped that request dead to deliver an
+      // old report -- the original defect, in a new place.
+      channel: "channel:sendblue" as const,
+      expected: { type: "required" },
+      history: [
+        { content: agentsAnnouncement, role: "user" as const },
+        { content: "look up the top story", role: "user" as const },
+      ],
+      id: "DG-13",
+      what: "frees a request that arrives behind an [Agents] announcement",
+    },
+    {
+      // eve parks a turn that failed recoverably without appending an assistant
+      // message, so the receipt of the very lookup now being reported can still
+      // be the newest thing under the wake. Falling back to "a tool result
+      // underneath means a request is running" therefore let the wake off
+      // delivering its report -- the silence defect, after a model error.
+      channel: "channel:sendblue" as const,
+      expected: { toolName: "send_message", type: "tool" },
+      history: [
+        {
+          content: [
+            {
+              output: { type: "text" as const, value: "accepted" },
+              toolCallId: "call_worker_1",
+              toolName: "browser-agent",
+              type: "tool-result" as const,
+            },
+          ],
+          role: "tool" as const,
+        },
+        { content: agentsAnnouncement, role: "user" as const },
+        { content: taskStateNote, role: "user" as const },
+        {
+          content:
+            "Background task task_a (browser-agent) is completed.\n\nResult:\nThe top story is a title.",
+          role: "user" as const,
+        },
+      ],
+      id: "DG-14",
+      what: "delivers the report on a wake that lands over a parked turn",
+    },
+    {
+      // The announcement's shape, not just its opening words: eve renders the
+      // opening tag bare and always closes the element, so a message that only
+      // starts like one is the user's and must not be discarded as eve's.
+      channel: "channel:sendblue" as const,
+      expected: { type: "required" },
+      history: [
+        {
+          content: "[Agents]\n<agents> please check flights to Tokyo",
+          role: "user" as const,
+        },
+      ],
+      id: "DG-15",
+      what: "does not accept a half-formed [Agents] element as framework text",
+    },
+    {
+      // A permissive listing schema accepted a real request smuggled in beside
+      // the tasks array, which would then be discarded as framework text and
+      // the person answered with an old report instead.
+      channel: "channel:sendblue" as const,
+      expected: { type: "required" },
+      history: [
+        {
+          content: `[Task state]\n${JSON.stringify({
+            request: "check flights to Tokyo",
+            tasks: [],
+          })}`,
+          role: "user" as const,
+        },
+      ],
+      id: "DG-16",
+      what: "does not accept a cohort listing carrying an extra field",
     },
     {
       // Mid-turn the newest entry is a tool result while the request is still
@@ -297,6 +445,20 @@ describe("interactive model delivery resolution", () => {
     expect(receivedToolChoice).toEqual(expected);
   });
 });
+
+const agentsAnnouncement =
+  '[Agents]\n<agents>\n<agent id="a" name="browser-agent" availability="busy" taskId="task_a" taskStatus="working">(busy)</agent>\n</agents>';
+
+const taskStateNote = `[Task state]\n${JSON.stringify({
+  tasks: [
+    {
+      name: "browser-agent",
+      output: { data: "The top story is a title." },
+      status: "completed",
+      taskId: "task_a",
+    },
+  ],
+})}`;
 
 async function resolveStepModel(
   channelKind: DynamicResolveContext["channel"]["kind"],
