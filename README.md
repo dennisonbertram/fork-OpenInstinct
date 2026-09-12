@@ -57,8 +57,9 @@ commands require the direct `DATABASE_URL_UNPOOLED` connection. Run
 `pnpm db:migrate` before starting against a new or upgraded local database.
 Vercel uses Turbo to run the uncached migration task before its application
 build. See [`db/README.md`](db/README.md) for existing-database adoption,
-environment loading, and constraint-validation sequencing. Better Auth retains
-its separate migration path.
+environment loading, and constraint-validation sequencing. Better Auth was
+adopted by versioned Drizzle migration `0001`; it has no separate migration
+path.
 
 Treat the private Blob store as production key material: deleting it loses the
 automatically generated encryption key, and rotating that key requires
@@ -206,7 +207,7 @@ development requires:
   Vercel Marketplace resource
 - AI Gateway access from an API key or a linked Vercel project's OIDC token
 
-Clone the fork and start the complete local design stack with one command:
+Clone the fork and start the primary local application stack with one command:
 
 ```bash
 git clone https://github.com/dennisonbertram/fork-OpenInstinct.git
@@ -226,10 +227,12 @@ Signing in grants access; it does not require manual project configuration.
 
 `./init.sh` checks the toolchain, installs the locked dependencies, and pulls
 the development environment through Eve only when a fresh or untouched env
-needs credentials. It then starts or reuses Agentation at
-`http://localhost:4747` and starts PostgreSQL, migrations, Next.js, and Eve at
-`http://localhost:3000`. Press `Ctrl-C` to stop the services that the script
-started.
+needs credentials. It then starts PostgreSQL, migrations, primary Next/Eve, the standalone
+marketing app, and starts or reuses Agentation at `http://127.0.0.1:4747`.
+The supervisor selects free defaults (app 3000, marketing 3210), rejects an
+occupied explicitly requested port, and prints exact `127.0.0.1` origins.
+Press `Ctrl-C` or run `./init.sh --stop` to stop only the owned resources.
+Use `./init.sh --status` to inspect their recorded identities.
 
 The canonical project and team are built in. An authorized alternate project
 can be selected without editing the script:
@@ -255,17 +258,15 @@ file at mode `0600`. It also refuses to replace a customized, incomplete
 `.env.local`; complete it manually or move it aside before retrying.
 
 The Agentation toolbar is lazy-loaded only in development and connects to the
-local server at `http://localhost:4747`. It is not rendered in production.
+local server at `http://127.0.0.1:4747`. It is not rendered in production.
 
-`pnpm dev` starts PostgreSQL from `compose.yaml`, applies the committed database
-migrations, and starts the application. Stopping the development process also
-stops and removes the PostgreSQL container; its data remains in the
-`postgres-data` volume for the next run. Run `pnpm dev:app` when intentionally
-using an externally managed database instead. `./init.sh` stops before starting
-Docker when Kernel or inference credentials are unavailable and points back to
-the Vercel login or manual `.env.local` path. `pnpm dev` remains the app-only
-stack entry point for contributors who intentionally manage Agentation
-separately.
+`pnpm dev` starts the complete connected stack: PostgreSQL from `compose.yaml`,
+committed migrations, Agentation, primary Next/Eve, and marketing. Stopping it
+removes the owned PostgreSQL container while retaining the worktree-specific
+named `<compose-project>_postgres-data` volume for the next run. Run
+`pnpm dev:app` when intentionally using an externally managed database instead.
+`./init.sh` stops before starting Docker when Kernel or inference credentials
+are unavailable and points back to the Vercel login or manual `.env.local` path.
 
 Local development otherwise uses the same vault, Kernel browser, and AI Gateway
 path as the Vercel deployment. Better Auth and vault encryption use stable
@@ -278,6 +279,7 @@ explicit secrets.
 - [`docs/README.md`](docs/README.md) — documentation map and implemented/verified/proposed truth labels.
 - [`docs/ARCHITECTURE_REVIEW.md`](docs/ARCHITECTURE_REVIEW.md) — verified architecture, boundaries, and prioritized risks.
 - [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) — repository map, change recipes, and verification gates for agents.
+- [`docs/AGENT_DEVELOPMENT.md`](docs/AGENT_DEVELOPMENT.md) — developer lifecycle, verification, diagnostics, deployment identity, and acceptance contracts.
 - [`docs/PRODUCT_DIRECTION.md`](docs/PRODUCT_DIRECTION.md) — infrastructure-first product recommendation, managed-line lifecycle, MCP/tool strategy, API, and webhooks.
 - [`docs/MULTITENANCY.md`](docs/MULTITENANCY.md) — design path for tenant isolation, quotas, and scaling.
 - [`docs/operations/VERCEL.md`](docs/operations/VERCEL.md) — zero-to-running local/Vercel setup, Linq acceptance, and SendBlue OTP and conversation channel operations.

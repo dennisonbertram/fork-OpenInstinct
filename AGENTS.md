@@ -5,6 +5,9 @@ under `apps/marketing/`, and an Eve agent under `agent/`.
 The workspace manager is `/`; agent chat is `/chat`.
 Read [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md) for topology, ownership, storage,
 and the change recipe relevant to your task. Follow links only as needed.
+For lifecycle, verification, diagnostics, managed production, and reusable
+engineering-learning work, read [docs/AGENT_DEVELOPMENT.md](docs/AGENT_DEVELOPMENT.md).
+Use its owning runbooks for command syntax and current acceptance evidence.
 
 ## Work and delivery
 
@@ -101,10 +104,18 @@ Follow [the guide's verification gates](docs/AGENT_GUIDE.md#verification-gates)
 for test placement, browser QA, startup, and deployment acceptance. Report failed
 or unavailable checks accurately; local checks do not prove production readiness.
 
-`./init.sh` is the canonical complete local startup. Changes to prerequisites,
+`./init.sh` is the canonical complete local startup, including marketing.
+Changes to prerequisites,
 environment, credentials, ports, health, scripts, startup order, signals, or
 teardown must follow the guide's startup recipe and keep all owning docs/tests
 synchronized. Do not introduce an undocumented second startup path.
+
+Use `pnpm verify` for the complete deterministic local gate before PR delivery.
+CI uses the same five lane recipes. Quick or single-lane passes are partial
+evidence; Square remains a separate required gate for the paths below.
+Stop the owned local stack before verification in the same worktree; their
+shared lease protects generated Next/Eve output. Fixture and Square databases
+have distinct owned Compose identities. Never stop resources by port alone.
 
 ## Square evals: on demand
 

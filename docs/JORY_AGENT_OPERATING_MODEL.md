@@ -13,6 +13,8 @@ Related execution plans:
   scenarios and rubric).
 - [Platform architecture](PLATFORM_ARCHITECTURE.md) (implemented ownership
   boundaries, with proposed additions clearly marked below).
+- [Agent development system](AGENT_DEVELOPMENT.md) (developer and
+  operator lifecycle, evidence, proof, delivery, and reviewed learning).
 
 ## Purpose and design rule
 
@@ -241,6 +243,12 @@ The projections may share vocabulary and evidence labels, but they do not share
 authority. A developer test result can inform a product release decision only
 through a reviewed, dated artifact. A product observation cannot authorize a
 repository change.
+
+[`AGENT_DEVELOPMENT.md`](AGENT_DEVELOPMENT.md) owns the corresponding
+developer/operator flow: behavior contract, immutable revision/target,
+existing runtime owner, evidence, proof, authorized delivery, and reviewed
+learning. It does not extend Jory's authority or create a product lifecycle
+store.
 
 Web chat, SendBlue, and a future iOS client are interaction projections of the
 same server-owned task, evidence, approval, report, and delivery lifecycle.

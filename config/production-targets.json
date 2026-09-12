@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "targets": [
+    {
+      "surface": "app",
+      "target": "preview",
+      "projectId": "prj_GIIYS7WKKuY0400OCVVFntPw1H0r",
+      "teamId": "team_cwyLpng8LCwWgINdiQ27hHYa",
+      "projectName": "jory"
+    },
+    {
+      "surface": "app",
+      "target": "production",
+      "projectId": "prj_GIIYS7WKKuY0400OCVVFntPw1H0r",
+      "teamId": "team_cwyLpng8LCwWgINdiQ27hHYa",
+      "projectName": "jory",
+      "canonicalOrigin": "https://open-instinct-ashy.vercel.app",
+      "gitRef": "main"
+    }
+  ]
+}

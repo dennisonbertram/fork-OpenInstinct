@@ -172,10 +172,10 @@ async function verifySelectedCase(caseId: string) {
 // than extracting a shared helper — dev.ts's version is entangled with its
 // own long-running "dev server" signal-forwarding loop, so sharing it would
 // cost more than the ~20 duplicated lines below.
-const composeProject = `open-instinct-${createHash("sha256")
+const composeProject = `open-instinct-square-${createHash("sha256")
   .update(repositoryRoot)
   .digest("hex")
-  .slice(0, 12)}`;
+  .slice(0, 8)}-${randomBytes(6).toString("hex")}`;
 const composeArguments = (...args: string[]) => [
   "compose",
   "--project-name",
@@ -207,7 +207,11 @@ async function withComposeDatabase<T>(body: () => Promise<T>): Promise<T> {
     );
     return await body();
   } finally {
-    await run("docker", composeArguments("down"), inheritedEnvironment);
+    await run(
+      "docker",
+      composeArguments("down", "--volumes"),
+      inheritedEnvironment
+    );
   }
 }
 

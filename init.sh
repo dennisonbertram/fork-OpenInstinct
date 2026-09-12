@@ -7,13 +7,16 @@ cd "$script_dir"
 
 usage() {
   cat <<'EOF'
-Usage: ./init.sh [--check] [--setup-only] [--skip-install]
+Usage: ./init.sh [--profile connected|fixture] [--status|--stop] [--check] [--setup-only] [--skip-install]
 
 Bootstrap the complete local OpenInstinct development stack.
 
   --check        Verify prerequisites only; do not touch files or services.
   --setup-only   Prepare dependencies and credentials, then stop.
   --skip-install Skip pnpm install --frozen-lockfile.
+  --profile      Start the connected default or an isolated synthetic fixture.
+  --status       Read the current worktree's local-run record; do not mutate it.
+  --stop         Stop the exact owned local run for this worktree.
   --help         Show this help.
 
 Fresh checkouts use the canonical Vercel project automatically. Override its
@@ -25,12 +28,26 @@ EOF
 check_only=false
 setup_only=false
 skip_install=false
+profile="connected"
+control="start"
 
-for argument in "$@"; do
+while [[ "$#" -gt 0 ]]; do
+  argument="$1"
   case "$argument" in
     --check) check_only=true ;;
     --setup-only) setup_only=true ;;
     --skip-install) skip_install=true ;;
+    --profile)
+      shift
+      if [[ "${1:-}" != "connected" && "${1:-}" != "fixture" ]]; then
+        printf '%s\n' '--profile requires connected or fixture.' >&2
+        usage >&2
+        exit 2
+      fi
+      profile="$1"
+      ;;
+    --status) control="status" ;;
+    --stop) control="stop" ;;
     --help|-h) usage; exit 0 ;;
     *)
       printf 'Unknown option: %s\n\n' "$argument" >&2
@@ -38,7 +55,24 @@ for argument in "$@"; do
       exit 2
       ;;
   esac
+  shift
 done
+
+if [[ "$control" != "start" && ( "$check_only" == true || "$setup_only" == true || "$skip_install" == true || "$profile" != "connected" ) ]]; then
+  printf '%s\n' 'Lifecycle controls cannot be combined with setup, check, install, or profile flags.' >&2
+  usage >&2
+  exit 2
+fi
+
+if [[ "$profile" == "fixture" && ( "$check_only" == true || "$setup_only" == true ) ]]; then
+  printf '%s\n' 'Fixture startup cannot be combined with --check or --setup-only.' >&2
+  usage >&2
+  exit 2
+fi
+
+if [[ "$control" == "status" || "$control" == "stop" ]]; then
+  exec node scripts/dev.ts "--$control"
+fi
 
 require_command() {
   local command_name="$1"
@@ -85,12 +119,14 @@ if [[ "$skip_install" == false ]]; then
 fi
 
 env_created_from_template=false
-if [[ ! -f .env.local ]]; then
+if [[ "$profile" == "connected" && ! -f .env.local ]]; then
   cp .env.example .env.local
   env_created_from_template=true
 fi
 
-chmod 600 .env.local
+if [[ "$profile" == "connected" ]]; then
+  chmod 600 .env.local
+fi
 
 has_env_value() {
   local requested_name="$1"
@@ -118,7 +154,7 @@ credentials_ready() {
   has_env_value KERNEL_API_KEY && has_inference_credential
 }
 
-if ! credentials_ready; then
+if [[ "$profile" == "connected" ]] && ! credentials_ready; then
   can_replace_env="$env_created_from_template"
   if [[ "$can_replace_env" == false ]] && cmp -s .env.local .env.example; then
     can_replace_env=true
@@ -134,8 +170,25 @@ EOF
     exit 1
   fi
 
-  vercel_project="${OPENINSTINCT_VERCEL_PROJECT:-jory}"
-  vercel_team="${OPENINSTINCT_VERCEL_TEAM:-dennisons-projects}"
+  vercel_project="${OPENINSTINCT_VERCEL_PROJECT:-}"
+  vercel_team="${OPENINSTINCT_VERCEL_TEAM:-}"
+  target_arguments=(--inventory config/production-targets.json)
+  if [[ -n "$vercel_project" || -n "$vercel_team" ]]; then
+    target_arguments+=(--project "$vercel_project" --team "$vercel_team")
+  fi
+  if ! verified_target="$(node scripts/local/verify-vercel-target.ts "${target_arguments[@]}")"; then
+    cat <<'EOF' >&2
+Could not verify the existing Vercel target. The private .env.local template
+was preserved and Eve did not link or create a project. Confirm Vercel access
+and the configured inventory, then rerun ./init.sh.
+EOF
+    exit 1
+  fi
+  IFS=$'\t' read -r vercel_project vercel_team <<< "$verified_target"
+  if [[ -z "$vercel_project" || -z "$vercel_team" ]]; then
+    printf '%s\n' 'Could not verify the existing Vercel target; Eve did not link.' >&2
+    exit 1
+  fi
   env_backup="$(mktemp "${TMPDIR:-/tmp}/openinstinct-env.XXXXXX")"
   cp .env.local "$env_backup"
   printf 'Pulling the canonical development environment through Eve...\n'
@@ -157,7 +210,7 @@ EOF
   chmod 600 .env.local
 fi
 
-if ! credentials_ready; then
+if [[ "$profile" == "connected" ]] && ! credentials_ready; then
   cat <<'EOF' >&2
 The linked development environment did not provide KERNEL_API_KEY and either
 AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN. Ask a project owner to attach Kernel
@@ -166,61 +219,18 @@ EOF
   exit 1
 fi
 
-printf 'Local environment is ready. Phone auth uses the development-only code 000000.\n'
+if [[ "$profile" == "connected" ]]; then
+  printf 'Local environment is ready. Phone auth uses the development-only code 000000.\n'
+else
+  printf 'Starting an isolated fixture run. It does not load repository credentials or permit external network access from fixture services.\n'
+fi
 
 if [[ "$setup_only" == true ]]; then
   exit 0
 fi
 
-agentation_is_healthy() {
-  node -e '
-const controller = new AbortController();
-const timeout = setTimeout(() => controller.abort(), 500);
-fetch("http://localhost:4747/pending", { signal: controller.signal })
-  .then((response) => process.exit(response.ok ? 0 : 1))
-  .catch(() => process.exit(1))
-  .finally(() => clearTimeout(timeout));
-' >/dev/null 2>&1
-}
-
-agentation_pid=""
-
-stop_owned_agentation() {
-  local status="$?"
-  trap - EXIT INT TERM
-  if [[ -n "$agentation_pid" ]] && kill -0 "$agentation_pid" >/dev/null 2>&1; then
-    kill -TERM "$agentation_pid" >/dev/null 2>&1 || true
-    wait "$agentation_pid" >/dev/null 2>&1 || true
-  fi
-  exit "$status"
-}
-
-trap stop_owned_agentation EXIT INT TERM
-
-if agentation_is_healthy; then
-  printf 'Agentation is already running at http://localhost:4747.\n'
-else
-  pnpm dev:agentation &
-  agentation_pid="$!"
-
-  agentation_ready=false
-  for _ in {1..50}; do
-    if agentation_is_healthy; then
-      agentation_ready=true
-      break
-    fi
-    if ! kill -0 "$agentation_pid" >/dev/null 2>&1; then
-      break
-    fi
-    sleep 0.2
-  done
-
-  if [[ "$agentation_ready" == false ]]; then
-    printf 'Agentation did not become healthy at http://localhost:4747.\n' >&2
-    exit 1
-  fi
-  printf 'Agentation is ready at http://localhost:4747.\n'
+printf 'Starting the complete %s stack. Press Ctrl-C to stop only resources owned by this run.\n' "$profile"
+if [[ "$profile" == "fixture" ]]; then
+  exec node scripts/dev.ts --profile fixture
 fi
-
-printf 'Starting OpenInstinct at http://localhost:3000. Press Ctrl-C to stop the owned stack.\n'
-pnpm dev
+exec env DEV_PROFILE=connected pnpm dev

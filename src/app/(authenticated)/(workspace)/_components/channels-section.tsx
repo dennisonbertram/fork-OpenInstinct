@@ -6,11 +6,22 @@ export function ChannelsSection({
   browserReady,
   linqConfigured,
   linqPhoneNumber,
+  sendblueConversationsEnabled,
+  sendblueFromNumber,
 }: {
   readonly browserReady: boolean;
   readonly linqConfigured: boolean;
   readonly linqPhoneNumber?: string;
+  readonly sendblueConversationsEnabled: boolean;
+  readonly sendblueFromNumber?: string;
 }) {
+  const iMessageLine =
+    linqConfigured && linqPhoneNumber
+      ? { number: linqPhoneNumber, provider: "Linq" }
+      : sendblueConversationsEnabled && sendblueFromNumber
+        ? { number: sendblueFromNumber, provider: "SendBlue" }
+        : undefined;
+
   return (
     <section aria-labelledby="channels-heading" className="space-y-3">
       <h2 className="type-section-title" id="channels-heading">
@@ -32,11 +43,14 @@ export function ChannelsSection({
             WebChat
           </Button>
         )}
-        {linqConfigured && linqPhoneNumber ? (
+        {iMessageLine ? (
           <Button
             nativeButton={false}
             render={
-              <a aria-label="Open iMessage" href={`sms:${linqPhoneNumber}`} />
+              <a
+                aria-label={`Open ${iMessageLine.provider} iMessage`}
+                href={`sms:${iMessageLine.number}`}
+              />
             }
             variant="surface"
           >
@@ -54,7 +68,9 @@ export function ChannelsSection({
         {channelAvailabilityMessage({
           browserReady,
           linqConfigured,
-          linqPhoneNumber,
+          iMessageLine,
+          sendblueConversationsEnabled,
+          sendblueFromNumber,
         })}
       </p>
     </section>
@@ -64,20 +80,31 @@ export function ChannelsSection({
 function channelAvailabilityMessage({
   browserReady,
   linqConfigured,
-  linqPhoneNumber,
+  iMessageLine,
+  sendblueConversationsEnabled,
+  sendblueFromNumber,
 }: {
   readonly browserReady: boolean;
   readonly linqConfigured: boolean;
-  readonly linqPhoneNumber?: string;
+  readonly iMessageLine?: {
+    readonly number: string;
+    readonly provider: string;
+  };
+  readonly sendblueConversationsEnabled: boolean;
+  readonly sendblueFromNumber?: string;
 }) {
   return [
     browserReady
       ? "WebChat is ready."
       : "KERNEL_API_KEY is required to enable WebChat.",
-    linqConfigured && linqPhoneNumber
-      ? `iMessage opens ${linqPhoneNumber}.`
-      : linqConfigured
-        ? "Linq is connected. Use its assigned line to start an iMessage."
-        : "Set up Linq to enable iMessage.",
+    iMessageLine
+      ? `iMessage opens the ${iMessageLine.provider} line ${iMessageLine.number}.`
+      : sendblueConversationsEnabled
+        ? "SendBlue conversations are enabled, but the sending line is unavailable."
+        : linqConfigured
+          ? "Linq is connected. Use its assigned line to start an iMessage."
+          : sendblueFromNumber
+            ? "The SendBlue line is configured, but SendBlue conversations are disabled."
+            : "Set up Linq or enable SendBlue conversations to enable iMessage.",
   ].join(" ");
 }

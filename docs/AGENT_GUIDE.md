@@ -13,6 +13,10 @@ The repository is Vercel-first today. Treat self-hosting and multi-tenancy as
 documented direction unless a change explicitly implements them.
 
 Read [`README.md`](README.md) for the documentation map and truth labels.
+Read [`AGENT_DEVELOPMENT.md`](AGENT_DEVELOPMENT.md) when planning lifecycle,
+verification, diagnostics, production operations, or reusable engineering
+learning. Its owning runbooks record implemented commands and current
+verification limits.
 Read [`PLATFORM_ARCHITECTURE.md`](PLATFORM_ARCHITECTURE.md) before adding a
 channel provider, extension, skill, MCP service, or credential-bearing tool.
 Product work involving configurable agents, managed lines, MCP/tool catalogs,
@@ -23,19 +27,21 @@ or runtime claims.
 
 ## Route map
 
-| Route                        | Owner                                          | Purpose                                                           |
-| ---------------------------- | ---------------------------------------------- | ----------------------------------------------------------------- |
-| `/`                          | `app/(authenticated)/(manager)/page.tsx`       | Workspace manager and connector status                            |
-| `/chat`, `/chat/[sessionId]` | `app/(authenticated)/(manager)/chat/`          | Web chat and Eve session stream                                   |
-| `/chats`                     | `app/(authenticated)/(manager)/chats/page.tsx` | Workspace chat list                                               |
-| `/tasks`, `/runs/[groupId]`  | `app/(authenticated)/(tasks)/`                 | Browser task history and run details                              |
-| `/vault`                     | `app/(authenticated)/(manager)/vault/`         | Vault metadata and secure setup/import UI                         |
-| `/api/auth/[...all]`         | `app/api/auth/[...all]/route.ts`               | Better Auth API                                                   |
-| `/api/trpc/[trpc]`           | `app/api/trpc/[trpc]/route.ts`                 | Authenticated application RPC                                     |
-| `/eve/v1/*`                  | `agent/channels/`, Eve generated service       | Eve sessions, streams, health, Linq webhook, and SendBlue channel |
-| `/artifacts/[artifactId]`    | `app/artifacts/[artifactId]/route.ts`          | Scoped private browser image delivery                             |
+| Route                          | Owner                                              | Purpose                                                              |
+| ------------------------------ | -------------------------------------------------- | -------------------------------------------------------------------- |
+| `/`                            | `src/app/(authenticated)/(workspace)/page.tsx`     | Workspace manager and connector status                               |
+| `/chat`, `/chat/[sessionId]`   | `src/app/(authenticated)/chat/`                    | New chat and an Eve session stream                                   |
+| `/chat/history`                | `src/app/(authenticated)/chat/history/page.tsx`    | Saved chat history                                                   |
+| `/tasks`, `/tasks/[sessionId]` | `src/app/(authenticated)/tasks/`                   | Browser task history and task details                                |
+| `/vault`, `/personal-info`     | `src/app/(authenticated)/vault/`, `personal-info/` | Vault and personal-information management                            |
+| `/admin/*`                     | `src/app/(authenticated)/admin/`                   | Administrative overview, workspaces, usage, audit, and webhook views |
+| `/api/auth/[...all]`           | `src/app/api/auth/[...all]/route.ts`               | Better Auth API                                                      |
+| `/api/trpc/[trpc]`             | `src/app/api/trpc/[trpc]/route.ts`                 | Authenticated application RPC                                        |
+| `/v1/agents/*`, `/v1/usage`    | `src/app/v1/`                                      | Public API routes with their own authorization boundary              |
+| `/eve/v1/*`                    | `agent/channels/`, Eve generated service           | Eve sessions, streams, health, Linq webhook, and SendBlue channel    |
+| `/artifacts/[artifactId]`      | `src/app/artifacts/[artifactId]/route.ts`          | Scoped private browser image delivery                                |
 
-`proxy.ts` protects the web surface and authenticated Eve browser sessions.
+`src/proxy.ts` protects the web surface and authenticated Eve browser sessions.
 The Eve channel performs its own session ownership check; do not assume a
 Next redirect is an Eve authorization decision.
 
@@ -46,16 +52,16 @@ webhook and durable message-handle ownership in `agent/channels/`.
 
 ## Directory ownership and dependency direction
 
-- `app/`: pages, layouts, and browser UI. Call application data through tRPC.
-- `components/`: reusable UI primitives and AI presentation components.
+- `src/app/`: pages, layouts, and browser UI. Call application data through tRPC.
+- `src/components/`: reusable UI primitives and AI presentation components.
 - `agent/`: Eve agent declarations, instructions, channels, memory, hooks, and tools.
 - `agent/channels/scheduled-run.ts`: internal channel a cron job (`agent/schedules/dynamic.ts`) dispatches onto to run a scheduled job's turn; `agent/hooks/scheduled-run-completion.ts` tracks its lease and reports the outcome back.
 - `agent/subagents/browser-agent/`: the isolated browser worker and its flat tool surface.
 - `agent/instructions/`: root instructions, split into ordered `*.ts` modules whose content lives under `agent/instructions/content/**.md` (interactive, scheduled-report, scheduled-worker role variants); `agent/instructions.md` is now a stub.
-- `auth/`: Better Auth configuration, phone normalization, and Linq or SendBlue OTP delivery.
-- `trpc/`: request context and the application router.
+- `src/auth/`: Better Auth configuration, phone normalization, and Linq or SendBlue OTP delivery.
+- `src/trpc/`: request context and the application router.
 - `db/schema/`: Drizzle source of truth; `db/services/` owns scoped queries.
-- `lib/`: shared schemas, scope derivation, Kernel, vault, images, models, and adapters.
+- `src/lib/`: shared schemas, scope derivation, Kernel, vault, images, models, and adapters.
 - `db/migrations/`: committed SQL history. Never hand-edit generated snapshots.
 - `scripts/`: local supervisors and benchmark utilities.
 - `docs/`: operational and architectural contracts.
@@ -123,20 +129,27 @@ dispatch. Treat an uncertain dispatch as uncertain; never retry it automatically
 
 ## Command matrix
 
-| Situation               | Command                      | Notes                                                                                        |
-| ----------------------- | ---------------------------- | -------------------------------------------------------------------------------------------- |
-| Complete local stack    | `./init.sh`                  | Installs, safely links missing credentials, starts Agentation, then delegates to `pnpm dev`. |
-| Check prerequisites     | `./init.sh --check`          | Non-mutating Node 24, pnpm, Docker, and Compose check.                                       |
-| Setup only              | `./init.sh --setup-only`     | Prepares dependencies and credentials without starting services.                             |
-| Local app lifecycle     | `pnpm dev`                   | Starts Postgres, migrates, runs Next, and tears down the container on exit.                  |
-| Agentation only         | `pnpm dev:agentation`        | Starts the local design-feedback server on port 4747.                                        |
-| App-only local run      | `pnpm dev:app`               | Use only with an externally managed database.                                                |
-| Unit/integration tests  | `pnpm test`                  | Vitest suite; provider calls are mocked.                                                     |
-| Repository gate         | `pnpm check`                 | Lint, typecheck, tests, formatting, Knip, and boundaries.                                    |
-| Web build               | `pnpm build`                 | Next production build; does not itself provision infrastructure.                             |
-| Eve production artifact | `pnpm build:eve`             | Required before a non-Vercel Eve service can start.                                          |
-| Eve process             | `pnpm start:eve`             | Run under a supervisor with persistent `.eve` state when self-hosting.                       |
-| Vercel deployment       | `pnpm deploy` / `eve deploy` | Follow `docs/operations/VERCEL.md`; operator action.                                         |
+| Situation               | Command                      | Notes                                                                                                                               |
+| ----------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Primary local app stack | `./init.sh`                  | Installs, links missing development credentials, and starts owned Postgres/migrations, Agentation, primary Next/Eve, and marketing. |
+| Check prerequisites     | `./init.sh --check`          | Non-mutating Node 24, pnpm, Docker, and Compose check.                                                                              |
+| Setup only              | `./init.sh --setup-only`     | Prepares dependencies and credentials without starting services.                                                                    |
+| Local app lifecycle     | `pnpm dev`                   | Runs the complete connected supervisor; preserves its local database volume on exit.                                                |
+| Agentation only         | `pnpm dev:agentation`        | Starts the local design-feedback server on port 4747.                                                                               |
+| App-only local run      | `pnpm dev:app`               | Use only with an externally managed database.                                                                                       |
+| Unit/integration tests  | `pnpm test`                  | Vitest suite; provider calls are mocked.                                                                                            |
+| Repository gate         | `pnpm check`                 | Lint, typecheck, tests, formatting, Knip, and boundaries.                                                                           |
+| Web build               | `pnpm build`                 | Next production build; does not itself provision infrastructure.                                                                    |
+| Eve production artifact | `pnpm build:eve`             | Required before a non-Vercel Eve service can start.                                                                                 |
+| Eve process             | `pnpm start:eve`             | Run under a supervisor with persistent `.eve` state when self-hosting.                                                              |
+| Vercel deployment       | `pnpm deploy` / `eve deploy` | Follow `docs/operations/VERCEL.md`; operator action.                                                                                |
+
+Use `pnpm verify` for the complete five-lane deterministic gate shared with CI.
+See [TESTING.md](TESTING.md) for partial selection, receipts, behavior changes,
+and the separate paid Square gate. Stop a live development supervisor before
+verification in the same worktree: the shared operation lease protects Next/Eve
+generated output. Fixture and Square Compose identities are isolated per run.
+Use `./init.sh --status` and `./init.sh --stop` for exact local ownership.
 
 Developer-only chat activity is controlled by the server-side
 `developerActivity` feature in `src/env.ts`. It defaults on only for local
@@ -268,7 +281,12 @@ insufficient. Do not claim production readiness from local tests.
 6. Add the smallest focused test, then run `pnpm check` and `pnpm build`.
 7. Inspect the real rendered/runtime path when the change crosses a route or UI.
 
-The proposed [Jory agent operating model](JORY_AGENT_OPERATING_MODEL.md) defines
-source-of-truth ownership, bounded projections, and separate execution,
-verification, reporting, and delivery states. It is design guidance only until
-its linked plans are implemented and verified.
+The implemented [agent development system](AGENT_DEVELOPMENT.md) provides the
+current lifecycle, verification, diagnosis, and operations commands. Its
+owning runbooks define their bounded local, CI, and deployed acceptance; the
+commands remain under verification until that acceptance is recorded.
+The [Jory agent operating model](JORY_AGENT_OPERATING_MODEL.md) remains a
+proposed design for product-agent source-of-truth ownership, bounded
+projections, and separate execution, verification, reporting, and delivery
+states. It does not change current product behavior until its linked plans are
+implemented and verified.

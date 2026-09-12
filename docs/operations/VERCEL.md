@@ -6,7 +6,7 @@ portable provider credentials are outside this runbook.
 
 It covers four outcomes:
 
-1. start the complete application locally with disposable Postgres;
+1. start the complete application locally with persistent connected Postgres or disposable fixture Postgres;
 2. provision and deploy a new Vercel environment;
 3. attach and verify the applicable provider channel without exposing credentials or accidentally enabling preview messaging;
 4. verify, operate, roll back, and recover the deployment.
@@ -17,6 +17,73 @@ conversation-to-workspace/agent routing; optional dedicated lines are a later
 premium channel. That resolver, agent, API, and webhook design is proposed in
 [`../PRODUCT_DIRECTION.md`](../PRODUCT_DIRECTION.md); it is not implemented by
 this runbook.
+
+## Current runbook and operations tooling
+
+This runbook describes the current Vercel/Eve procedure. This branch contains
+the bounded Plan 024 wrapper and deterministic `pnpm verify` gate, both locally
+verified but not an accepted production procedure or production-verified. See
+[Plan 024](../../plans/024-production-operations.md).
+The wrapper observes the existing Git-connected release after a reviewed merge;
+it does not create a second deployment. It keeps provisioning, migrations,
+configuration rotation, channel activation, and other recovery work with their
+explicit owners.
+
+For local startup, deterministic gates, and diagnosis, use the current guides
+for [agent development](../AGENT_DEVELOPMENT.md),
+[development](DEVELOPMENT.md), [testing](../TESTING.md), and
+[diagnostics](DIAGNOSTICS.md). The plan must not be read as proof that
+production is locally reproducible or that every implemented command has
+production acceptance.
+
+For every current operator action, identify the selected application or
+marketing deployment separately: Vercel team/project/environment, Git SHA,
+Next/Eve runtime and patch level, lockfile fingerprint, immutable deployment
+URL, alias, canonical `BETTER_AUTH_URL`, migration journal, workflow world and
+deployment pin, old-session routing, schedule/cron destination, Blob/Kernel
+owner, and configured connector/channel scope. The scope includes the provider,
+account/from-line identifier, webhook destination, OTP/conversation state,
+Square environment, and Google grant where configured. The direct and pooled
+database paths must be proved to target the same logical database by safe
+provider/resource identity, not string equality. Record only configuration
+names/attachments and public identifiers: never secret values, secret-derived
+hashes, URLs with credentials, raw logs, or message content. A recorded
+configuration name does not prove a usable credential. Unknown or conflicting
+target data stops a mutating operation. The bounded Plan 024 inventory and reader are present on this branch; they do
+not prove runtime schema, configuration, credential usability, or channel
+delivery. A production release observation requires a fresh canonical-alias to
+immutable-deployment mapping and observed source SHA. A preview observation
+requires its exact immutable deployment selector. Rollback remains blocked
+until current and known-good deployments have observed compatible schema,
+configuration, and logical-database facts. `./init.sh` starts the primary
+application and local marketing stacks; it does not establish a deployed
+marketing lifecycle.
+
+On September 12, 2026, a read-only Vercel project listing for the configured
+team completed in one page of 24 projects with no next page. Filtering for the
+fork repository found only the primary `jory` application project (the
+configured project ID and `main` Git ref); no matching marketing project was
+discovered in that team. This is bounded evidence for that configured team,
+not proof that no marketing project exists in another team or as an unlinked
+manual deployment. Keep marketing unmapped and do not provision it from this
+runbook.
+
+A bounded read-only release observation on 2026-09-12 resolved the configured
+production alias to deployment `dpl_AqLjVV7GeMgVFx6qFK7TTkwqnv7w` and its
+observed declared source SHA `7875a08348adf2d567120e7e7f3d803b101aa45a`.
+The release plan, local observation receipt, and verification completed without
+a Vercel deployment, rollback, migration, provider, or message operation. A
+separate current-configuration database probe observed that the pooled and
+direct paths target the same logical database. Neither observation binds those
+facts to the deployment's served runtime, proves rollback compatibility, or
+validates credentials or provider behavior.
+
+A raw `vercel logs` command may reveal private operational content in
+non-interactive use. Use it only in an authorized private operator context,
+with an explicit deployment and bounded range; do not paste its output into an
+agent response or retained artifact. `vercel --help` is safe for syntax
+inspection. The Plan 022 allowlisted metadata reader is the routine observation
+path; it still reports runtime proof gaps rather than inferring them.
 
 ## Deterministic pull-request evidence
 
@@ -74,8 +141,8 @@ Quick non-destructive recheck:
 curl --fail --silent --show-error \
   https://open-instinct-ashy.vercel.app/eve/v1/health
 pnpm exec vercel inspect https://open-instinct-ashy.vercel.app
-pnpm exec vercel logs open-instinct-ashy.vercel.app \
-  --since 30m --level error --no-follow
+pnpm exec vercel logs --deployment open-instinct-ashy.vercel.app \
+  --since 30m --until now --level error --limit 100
 pnpm exec vercel connect list --json
 ```
 
@@ -107,27 +174,18 @@ pnpm exec vercel login
 
 Signing in grants access; it does not require manual project configuration.
 
-`./init.sh` performs these operations:
+The canonical startup order, owned-service cleanup, profiles, ports, and local
+acceptance are in [DEVELOPMENT.md](DEVELOPMENT.md). Its supervisor starts the
+database and migrations, Agentation, the primary Next/Eve application, and the
+marketing application as one owned local stack.
 
-1. validates Node 24, pnpm, Docker, Compose v2, and the Docker daemon;
-2. installs the locked dependency graph;
-3. creates a private `.env.local` from the template only when none exists;
-4. when that file is fresh or still identical to the template, links the
-   canonical `jory` project in team `dennisons-projects` through Eve
-   and pulls its development environment;
-5. requires `KERNEL_API_KEY` plus either `AI_GATEWAY_API_KEY` or
-   `VERCEL_OIDC_TOKEN` before starting infrastructure;
-6. starts or reuses the Agentation feedback server on port `4747`;
-7. delegates the application lifecycle to `pnpm dev` and stops the Agentation
-   process it owns when the app exits.
-
-The script preserves a customized `.env.local` rather than allowing an
+`./init.sh` preserves a customized `.env.local` rather than allowing an
 automatic link to overwrite local-only values. Complete that file manually or
 move it aside before rerunning. For a different authorized Vercel project, set
-the non-secret identifiers for that invocation:
+the non-secret project _name_ and team identifier for that invocation:
 
 ```bash
-OPENINSTINCT_VERCEL_PROJECT=<project-name-or-id> \
+OPENINSTINCT_VERCEL_PROJECT=<project-name> \
 OPENINSTINCT_VERCEL_TEAM=<team-id-or-slug> \
 ./init.sh
 ```
@@ -141,11 +199,10 @@ Use `./init.sh --check` for a non-mutating prerequisite check,
 `./init.sh --setup-only` to stop after dependencies and credentials are ready,
 or `./init.sh --skip-install` when the locked dependencies are already present.
 
-`pnpm dev` starts Postgres 17 on a random loopback port, injects its pooled and
-direct URLs, runs committed Drizzle migrations, starts Next, and forwards
-shutdown signals. `Ctrl-C` removes the container while preserving the named
-Docker volume and stops Agentation only when this invocation started it. A
-healthy Agentation server that was already running is reused and left running.
+`pnpm dev` uses the same connected supervisor. It preserves the owned connected
+database volume on ordinary shutdown and leaves a healthy pre-existing
+Agentation service running. Use `./init.sh --status` to inspect the recorded
+owner and `./init.sh --stop` to stop only that exact recorded stack.
 
 ### Developer feature flags
 
@@ -181,9 +238,10 @@ connector is not currently documented or verified.
 After startup reports that Next is ready:
 
 ```bash
-curl --fail --silent --show-error http://localhost:3000/eve/v1/health
+APP_ORIGIN=http://127.0.0.1:<primary-port-reported-by-startup>
+curl --fail --silent --show-error "$APP_ORIGIN/eve/v1/health"
 curl --fail --silent --show-error --output /dev/null \
-  http://localhost:3000/sign-in
+  "$APP_ORIGIN/sign-in"
 ```
 
 Then use a browser to complete the real path:
@@ -837,8 +895,8 @@ traffic:
 
 ```bash
 pnpm exec vercel inspect <immutable-deployment-url> --wait
-pnpm exec vercel logs <immutable-deployment-url> \
-  --since 30m --level error --no-follow
+pnpm exec vercel logs --deployment <immutable-deployment-url> \
+  --since 30m --until now --level error --limit 100
 curl --fail --silent --show-error \
   https://<deployment-domain>/eve/v1/health
 ```
@@ -935,26 +993,26 @@ health route, or sign-in form was checked.
 
 ## Troubleshooting
 
-| Symptom                                                       | Likely boundary               | Check and response                                                                                                           |
-| ------------------------------------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `./init.sh --check` fails                                     | Local prerequisite            | Install Node 24/pnpm/Compose or start Docker; do not bypass the guard                                                        |
-| `./init.sh` cannot link the development environment           | Vercel authentication/access  | Run `pnpm exec vercel login`, confirm access to the canonical project, then retry; use manual credentials only when intended |
-| `./init.sh` preserves an incomplete `.env.local`              | Local customization boundary  | Add Kernel plus API-key/OIDC inference auth, or move the customized file aside before allowing a canonical pull              |
-| Agentation does not become healthy on port `4747`             | Design feedback sidecar       | Stop the stale listener if any, run `pnpm dev:agentation` to inspect its error, then retry `./init.sh`                       |
-| Local pages work but model turns fail                         | AI Gateway auth               | Link the intended Vercel project and refresh development environment/OIDC; do not invent a provider key path                 |
-| Local sign-in never sends an OTP                              | Expected development adapter  | Use code `000000` on loopback; live Linq requires a deployed test environment                                                |
-| Sign-in says Linq is not configured                           | Environment pair              | Confirm both `LINQ_CONNECTOR` and `LINQ_PHONE_NUMBER` exist in the same environment, then redeploy                           |
-| OTP delivery says contact is not allowed                      | Linq contact policy           | Add only the approved test/user identity under Messaging Contacts                                                            |
-| Connector browser says ready but the waiting create CLI fails | Earlier create attempt        | Run `vercel connect list --json`; if the intended UID exists, attach it explicitly and treat the registry as authoritative   |
-| Managed Linq form says the account already has a shared line  | Provider ownership            | Use the existing-line credentials flow or resolve ownership with Linq; do not provision duplicates                           |
-| Outbound Linq works but inbound messages do not               | Trigger routing               | Inspect connector attachment and exact `/eve/v1/linq` path; verify the deployed Eve route before changing the Next proxy     |
-| Auth redirects to an unexpected host                          | Canonical URL                 | Correct `BETTER_AUTH_URL` to the assigned production alias and redeploy                                                      |
-| Eve local preflight lists missing production variables        | Local versus remote env       | Confirm Vercel project env names and remote build result; do not mistake the local warning for a completed remote failure    |
-| Deployment migration targets the wrong database               | Project/env attachment        | Stop promotion, identify pooled/direct URL ownership without printing values, restore/repair before traffic                  |
-| Migration emits the PostgreSQL SSL-mode deprecation warning   | Dependency compatibility      | Record it and plan an explicit connection-string compatibility change; do not silently weaken TLS                            |
-| Preview can send from the production line                     | Environment isolation failure | Remove the two Linq runtime values from preview/development, rotate if exposed, and verify trigger ownership                 |
-| Browser work fails while chat works                           | Kernel boundary               | Check Kernel attachment, key scope, provider health, worker/root ownership, and browser logs                                 |
-| Artifacts fail while chat works                               | Blob boundary                 | Confirm a private store attachment/token and scoped manifest; never make the store public as a workaround                    |
+| Symptom                                                       | Likely boundary               | Check and response                                                                                                                                                                                 |
+| ------------------------------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `./init.sh --check` fails                                     | Local prerequisite            | Install Node 24/pnpm/Compose or start Docker; do not bypass the guard                                                                                                                              |
+| `./init.sh` cannot link the development environment           | Vercel authentication/access  | Run `pnpm exec vercel login`, confirm access to the canonical project, then retry; use manual credentials only when intended                                                                       |
+| `./init.sh` preserves an incomplete `.env.local`              | Local customization boundary  | Add Kernel plus API-key/OIDC inference auth, or move the customized file aside before allowing a canonical pull                                                                                    |
+| Agentation does not become healthy on port `4747`             | Design feedback sidecar       | Identify the listener owner, cwd, and port first. Stop it only when it is owned by this invocation; otherwise preserve it, run `pnpm dev:agentation` to inspect its error, then retry `./init.sh`. |
+| Local pages work but model turns fail                         | AI Gateway auth               | Link the intended Vercel project and refresh development environment/OIDC; do not invent a provider key path                                                                                       |
+| Local sign-in never sends an OTP                              | Expected development adapter  | Use code `000000` on loopback; live Linq requires a deployed test environment                                                                                                                      |
+| Sign-in says Linq is not configured                           | Environment pair              | Confirm both `LINQ_CONNECTOR` and `LINQ_PHONE_NUMBER` exist in the same environment, then redeploy                                                                                                 |
+| OTP delivery says contact is not allowed                      | Linq contact policy           | Add only the approved test/user identity under Messaging Contacts                                                                                                                                  |
+| Connector browser says ready but the waiting create CLI fails | Earlier create attempt        | Run `vercel connect list --json`; if the intended UID exists, attach it explicitly and treat the registry as authoritative                                                                         |
+| Managed Linq form says the account already has a shared line  | Provider ownership            | Use the existing-line credentials flow or resolve ownership with Linq; do not provision duplicates                                                                                                 |
+| Outbound Linq works but inbound messages do not               | Trigger routing               | Inspect connector attachment and exact `/eve/v1/linq` path; verify the deployed Eve route before changing the Next proxy                                                                           |
+| Auth redirects to an unexpected host                          | Canonical URL                 | Correct `BETTER_AUTH_URL` to the assigned production alias and redeploy                                                                                                                            |
+| Eve local preflight lists missing production variables        | Local versus remote env       | Confirm Vercel project env names and remote build result; do not mistake the local warning for a completed remote failure                                                                          |
+| Deployment migration targets the wrong database               | Project/env attachment        | Stop promotion, identify pooled/direct URL ownership without printing values, restore/repair before traffic                                                                                        |
+| Migration emits the PostgreSQL SSL-mode deprecation warning   | Dependency compatibility      | Record it and plan an explicit connection-string compatibility change; do not silently weaken TLS                                                                                                  |
+| Preview can send from the production line                     | Environment isolation failure | Remove the two Linq runtime values from preview/development, rotate if exposed, and verify trigger ownership                                                                                       |
+| Browser work fails while chat works                           | Kernel boundary               | Check Kernel attachment, key scope, provider health, worker/root ownership, and browser logs                                                                                                       |
+| Artifacts fail while chat works                               | Blob boundary                 | Confirm a private store attachment/token and scoped manifest; never make the store public as a workaround                                                                                          |
 
 For deployed Eve failures, use Vercel Agent Runs/Observability when enabled,
 plus deployment logs and provider traces. Correlate by deployment, session,
@@ -1011,7 +1069,7 @@ treated as exposed even when the repository scan is clean.
 5. Re-run the readiness report. If counts indicate missing, revoked, or
    ambiguous ownership, keep the affected workspace blocked and route it to
    repair; do not disable shared production isolation.
-6. Re-run the health, web-chat, Linq, isolation, and artifact acceptance checks.
+6. Re-run health, web-chat, isolation, and artifact checks, plus acceptance for every configured channel affected by the rollback. Linq is required only when it is configured and affected; do not substitute a registry or health check for an authorized channel round trip.
 
 ## Backup and restore rehearsal
 
