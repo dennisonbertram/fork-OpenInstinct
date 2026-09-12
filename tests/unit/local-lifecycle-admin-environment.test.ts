@@ -21,6 +21,8 @@ const inheritedAdministratorPhone = "+12025550999";
 const unrelatedValue = "synthetic-unrelated-environment-value";
 const childEnvironmentSchema = z.object({
   admin: z.string().nullable(),
+  ci: z.string().nullable(),
+  verifyDepsBeforeRun: z.string().nullable(),
   unrelatedPresent: z.boolean(),
 });
 
@@ -33,7 +35,7 @@ afterEach(async () => {
 });
 
 describe("fixture child environment", () => {
-  it("uses the fixed synthetic administrator without inheriting caller environment", async () => {
+  it("uses fixed fixture values without inheriting caller environment", async () => {
     const directory = await mkdtemp(join(tmpdir(), "open-instinct-admin-env-"));
     temporaryDirectories.push(directory);
     const repositoryRoot = join(directory, "repository");
@@ -92,6 +94,8 @@ const { writeFileSync } = require("node:fs");
 if (process.argv[2] === "db:migrate") {
   writeFileSync(${JSON.stringify(capture)}, JSON.stringify({
     admin: process.env.ADMIN_PHONE_NUMBERS ?? null,
+    ci: process.env.CI ?? null,
+    verifyDepsBeforeRun: process.env.pnpm_config_verify_deps_before_run ?? null,
     unrelatedPresent: Object.hasOwn(process.env, "DEV_TEST_UNRELATED_ENV"),
   }));
   process.exit(7);
@@ -111,7 +115,9 @@ process.exit(0);
           PATH: bin,
           NODE_ENV: "test",
           DEV_PROFILE: "fixture",
+          CI: "caller-ci",
           ADMIN_PHONE_NUMBERS: inheritedAdministratorPhone,
+          pnpm_config_verify_deps_before_run: "install",
           DEV_TEST_UNRELATED_ENV: unrelatedValue,
         },
         stdio: ["ignore", "ignore", "pipe"],
@@ -134,5 +140,7 @@ process.exit(0);
     );
     expect(childEnvironment.unrelatedPresent).toBe(false);
     expect(childEnvironment.admin).toBe(fixtureAdministratorPhone);
+    expect(childEnvironment.ci).toBe("1");
+    expect(childEnvironment.verifyDepsBeforeRun).toBe("false");
   });
 });
