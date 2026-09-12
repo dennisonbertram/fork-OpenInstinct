@@ -249,6 +249,21 @@ describe("interactive model delivery resolution", () => {
       what: "does not mistake a framework [Agents] note for a user request",
     },
     {
+      // eve labels the note accompanying a task-triggered wake "[Task state]"
+      // and rides it on the USER role, same as "[Agents]". Read as a request, the
+      // wake that exists to deliver the report is freed from delivering it.
+      channel: "channel:sendblue" as const,
+      expected: { toolName: "send_message", type: "tool" },
+      history: [
+        {
+          content: "[Task state] background task task_a is completed",
+          role: "user" as const,
+        },
+      ],
+      id: "DG-09",
+      what: "does not mistake a [Task state] wake note for a user request",
+    },
+    {
       // Mid-turn the newest entry is a tool result while the request is still
       // unfinished; forcing here reinstated the original block as soon as a
       // lookup needed a second call.
