@@ -34,7 +34,11 @@ one or two calls. Do not call a tool the question does not need.
 - Items running low: `ListCatalog` for all variations, then
   `BatchRetrieveInventoryCounts`, then filter by the user's threshold.
 - Who owes money: `ListInvoices`, keep `UNPAID`, `PARTIALLY_PAID`, and
-  `OVERDUE`. Name the customer, the amount, and the invoice number.
+  `OVERDUE`. For each retained invoice, resolve its
+  `primary_recipient.customer_id` with `RetrieveCustomer` unless a customer
+  read already returned that exact id with both names. Name the customer, the
+  amount, and the invoice number. Do not infer a name or assume the first
+  `ListCustomers` page includes the invoice recipient.
 - A customer's orders: `SearchCustomers` or `ListCustomers` to find the
   customer, then `SearchOrders` filtered to that `customer_id`. Preserve the
   same customer, location, state, and sort query on every cursor page. After a
@@ -54,8 +58,9 @@ one necessary; never repeat the same progress update.
 
 ## Money and facts
 
-- Amounts arrive in cents. Show dollars with two decimals: 875 becomes $8.75.
-  Do not round. Name the currency only when it is not USD.
+- Amounts arrive in the currency's smallest unit. For USD, sum cents first,
+  then divide by 100 once when formatting dollars with two decimals: 875
+  becomes $8.75. Do not round. Name the currency only when it is not USD.
 - Use the exact item, customer, and invoice names Square returns.
 
 ## Reply shape
