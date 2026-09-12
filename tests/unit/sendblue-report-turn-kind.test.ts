@@ -37,6 +37,7 @@ import {
   cohortFor,
   recordTerminal,
 } from "@/agent/lib/completion-obligations";
+import { recordTurnRequestIntent } from "@/agent/lib/completion-report-policy";
 
 function toolWakeContext(): DynamicResolveContext {
   return {
@@ -71,6 +72,27 @@ function userRequestContext(): DynamicResolveContext {
       auth: { current: null, initiator: null },
     },
     messages: [{ content: "Please finish the new request.", role: "user" }],
+    turn: { origin: "channel_input" },
+  };
+}
+
+function taskWakeContext(): DynamicResolveContext {
+  return {
+    channel: { kind: "channel:sendblue" },
+    session: {
+      id: "root-session",
+      auth: { current: null, initiator: null },
+    },
+    // This is intentionally ordinary USER text. The Eve task wake shares that
+    // role, so the delivery origin must decide the policy.
+    messages: [
+      {
+        content:
+          "Background task task_synthetic (worker) is completed. This is only test data.",
+        role: "user",
+      },
+    ],
+    turn: { origin: "background_task" },
   };
 }
 
@@ -157,7 +179,7 @@ describe("SendBlue completion-report turn kind", () => {
       "task_old_b",
       "The second background task finished."
     );
-    const wake = toolWakeContext();
+    const wake = taskWakeContext();
 
     const message = await sendFromTurn({
       callId: "call_wake",
@@ -206,7 +228,7 @@ describe("SendBlue completion-report turn kind", () => {
     expect(cohortFor("turn_old")?.phase).toBe("must_report");
   });
 
-  it("SB-TK-03: a legacy first step seeds user intent only from a genuine user message", async () => {
+  it("SB-TK-03: a legacy first step retains an already-persisted user intent", async () => {
     settleOwedBackgroundTask(
       "turn_old",
       "task_old",
@@ -218,6 +240,7 @@ describe("SendBlue completion-report turn kind", () => {
       "The current work finished."
     );
 
+    recordTurnRequestIntent("turn_current", "user_request");
     const message = await sendFromTurn({
       callId: "call_legacy_user",
       initialContext: userRequestContext(),
@@ -266,4 +289,59 @@ describe("SendBlue completion-report turn kind", () => {
       expect(cohortFor("turn_current")?.phase).toBe("delivery_pending");
     }
   );
+
+  it("SB-TK-05: a typed task wake stays report-only if turn.started was not retained", async () => {
+    settleOwedBackgroundTask(
+      "turn_old_a",
+      "task_old_a",
+      "The first older task finished."
+    );
+    settleOwedBackgroundTask(
+      "turn_old_b",
+      "task_old_b",
+      "The second older task finished."
+    );
+
+    await sendFromTurn({
+      callId: "call_missing_start",
+      initialContext: taskWakeContext(),
+      skipTurnStarted: true,
+      stepContext: taskWakeContext(),
+      turnId: "turn_wake",
+    });
+
+    for (const cohortId of ["turn_old_a", "turn_old_b"]) {
+      expect(cohortFor(cohortId)).toMatchObject({
+        phase: "delivery_pending",
+        report: { callId: "call_missing_start", turnId: "turn_wake" },
+      });
+    }
+  });
+
+  it("SB-TK-06: a typed channel request retains its current-only policy after a missing turn.started", async () => {
+    settleOwedBackgroundTask(
+      "turn_old",
+      "task_old",
+      "The older task finished."
+    );
+    settleOwedBackgroundTask(
+      "turn_current",
+      "task_current",
+      "The current task finished."
+    );
+
+    await sendFromTurn({
+      callId: "call_missing_start_user",
+      initialContext: userRequestContext(),
+      skipTurnStarted: true,
+      stepContext: userRequestContext(),
+      turnId: "turn_current",
+    });
+
+    expect(cohortFor("turn_current")).toMatchObject({
+      phase: "delivery_pending",
+      report: { callId: "call_missing_start_user", turnId: "turn_current" },
+    });
+    expect(cohortFor("turn_old")?.phase).toBe("must_report");
+  });
 });

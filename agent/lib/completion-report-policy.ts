@@ -1,4 +1,5 @@
 import { defineState } from "eve/context";
+import type { DynamicTurnOrigin } from "eve/tools";
 import {
   bindCohortReports,
   cohortsForReportCall,
@@ -36,7 +37,7 @@ export type ReportPolicy =
    */
   | { readonly kind: "must_report"; readonly cohortIds: readonly string[] };
 
-export type TurnRequestIntent = "user_request" | "report_only";
+export type TurnRequestIntent = "report_only" | "unknown" | "user_request";
 
 const turnIntentState = defineState<{
   readonly byTurnId: Readonly<Record<string, TurnRequestIntent>>;
@@ -57,6 +58,18 @@ export function turnRequestIntentFor(turnId: string | undefined) {
   return turnId === undefined
     ? undefined
     : turnIntentState.get().byTurnId[turnId];
+}
+
+/**
+ * Interprets Eve's typed delivery source without deriving intent from message
+ * text or from a role that framework wakes can also use.
+ */
+export function turnRequestIntentFromOrigin(
+  origin: DynamicTurnOrigin | undefined
+): TurnRequestIntent | undefined {
+  if (origin === "channel_input") return "user_request";
+  if (origin === "background_task") return "report_only";
+  return origin === "unknown" ? "unknown" : undefined;
 }
 
 export function reportPolicyForTurn(options?: {

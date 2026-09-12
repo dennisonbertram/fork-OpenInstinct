@@ -15,12 +15,14 @@ not the normal way this fork adds product behavior.
 | `eve@0.49.0`                  | Durable final-delivery completion request and tool-loop terminal seam                  | Eve otherwise advances to another model step after a channel confirms the final user-visible delivery. The opt-in request is exact to the active session, turn, step, and call; it is absent by default and only reaches the ordinary conversation terminal path after the current stream and tool work settle successfully.                                                                                                                                                                                                                                                                                                                                                 | `tests/unit/eve-turn-completion.test.ts` and the gateway final-delivery contract eval                                                                                                                                     | Remove when an unpatched Eve release offers this exact durable, failure-preserving completion seam and the focused runtime tests remain green without this hunk.                                                                                                                             | repository maintainers |
 
 | `eve@0.49.0` | Read-only typed background-task terminal projection | A root session cannot read an authenticated terminal task result from the public surface. The typed task index lives on `HarnessSession.state` under the framework-reserved `eve.tasks` key, and `defineState` refuses any `eve.` name, so the only public signal is the runtime's rendered `[Task state]` prose. The hunk adds a read-only projection of the existing index — task id, terminal identity, parent turn, child session and turn, worker name, terminal status, and structured output — seeded where the turn already derives its task-delivery context, and exported from `eve/context`. It also projects cohort membership: one record per index entry carrying task id, parent turn, worker name, and whether it has settled, so a consumer can see a sibling that is still running. A member record carries no result and no child identity. It publishes no `taskInboxToken`, no child stream history, and changes no task delivery prompt or retry semantics. | `tests/unit/background-task-terminal-adapter.test.ts` and `tests/unit/eve-patch-boundary.test.ts` | Remove when an unpatched Eve release exposes an authenticated typed terminal accessor to authored code, and TA-01 through TA-06 stay green without this hunk. | repository maintainers |
+| `eve@0.49.0` | Typed dynamic turn origin | Dynamic resolvers previously saw only a flattened message history, where an Eve task wake is an ordinary `user` message and can have the same text as human input. The hunk projects an additive `turn.origin`: `channel_input` for normal or task-initiating channel delivery, `background_task` for pending or settled task wakes, and `unknown` otherwise. It exposes neither task IDs nor routing tokens. | `tests/unit/eve-turn-origin.test.ts`, `tests/unit/sendblue-report-turn-kind.test.ts`, and `agent/agent.test.ts` | Remove when an unpatched Eve release exposes the same typed dynamic delivery origin and the focused boundary tests remain green. | repository maintainers |
 
-The patch covers fourteen generated files: the Linq adapter JavaScript and
+The patch covers twenty generated files: the Linq adapter JavaScript and
 declaration exports, the Chat SDK declaration export, and
 `dist/src/eve-channel/index.js`, `dist/src/context/dynamic-tool-lifecycle.js`, plus the Workflow bundle
 `dist/src/compiled/_chunks/workflow/wait-until-BtySPYD0.js`, the final-delivery context, public export, and tool-loop seam, and the
-task-terminal projection module with its `dist/src/execution/workflow-steps.js` seed. The security fix
+task-terminal projection module with its `dist/src/execution/workflow-steps.js` seed, and the
+dynamic turn-origin context and declaration exports. The security fix
 should be disclosed to Eve's maintainers through a private channel before an
 upgrade. Do not publish exploit details in a public issue.
 
@@ -67,7 +69,7 @@ A new hunk requires all of:
 5. a removal test that can prove the upstream release made it obsolete.
 
 `tests/unit/eve-patch-boundary.test.ts` fails if the patch grows beyond the
-fourteen registered files or reintroduces the removed package exports. It also
+twenty registered files or reintroduces the removed package exports. It also
 fails if the task-terminal projection starts publishing the private task inbox
 token, stops deriving a member's settled flag from its terminal view, or
 rewrites a task delivery instruction.

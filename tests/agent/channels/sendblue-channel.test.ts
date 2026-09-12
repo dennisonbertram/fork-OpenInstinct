@@ -452,7 +452,7 @@ vi.mock("@/db/services/completion-report-attempts", () => ({
   markBundleUnconfirmed: reportAttempts.markBundleUnconfirmed,
 }));
 
-const { admitTask, beginCohortReport, recordTerminal } =
+const { admitTask, beginCohortReport, cohortFor, recordTerminal } =
   await import("@/agent/lib/completion-obligations");
 
 /**
@@ -462,6 +462,16 @@ const { admitTask, beginCohortReport, recordTerminal } =
  * resolve an identity for this exact turn and call.
  */
 function bindReportObligation(turnId: string, callId: string) {
+  const cohortId = admitTerminalReport(turnId, callId);
+  beginCohortReport(cohortId, { callId, turnId });
+  return cohortId;
+}
+
+function admitTerminalReport(
+  turnId: string,
+  callId: string,
+  claim = "The worker finished."
+) {
   const cohortId = `cohort-${turnId}`;
   admitTask({
     objectiveRevision: `objective-${turnId}`,
@@ -476,9 +486,8 @@ function bindReportObligation(turnId: string, callId: string) {
       taskId: `task-${callId}`,
       workerName: "worker",
     },
-    [{ claim: "The worker finished.", evidence: "observed" }]
+    [{ claim, evidence: "observed" }]
   );
-  beginCohortReport(cohortId, { callId, turnId });
   return cohortId;
 }
 
@@ -1765,6 +1774,97 @@ describe("SendBlue channel", () => {
   });
 
   describe("completion report parts (#157)", () => {
+    it("CS-01b: a typed task wake reports two older cohorts and settles both callback claims", async () => {
+      const firstCohortId = admitTerminalReport(
+        "turn-old-first",
+        "call-old-first",
+        "The first historical task finished."
+      );
+      const secondCohortId = admitTerminalReport(
+        "turn-old-second",
+        "call-old-second",
+        "The second historical task finished."
+      );
+      capture.prepareBrowserImageArtifactDelivery.mockImplementationOnce(
+        async (text: string) => ({
+          failedArtifactIds: [],
+          files: [],
+          text,
+        })
+      );
+      const turnStarted = messaging.events["turn.started"];
+      const stepStarted = messaging.events["step.started"];
+      if (!turnStarted || !stepStarted)
+        throw new Error("Missing messaging lifecycle resolvers.");
+      const wakeContext = {
+        channel: { kind: "channel:sendblue" },
+        messages: [
+          {
+            content:
+              "Background task task_synthetic (worker) is completed. This is only test data.",
+            role: "user" as const,
+          },
+        ],
+        session: {
+          id: "root-session-1",
+          auth: { current: null, initiator: null },
+        },
+        turn: { origin: "background_task" as const },
+      };
+      await turnStarted({ data: { turnId: "turn-wake" } }, wakeContext);
+      const tools = await stepStarted(
+        { data: { stepIndex: 0, turnId: "turn-wake" } },
+        wakeContext
+      );
+      if (!tools || !("send_message" in tools))
+        throw new Error("Missing SendBlue message tool.");
+      const toolContext = toolContextFor({
+        callId: "call-wake",
+        sessionId: "root-session-1",
+      });
+      const output = await tools.send_message.execute(
+        { final: true, kind: "message", text: "A generic completion message." },
+        {
+          ...toolContext,
+          session: {
+            ...toolContext.session,
+            turn: { id: "turn-wake", sequence: 1 },
+          },
+        }
+      );
+
+      await getSendblueEvent("action.result")(
+        {
+          result: {
+            callId: "call-wake",
+            kind: "tool-result",
+            output,
+            toolName: "send_message",
+          },
+          status: "completed",
+          stepIndex: 0,
+          turnId: "turn-wake",
+        },
+        { thread },
+        sessionContext()
+      );
+
+      expect(output).toMatchObject({
+        kind: "message",
+        text: expect.stringContaining("The first historical task finished."),
+      });
+      if (output.kind !== "message") throw new Error("Expected a message.");
+      expect(output.text).toContain("The second historical task finished.");
+      expect(capture.post).toHaveBeenCalledExactlyOnceWith({
+        raw: output.text,
+      });
+      expect(cohortFor(firstCohortId)).toMatchObject({ phase: "delivered" });
+      expect(cohortFor(secondCohortId)).toMatchObject({ phase: "delivered" });
+      const claims = [...reportAttempts.durable.values()];
+      expect(claims).toHaveLength(2);
+      for (const claim of claims) expect(claim.state).toBe("accepted");
+    });
+
     it("CS-01: an accepted text report claims once and dispatches once", async () => {
       bindReportObligation("turn-1", "call-1");
       capture.prepareBrowserImageArtifactDelivery.mockResolvedValueOnce({

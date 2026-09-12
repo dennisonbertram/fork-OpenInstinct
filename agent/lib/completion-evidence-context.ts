@@ -1,5 +1,6 @@
 import {
   allCohorts,
+  reportableCohorts,
   taskRecords,
   type BoundedFact,
   type CohortRecord,
@@ -43,12 +44,13 @@ import {
  * member is still in flight, not settled, no matter its phase.
  *
  * Prior cohorts are never lumped together as generic "prior work": a cohort's
- * reporting phase decides which of three headings it renders under --
- * `delivered` (the user actually received a report), `unconfirmed` (the
- * delivery outcome is unknown), or everything else (settled but a report is
- * still owed). Reconstructed history can be unconfirmed without any durable
- * record that a send was attempted. Labelling an unconfirmed cohort as already
- * delivered or sent would tell the model false history.
+ * reporting state decides which of four headings it renders under --
+ * `delivered` (the channel accepted a report), `unconfirmed` (the
+ * delivery outcome is unknown), `owed` (a report is still owed), or historical
+ * work for which this turn owes no report. Reconstructed history can be
+ * unconfirmed without any durable record that a send was attempted. Labelling
+ * an unconfirmed cohort as already delivered or sent would tell the model false
+ * history; labelling a non-reportable cohort as owed invites a duplicate report.
  *
  * Task and cohort identifiers are deliberately kept out of the rendered text.
  * They are internal bookkeeping a user should never see quoted back to them,
@@ -73,16 +75,20 @@ const deliveredHeading =
 const owedHeading =
   "Prior work that settled earlier in this session but has not been reported " +
   "to the user yet (a report is still owed):";
+const noReportOwedHeading =
+  "Earlier work that this turn owes no summary for. It is here only so its " +
+  "findings are not mistaken for the current request's.";
 const unconfirmedHeading =
   "Prior work whose delivery to the user has not been confirmed:";
 
-/** Which of the three prior-work headings a settled cohort renders under. */
+/** Which of the four prior-work headings a settled cohort renders under. */
 function reportingGroupOf(
-  cohort: CohortRecord
-): "delivered" | "owed" | "unconfirmed" {
+  cohort: CohortRecord,
+  owedCohortIds: ReadonlySet<string>
+): "delivered" | "no_report_owed" | "owed" | "unconfirmed" {
   if (cohort.phase === "delivered") return "delivered";
   if (cohort.phase === "unconfirmed") return "unconfirmed";
-  return "owed";
+  return owedCohortIds.has(cohort.cohortId) ? "owed" : "no_report_owed";
 }
 
 /**
@@ -130,7 +136,12 @@ function isFullySettled(cohortId: string): boolean {
   return tasks.length > 0 && tasks.every((task) => task.terminal !== undefined);
 }
 
-type EvidenceGroup = "current" | "delivered" | "owed" | "unconfirmed";
+type EvidenceGroup =
+  | "current"
+  | "delivered"
+  | "no_report_owed"
+  | "owed"
+  | "unconfirmed";
 
 interface EvidenceLine {
   readonly group: EvidenceGroup;
@@ -209,13 +220,21 @@ export function completionEvidenceContext(turnId: string): string | undefined {
     priorCohorts.map((cohort, index) => [cohort.cohortId, index + 1])
   );
 
-  const priorGroupOrder = ["delivered", "owed", "unconfirmed"] as const;
+  const priorGroupOrder = [
+    "owed",
+    "unconfirmed",
+    "delivered",
+    "no_report_owed",
+  ] as const;
+  const owedCohortIds = new Set(
+    reportableCohorts().map((cohort) => cohort.cohortId)
+  );
 
   const entries: EvidenceLine[] = [
     ...(current ? linesForCohort(current.cohortId, "current", 0) : []),
     ...priorGroupOrder.flatMap((group) =>
       priorCohorts
-        .filter((cohort) => reportingGroupOf(cohort) === group)
+        .filter((cohort) => reportingGroupOf(cohort, owedCohortIds) === group)
         .flatMap((cohort) =>
           linesForCohort(
             cohort.cohortId,
@@ -230,6 +249,7 @@ export function completionEvidenceContext(turnId: string): string | undefined {
   const headingFor: Record<EvidenceGroup, string> = {
     current: currentHeading,
     delivered: deliveredHeading,
+    no_report_owed: noReportOwedHeading,
     owed: owedHeading,
     unconfirmed: unconfirmedHeading,
   };

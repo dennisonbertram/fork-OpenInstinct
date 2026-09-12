@@ -27,6 +27,10 @@ describe("Eve patch boundary", () => {
       ],
       ["dist/src/context/container.js", "dist/src/context/container.js"],
       [
+        "dist/src/context/dynamic-resolve-context.js",
+        "dist/src/context/dynamic-resolve-context.js",
+      ],
+      [
         "dist/src/context/dynamic-tool-lifecycle.js",
         "dist/src/context/dynamic-tool-lifecycle.js",
       ],
@@ -39,6 +43,7 @@ describe("Eve patch boundary", () => {
         "dist/src/context/turn-completion.js",
         "dist/src/context/turn-completion.js",
       ],
+      ["dist/src/dynamic/definition.d.ts", "dist/src/dynamic/definition.d.ts"],
       ["dist/src/eve-channel/index.js", "dist/src/eve-channel/index.js"],
       [
         "dist/src/execution/workflow-steps.js",
@@ -50,6 +55,8 @@ describe("Eve patch boundary", () => {
         "dist/src/public/context/index.d.ts",
       ],
       ["dist/src/public/context/index.js", "dist/src/public/context/index.js"],
+      ["dist/src/public/index.d.ts", "dist/src/public/index.d.ts"],
+      ["dist/src/public/tools/index.d.ts", "dist/src/public/tools/index.d.ts"],
       [
         "dist/src/tasks/terminal-projection.d.ts",
         "dist/src/tasks/terminal-projection.d.ts",
@@ -75,7 +82,22 @@ describe("Eve patch boundary", () => {
     expect(patch).toContain("readBackgroundTaskTerminals");
     expect(patch).toContain("readBackgroundTaskMembers");
     expect(patch).toContain("setSessionTaskTerminals(l,c.state)");
+    expect(patch).toContain("DynamicTurnOrigin");
+    expect(patch).toContain("TurnTaskDeliveryKey");
     expect(patch).not.toContain("diff --git a/package.json");
+  });
+
+  it("publishes only a typed turn origin, never private task routing data", async () => {
+    const patch = await readFile(patchUrl, "utf8");
+    const origin = patch.slice(
+      patch.indexOf("b/dist/src/context/dynamic-resolve-context.js"),
+      patch.indexOf("b/dist/src/context/dynamic-tool-lifecycle.js")
+    );
+
+    expect(origin).toContain("origin:u");
+    expect(origin).toContain("c===`pending`||c===`settled`");
+    expect(origin).not.toContain("taskDeliveryId");
+    expect(origin).not.toContain("taskInboxToken");
   });
 
   it("keeps the task-terminal projection read-only", async () => {

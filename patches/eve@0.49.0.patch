@@ -56,6 +56,14 @@ index 4221f612d99904e10d174bfa5e375a71298e602f..4aa155e5967ca848f487ab756c1597b0
 \ No newline at end of file
 +import{LocalDevRequestKey}from"#context/keys.js";import{AsyncLocalStorage}from"node:async_hooks";import{resolveKey}from"#context/key.js";const EVE_CONTEXT_STORAGE_KEY=Symbol.for(`eve.context-storage`);var ContextContainer=class{_durableValues=new Map;_opaqueDurableValues=new Map;_virtualValues=new Map;constructor(t){let n=t?.localDevRequest??contextStorage.getStore()?.localDevRequest;n!==void 0&&this._durableValues.set(LocalDevRequestKey.name,n)}get localDevRequest(){return this.get(LocalDevRequestKey)}get(e){return this._virtualValues.has(e.name)?this._virtualValues.get(e.name):this._durableValues.get(e.name)}require(e){if(!this.has(e))throw Error(`Context key "${e.name}" is not set.`);return this.get(e)}has(e){return this._virtualValues.has(e.name)||this._durableValues.has(e.name)}set(e,t){let n=typeof t==`function`?t(this.get(e)):t;return this._opaqueDurableValues.delete(e.name),this._durableValues.set(e.name,n),n}setOpaque(e,t){this._opaqueDurableValues.set(e,t)}ensure(e,t){return this.has(e)?this.require(e):this.set(e,t())}delete(e){let t=this._durableValues.delete(e.name),n=this._opaqueDurableValues.delete(e.name),r=this._virtualValues.delete(e.name);return t||n||r}clearVirtualContext(){this._virtualValues.clear()}setVirtualContext(e,t){this._virtualValues.set(e.name,t)}*entries(){for(let[e,t]of this._opaqueDurableValues)yield[{name:e},t];for(let[e,t]of this._durableValues){let r=resolveKey(e);r!==void 0&&(yield[r,t])}}};const globalContextStorage=globalThis;globalContextStorage[EVE_CONTEXT_STORAGE_KEY]===void 0&&(globalContextStorage[EVE_CONTEXT_STORAGE_KEY]=new AsyncLocalStorage);const contextStorage=globalContextStorage[EVE_CONTEXT_STORAGE_KEY];function loadContext(){let e=contextStorage.getStore();if(e===void 0)throw Error(`No active eve context. Call this function only from authored runtime code such as tools, steps, and model callbacks.`);return e}export{ContextContainer,contextStorage,loadContext};
 \ No newline at end of file
+diff --git a/dist/src/context/dynamic-resolve-context.js b/dist/src/context/dynamic-resolve-context.js
+index 6aff101109b83ed89df695353921bc2ae7ecdfea..ab5fb05d93cf49a5cbded54fc22fdc33523a67ae 100644
+--- a/dist/src/context/dynamic-resolve-context.js
++++ b/dist/src/context/dynamic-resolve-context.js
+@@ -1 +1 @@
+-import{getAdapterKind}from"#channel/adapter.js";import{AuthKey,ChannelInstrumentationKey,ContinuationTokenKey,InitiatorAuthKey,SessionIdKey}from"#context/keys.js";import{ChannelKey}from"#runtime/sessions/runtime-context-keys.js";function buildResolveContext(e,t){let n=e.get(SessionIdKey)??``,r=e.get(AuthKey)??null,i=e.get(InitiatorAuthKey)??null,a=e.get(ChannelKey),o=e.get(ContinuationTokenKey),s=e.get(ChannelInstrumentationKey);return{session:{id:n,auth:{current:r,initiator:i}},channel:{kind:a===void 0?void 0:getAdapterKind(a),continuationToken:o,metadata:s?.metadata},messages:t}}export{buildResolveContext};
+\ No newline at end of file
++import{getAdapterKind}from"#channel/adapter.js";import{AuthKey,ChannelInstrumentationKey,ContinuationTokenKey,InitiatorAuthKey,SessionIdKey,TurnTaskDeliveryKey}from"#context/keys.js";import{ChannelKey}from"#runtime/sessions/runtime-context-keys.js";function buildResolveContext(e,t){let n=e.get(SessionIdKey)??``,r=e.get(AuthKey)??null,i=e.get(InitiatorAuthKey)??null,a=e.get(ChannelKey),o=e.get(ContinuationTokenKey),s=e.get(ChannelInstrumentationKey),c=e.get(TurnTaskDeliveryKey),u=c===`pending`||c===`settled`?`background_task`:c===`none`||c===`initiating`?`channel_input`:`unknown`;return{session:{id:n,auth:{current:r,initiator:i}},channel:{kind:a===void 0?void 0:getAdapterKind(a),continuationToken:o,metadata:s?.metadata},turn:{origin:u},messages:t}}export{buildResolveContext};
 diff --git a/dist/src/context/dynamic-tool-lifecycle.js b/dist/src/context/dynamic-tool-lifecycle.js
 index 12c07ee3fb506160d6f8ff9447dc2218421a9a50..9b49303e8d90be24f4c4114b565b2b78b68cf0af 100644
 --- a/dist/src/context/dynamic-tool-lifecycle.js
@@ -92,6 +100,48 @@ index 0000000000000000000000000000000000000000..086341fb26679e2119b4886789d95a4e
 +++ b/dist/src/context/turn-completion.js
 @@ -0,0 +1 @@
 +import{loadContext}from"#context/container.js";import{ContextKey}from"#context/key.js";import{SessionKey}from"#context/keys.js";import{throwIfTurnAborted}from"#harness/turn-cancellation.js";const TurnCompletionRequestKey=new ContextKey(`eve.turnCompletionRequest`);function requestTurnCompletion(e){if(typeof e.callId!==`string`||e.callId.length===0||!Number.isInteger(e.stepIndex)||e.stepIndex<0)return!1;let t=loadContext(),n=t.require(SessionKey),r={callId:e.callId,sessionId:n.sessionId,stepIndex:e.stepIndex,turnId:n.turn.id},i=t.get(TurnCompletionRequestKey);return i===void 0?(t.set(TurnCompletionRequestKey,r),!0):isSameTurn(i,r)?i.callId===r.callId:(t.set(TurnCompletionRequestKey,r),!0)}function consumeTurnCompletionRequest(e){let t=loadContext(),n=t.get(TurnCompletionRequestKey);return isCurrentTurnCompletionRequest(n,e.session,e.emissionState)&&e.completedCallIds.has(n.callId)?(throwIfTurnAborted(e.abortSignal),t.delete(TurnCompletionRequestKey),e.session):void 0}function isSameTurn(e,t){return typeof e===`object`&&e!==null&&!Array.isArray(e)&&e.sessionId===t.sessionId&&e.turnId===t.turnId&&e.stepIndex===t.stepIndex}function isCurrentTurnCompletionRequest(e,t,n){return isSameTurn(e,{sessionId:t.sessionId,stepIndex:n.stepIndex,turnId:n.turnId})&&typeof e.callId===`string`&&e.callId.length>0}export{consumeTurnCompletionRequest,requestTurnCompletion};
+diff --git a/dist/src/dynamic/definition.d.ts b/dist/src/dynamic/definition.d.ts
+index a50024bd26d5f8e7bc51590430000525d7fc948f..8ec924e46f75491276fd229e2585a8fc006e1f2e 100644
+--- a/dist/src/dynamic/definition.d.ts
++++ b/dist/src/dynamic/definition.d.ts
+@@ -16,12 +16,20 @@ export declare const ALLOWED_DYNAMIC_TOOL_EVENTS: ReadonlySet<string>;
+ export declare const ALLOWED_DYNAMIC_INSTRUCTION_EVENTS: ReadonlySet<string>;
+ export declare const ALLOWED_DYNAMIC_SKILL_EVENTS: ReadonlySet<string>;
+ export declare const ALLOWED_DYNAMIC_CONNECTION_EVENTS: ReadonlySet<string>;
++/**
++ * The source that caused the active turn to resolve.
++ *
++ * This is intentionally a delivery classification rather than a human
++ * identity claim. Channel adapters have already authenticated and normalized
++ * channel input; background task notifications are generated by Eve itself.
++ */
++export type DynamicTurnOrigin = "background_task" | "channel_input" | "unknown";
+ /**
+  * Context passed to a dynamic resolver's event handler.
+  *
+- * Exposes read-only session identity, auth, and channel metadata. State
+- * is not exposed here; resolvers read it through `defineState` handles or
+- * the session context inside tool `execute` functions.
++ * Exposes read-only session identity, auth, channel metadata, and the active
++ * turn's delivery origin. State is not exposed here; resolvers read it through
++ * `defineState` handles or the session context inside tool `execute` functions.
+  */
+ export interface DynamicResolveContext {
+     readonly session: {
+@@ -37,6 +45,13 @@ export interface DynamicResolveContext {
+         /** Free-form channel-specific metadata attached to the request. */
+         readonly metadata?: Readonly<Record<string, unknown>>;
+     };
++    /**
++     * Delivery origin for the current dynamic resolve. Optional so callbacks
++     * remain compatible with a context serialized by an older Eve runtime.
++     */
++    readonly turn?: {
++        readonly origin: DynamicTurnOrigin;
++    };
+     /** Conversation history visible at this resolve point, oldest first. */
+     readonly messages: readonly ModelMessage[];
+ }
 diff --git a/dist/src/eve-channel/index.js b/dist/src/eve-channel/index.js
 index faad3dd1107c4298d157311d0b8a97d4f1316ce2..6315002bb7ba8dcccdfb74c6c9bf13d8ae66ed23 100644
 --- a/dist/src/eve-channel/index.js
@@ -142,6 +192,30 @@ index 9929d87fefca3371a89b60bebe4d24cdd2782587..86fa41230687f9378692f24baf49caf9
 \ No newline at end of file
 +import{defineState}from"#public/definitions/state.js";import{requestTurnCompletion}from"#context/turn-completion.js";import{readBackgroundTaskMembers,readBackgroundTaskTerminals}from"#tasks/terminal-projection.js";export{defineState,readBackgroundTaskMembers,readBackgroundTaskTerminals,requestTurnCompletion};
 \ No newline at end of file
+diff --git a/dist/src/public/index.d.ts b/dist/src/public/index.d.ts
+index 9eb6e3f28dcdbdbdea30eb926553a04dc21fe036..9683a44546e63163dfbfed54bf2bc1e47774264c 100644
+--- a/dist/src/public/index.d.ts
++++ b/dist/src/public/index.d.ts
+@@ -2,5 +2,5 @@
+  * Core agent authoring helpers for `agent/agent.ts`.
+  */
+ export { type AgentCompactionDefinition, type AgentDefinition, type AgentExperimentalDefinition, type AgentLimitsDefinition, type AgentModelDefinition, type AgentModelOptionsDefinition, type AgentReasoningDefinition, type AgentStaticModelDefinition, type AgentWorkflowDefinition, type AgentWorkflowWorldDefinition, type DefinedAgent, type DynamicSubagentDefinition, type DynamicLocalSubagentDefinition, defineAgent, defineDynamic, } from "#public/definitions/agent.js";
+-export type { DynamicResolveContext, DynamicSentinel } from "#dynamic/definition.js";
++export type { DynamicResolveContext, DynamicSentinel, DynamicTurnOrigin } from "#dynamic/definition.js";
+ export { type RemoteAgentDefinition, type RemoteAgentDefinitionInput, type RemoteAgentUrl, defineRemoteAgent, } from "#public/definitions/remote-agent.js";
+diff --git a/dist/src/public/tools/index.d.ts b/dist/src/public/tools/index.d.ts
+index aabb7acaaa947ca3687bd7169ca9c2f2494958dc..30777a2d1bddf75bc9094fe9664bcf10de81a6cf 100644
+--- a/dist/src/public/tools/index.d.ts
++++ b/dist/src/public/tools/index.d.ts
+@@ -4,7 +4,7 @@
+ export { type BackgroundToolDefinition, type DisabledToolSentinel, defineTool, disableTool, isDisabledToolSentinel, type TaskBinding, type TaskDelegated, type TaskExec, type TaskExecutorBinding, type TaskReceipt, type ToolAuthOptions, type ToolAuthProvider, type ToolDefinition, type ToolContext, type ToolModelOutput, type ToolModelOutputPart, } from "#tools/definition.js";
+ export { defineDynamic } from "#dynamic/definition.js";
+ export { toolOutput, toolOutputPart } from "#tools/model-output.js";
+-export type { DynamicEvents, DynamicResolveContext, DynamicSentinel } from "#dynamic/definition.js";
++export type { DynamicEvents, DynamicResolveContext, DynamicSentinel, DynamicTurnOrigin } from "#dynamic/definition.js";
+ export type { DynamicToolEntry, DynamicToolEvents, DynamicToolSet, DynamicToolResult, } from "#tools/dynamic.js";
+ export { type SessionContext } from "#public/definitions/callback-context.js";
+ export { toolResultFrom, type MatchedConnectionResult, type MatchedToolResult, type ToolResultFromFn, } from "#public/tools/result.js";
 diff --git a/dist/src/tasks/terminal-projection.d.ts b/dist/src/tasks/terminal-projection.d.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..dfc54cd85460ade21cb13268e29191e74bd03896

@@ -56,9 +56,12 @@ import completionEvidence from "@/agent/instructions/35-completion-evidence";
 import {
   admitTask,
   bindCohortReports,
+  blockCohort,
+  cancelCohort,
   completionCapacity,
   recordTerminal,
   settleCohortReport,
+  supersedeCohort,
 } from "@/agent/lib/completion-obligations";
 
 beforeEach(() => {
@@ -169,6 +172,43 @@ describe("completion evidence instruction", () => {
     );
     expect(content).not.toContain("was sent to the user");
     expect(content).not.toContain("Prior work already reported");
+  });
+
+  it("CE-13: dormant and in-flight cohorts are preserved as history without saying a report is owed", async () => {
+    settle("task_superseded", "turn_superseded", [
+      { claim: "Read the superseded draft.", evidence: "observed" },
+    ]);
+    supersedeCohort("turn_superseded");
+
+    settle("task_pending", "turn_delivery_pending", [
+      { claim: "Prepared the in-flight report.", evidence: "observed" },
+    ]);
+    bindCohortReports(["turn_delivery_pending"], {
+      callId: "call_delivery_pending",
+      turnId: "turn_report",
+    });
+
+    settle("task_blocked", "turn_blocked", [
+      { claim: "Recorded the blocked result.", evidence: "observed" },
+    ]);
+    blockCohort("turn_blocked", "report transport unavailable");
+
+    settle("task_dormant", "turn_dormant", [
+      {
+        claim: "The worker-only draft was cancelled.",
+        evidence: "worker_assertion",
+      },
+    ]);
+    cancelCohort("turn_dormant");
+
+    const content = (await resolve("turn_now"))?.content ?? "";
+
+    expect(content).toContain("Read the superseded draft.");
+    expect(content).toContain("Prepared the in-flight report.");
+    expect(content).toContain("Recorded the blocked result.");
+    expect(content).toContain("The worker-only draft was cancelled.");
+    expect(content).toContain("Earlier work that this turn owes no summary");
+    expect(content).not.toContain("a report is still owed");
   });
 
   it("CE-02: an observed claim and a worker-asserted claim on the same task stay separately attributed", async () => {

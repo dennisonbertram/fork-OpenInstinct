@@ -9,6 +9,7 @@ import {
   bindReportAttempt,
   recordTurnRequestIntent,
   reportPolicyForTurn,
+  turnRequestIntentFromOrigin,
   turnRequestIntentFor,
   type ReportPolicy,
 } from "../lib/completion-report-policy";
@@ -27,32 +28,32 @@ import { sendMessageInputSchema } from "../lib/send-message";
 
 export default defineDynamic({
   events: {
-    // Clears registrations persisted before this resolver became step-scoped.
+    // Records the framework delivery source before tool steps change the
+    // visible history from the input that started this turn.
     "turn.started": (event, context) => {
       const parsed = turnEventSchema.safeParse(event);
-      if (parsed.success) {
-        recordTurnRequestIntent(
-          parsed.data.data.turnId,
-          isGenuineUserRequest(context) ? "user_request" : "report_only"
-        );
+      const intent = turnRequestIntentFromOrigin(context.turn?.origin);
+      if (parsed.success && intent !== undefined) {
+        recordTurnRequestIntent(parsed.data.data.turnId, intent);
       }
       return null;
     },
     "step.started": (event, context) => {
       const parsed = stepEventSchema.safeParse(event);
       const turnId = parsed.success ? parsed.data.data.turnId : undefined;
-      let intent = turnRequestIntentFor(turnId);
-      // Older persisted turns may resume without the turn.started intent. Only
-      // the first model step may recover it, and only from an actual user
-      // message. Tool results and unknown roles never imply a user request.
+      // Keep the turn-started snapshot when present. A typed fallback makes a
+      // resolver that resumes without its earlier callback agree with the model
+      // guard, while an old runtime still never infers a request from text or
+      // from a USER role that an Eve task wake can share.
+      const storedIntent = turnRequestIntentFor(turnId);
+      const fallbackIntent = turnRequestIntentFromOrigin(context.turn?.origin);
+      const intent = storedIntent ?? fallbackIntent;
       if (
-        intent === undefined &&
-        parsed.success &&
-        parsed.data.data.stepIndex === 0 &&
-        isGenuineUserRequest(context)
+        storedIntent === undefined &&
+        fallbackIntent !== undefined &&
+        turnId !== undefined
       ) {
-        intent = "user_request";
-        if (turnId !== undefined) recordTurnRequestIntent(turnId, intent);
+        recordTurnRequestIntent(turnId, fallbackIntent);
       }
       return finalDeliveryStatus(turnId) !== undefined
         ? null
@@ -133,19 +134,6 @@ const turnEventSchema = z.object({ data: z.object({ turnId: z.string() }) });
 const stepEventSchema = z.object({
   data: z.object({ stepIndex: z.number(), turnId: z.string() }),
 });
-const frameworkAgentsNoteSchema = z.object({
-  content: z.string().startsWith("[Agents]"),
-  role: z.literal("user"),
-});
-
-function isGenuineUserRequest(context: DynamicResolveContext) {
-  const newest = context.messages.at(-1);
-  return (
-    newest?.role === "user" &&
-    !frameworkAgentsNoteSchema.safeParse(newest).success
-  );
-}
-
 function resolveMessaging(
   context: DynamicResolveContext,
   turnId: string | undefined,

@@ -839,9 +839,9 @@
             <td>turn.started</td>
             <td>
               checkBudget on model tokens; a blown budget fails the turn before
-              the model runs. Messaging also clears a legacy turn-scoped
-              registration here before its current step-scoped delivery tools
-              resolve.
+              the model runs. Messaging records Eve's typed delivery origin
+              here, so a background wake cannot become a user request because of
+              its role or text.
             </td>
           </tr>
           <tr>
