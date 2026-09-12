@@ -300,6 +300,7 @@ describe("squareCases", () => {
   it("derives Margaret's balance to $63.00 with her invoice number", () => {
     const owesCase = squareCases.find((c) => c.id === "who-owes-money");
     const facts = owesCase?.facts(fixture) ?? [];
+    expect(owesCase?.requiresInvoiceCustomerResolution).toBe(true);
     expect(facts).toContain("Margaret Hamilton");
     expect(facts).toContain("$63.00");
     expect(facts).toContain("000001");

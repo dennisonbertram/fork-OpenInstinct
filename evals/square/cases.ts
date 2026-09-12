@@ -42,6 +42,8 @@ export interface SquareCase {
   };
   /** Customer-order cases with a paginated SearchOrders fixture must drain it. */
   readonly requiresSearchOrderCursorDrain?: boolean;
+  /** Invoice-recipient names must come from a matching Square customer record. */
+  readonly requiresInvoiceCustomerResolution?: boolean;
 }
 
 interface CustomerName {
@@ -242,6 +244,7 @@ export const squareCases: readonly SquareCase[] = [
     id: "who-owes-money",
     layout: "normal",
     prompt: "Who owes me money right now?",
+    requiresInvoiceCustomerResolution: true,
     tone: directTone,
   },
   {
