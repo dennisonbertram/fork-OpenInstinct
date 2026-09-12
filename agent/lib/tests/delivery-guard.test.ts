@@ -62,4 +62,44 @@ describe("interactive delivery guard", () => {
       })
     ).toBeUndefined();
   });
+
+  it("DG-01: an owed report does not force send_message when a new user request is pending", () => {
+    // This is the production defect: an old debt must not force
+    // send_message as the first and only action of a new user request. The
+    // model must still call a tool ({ type: "required" }), but it may pick
+    // the one that does the requested work.
+    expect(
+      deliveryToolChoiceForInteractiveTurn({
+        channelKind: "channel:linq",
+        deliveryStatus: undefined,
+        mode: "interactive",
+        reportOwed: true,
+        userRequestPending: true,
+      })
+    ).toEqual({ type: "required" });
+  });
+
+  it("DG-02: an owed report still forces send_message on a wake with no pending user request", () => {
+    expect(
+      deliveryToolChoiceForInteractiveTurn({
+        channelKind: "channel:linq",
+        deliveryStatus: undefined,
+        mode: "interactive",
+        reportOwed: true,
+        userRequestPending: false,
+      })
+    ).toEqual({ type: "tool", toolName: "send_message" });
+  });
+
+  it("DG-03: reportOwed false with a user request pending still just requires a tool", () => {
+    expect(
+      deliveryToolChoiceForInteractiveTurn({
+        channelKind: "channel:linq",
+        deliveryStatus: undefined,
+        mode: "interactive",
+        reportOwed: false,
+        userRequestPending: true,
+      })
+    ).toEqual({ type: "required" });
+  });
 });

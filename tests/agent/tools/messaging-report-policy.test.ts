@@ -379,7 +379,11 @@ describe("forcing follows what is owed, and nothing else", () => {
     // And the records travel with the message, through the production activation
     // rather than a mock that was told to say yes.
     expect(delivered.text).toContain("Here you go.");
-    expect(delivered.text).toContain("turn_1/task_a finished");
+    // The report no longer names the cohort or task id -- see
+    // completion-report-text.ts -- so what travels with the message is the
+    // plain outcome and the worker's own claim instead.
+    expect(delivered.text).toContain("Finished.");
+    expect(delivered.text).toContain("The worker finished the upload.");
   });
 });
 
@@ -489,9 +493,13 @@ describe("the policy follows what is actually owed, not only the switch", () => 
     expect(cohortFor("turn_2")?.phase).toBe("delivery_pending");
     expect(reportableCohorts()).toEqual([]);
     // And binding without reporting would be worse than leaving it owed, so the
-    // message names both.
-    expect(delivered.text).toContain("task_a");
-    expect(delivered.text).toContain("task_b");
+    // message names both -- by ordinal, since the report no longer carries a
+    // cohort or task id (see completion-report-text.ts).
+    expect(delivered.text).toMatch(/first request/iu);
+    expect(delivered.text).toMatch(/second request/iu);
+    expect(
+      delivered.text.match(/The worker finished the upload\./gu)?.length
+    ).toBe(2);
   });
 });
 
@@ -690,9 +698,13 @@ describe("a backlog is answered once, not once per turn", () => {
 
     // Binding a cohort without reporting it would be worse than leaving it
     // owed: the obligation would be discharged by a message that never
-    // mentioned it.
-    expect(delivered.text).toContain("task_a");
-    expect(delivered.text).toContain("task_b");
+    // mentioned it. Named by ordinal now, since the report no longer carries a
+    // cohort or task id (see completion-report-text.ts).
+    expect(delivered.text).toMatch(/first request/iu);
+    expect(delivered.text).toMatch(/second request/iu);
+    expect(
+      delivered.text.match(/The worker finished the upload\./gu)?.length
+    ).toBe(2);
   });
 
   it("RP-25: settling that one attempt settles every cohort it bound", async () => {

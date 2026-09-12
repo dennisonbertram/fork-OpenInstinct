@@ -3,6 +3,7 @@ import {
   stripImageArtifactMarkdownReferences,
 } from "@/agent/lib/browser-image-artifact/markdown";
 import {
+  allCohorts,
   taskRecords,
   type BoundedFact,
   type TaskRecord,
@@ -25,99 +26,270 @@ import { recoveryProgress } from "@/agent/lib/recovery-progress";
  * model's cooperation: this renders them, and `reportWithRecordedFacts` carries
  * them alongside whatever the model wrote.
  *
+ * A second production failure came from what this actually said. A real person
+ * received "What the records hold: turn_0/task_f13d217eb04bc1ab7c152c78
+ * finished. ... (reported by the worker, not confirmed)." That is internal
+ * machinery -- a cohort id and a task id -- standing in for an answer, and a
+ * records dump where a person expected a sentence. Nothing here may show a
+ * cohort or task id again. Several pieces of work are told apart by ordinal or
+ * description ("the first request", "the other task"), never by id.
+ *
  * **Outcomes first, then what is still unknown.** Every settled task's status
  * appears, always, before any supporting claim, and the unresolved remainder
  * comes from `recoveryProgress` rather than being written here -- that module
  * already decides what the records do and do not establish, and a second
- * opinion about the same records would be a second source of truth. An earlier version rendered only the facts, so a failed
- * task whose facts held an observed checkpoint read as a confirmed success and
- * a fourth task's failure could be squeezed out by three earlier successes. A
- * report that can hide a failure is worse than no report.
+ * opinion about the same records would be a second source of truth. An earlier
+ * version rendered only the facts, so a failed task whose facts held an
+ * observed checkpoint read as a confirmed success and a fourth task's failure
+ * could be squeezed out by three earlier successes. A report that can hide a
+ * failure is worse than no report.
  *
  * What this honestly guarantees is narrow, and worth stating plainly. Every
- * settled task's outcome reaches the user, tagged with the request it belongs
- * to, with anything that did not complete named first -- across the whole batch,
- * not within each cohort -- so a length limit cannot hide it. Supporting claims are carried
- * whole or not at all, and the ones that did not fit are counted rather than
- * shortened -- a shortened claim can say the opposite of what was recorded. It does not make the model's own
- * sentences true, and it does not make the records true -- a worker's claim
- * carried here is reproduced, not verified.
+ * settled task's outcome reaches the user, with anything that did not complete
+ * named first -- across the whole batch, not within each request -- so a
+ * length limit cannot hide it. Supporting claims are carried whole or not at
+ * all, and the ones that did not fit are counted rather than shortened -- a
+ * shortened claim can say the opposite of what was recorded. It does not make
+ * the model's own sentences true, and it does not make the records true -- a
+ * worker's claim carried here is reproduced, not verified.
  */
 
 /** The most supporting claims one report will name, across the whole message. */
 const maximumClaims = 3;
+/** What one automatic report body may take, as a whole, including any omission notice. */
+const maximumReportBodyLength = 900;
 /**
- * The most room supporting claims may take in one message.
- *
- * One budget for the whole message, not one per cohort. Rendering each cohort
- * separately and joining them produced 35,462 characters against the channel's
- * 20,000 limit -- which the channel rejects outright, after the obligations were
- * already bound. Appending cohort by cohort instead kept only the last four and
- * dropped the rest, which is worse: an obligation discharged by a message that
- * never mentions it.
+ * Room held back for the "N further recorded claims are not shown here."
+ * sentence, which is mandatory whenever anything was omitted: the count is how
+ * a reader learns detail exists that they cannot see.
  */
-const maximumClaimBudget = 4_000;
+const claimNoticeReserve = 48;
 /** What the channel accepts, so a carried report can never make a send invalid. */
 const maximumMessageLength = 20_000;
-/**
- * The most of an identifier one outcome shows.
- *
- * Outcomes are never dropped, so their total length has to be bounded by
- * something other than goodwill. Task and cohort ids are validated for shape but
- * not for length, and 64 outcomes built from 150-character ids came to 20,310
- * characters on their own -- past the channel limit before a single claim was
- * added, which the channel rejects after the obligations are already bound.
- *
- * Shortening an identifier is safe in the way shortening a claim is not. An id
- * is a label with no internal meaning to reverse; a sentence whose middle holds
- * "not" becomes its own opposite. Two shortened ids can look alike, and that is
- * visible to a reader, where an unsendable message is not. Eve's own ids are
- * well inside this, so in practice nothing is shortened at all.
- */
-const maximumIdentifierLength = 40;
 
-function shortIdentifier(identifier: string) {
-  return identifier.length <= maximumIdentifierLength
-    ? identifier
-    : `${identifier.slice(0, maximumIdentifierLength)}…`;
+const ordinalWords = [
+  "first",
+  "second",
+  "third",
+  "fourth",
+  "fifth",
+  "sixth",
+  "seventh",
+  "eighth",
+  "ninth",
+  "tenth",
+];
+
+function ordinal(index: number): string {
+  return ordinalWords[index] ?? `${String(index + 1)}th`;
+}
+
+/** How to refer to one request among several, without ever naming its id. */
+function requestLabel(index: number): string {
+  return `the ${ordinal(index)} request`;
+}
+
+function capitalize(text: string): string {
+  const first = text.slice(0, 1);
+  return `${first.toUpperCase()}${text.slice(1)}`;
+}
+
+/** Joins natural-language labels as "a", "a and b", or "a, b and c". */
+function joinLabels(labels: readonly string[]): string {
+  if (labels.length <= 1) return labels[0] ?? "";
+  const last = labels[labels.length - 1] ?? "";
+  return `${labels.slice(0, -1).join(", ")} and ${last}`;
 }
 
 function corroborated(fact: BoundedFact) {
   return fact.evidence === "observed" || fact.evidence === "executor_receipt";
 }
 
-/** Sorts anything that did not complete ahead of anything that did. */
-function completedLast(task: TaskRecord) {
-  return task.terminal?.status === "completed" ? 1 : 0;
-}
+type Status = "completed" | "failed" | "cancelled" | "not_reported";
 
-function outcomeOf(task: TaskRecord) {
+function statusOf(task: TaskRecord): Status {
   switch (task.terminal?.status) {
     case "completed":
-      return "finished";
+      return "completed";
     case "failed":
       return "failed";
     case "cancelled":
-      return "was cancelled";
+      return "cancelled";
     default:
-      return "has not reported";
+      return "not_reported";
   }
 }
 
-function provenanceOf(fact: BoundedFact) {
-  if (corroborated(fact)) return "confirmed";
-  return fact.evidence === "worker_assertion"
-    ? "reported by the worker, not confirmed"
-    : "recorded with no stated source";
+/** Whether every task in this group finished cleanly. */
+function allCompleted(tasks: readonly TaskRecord[]): boolean {
+  return tasks.every((task) => statusOf(task) === "completed");
+}
+
+/** Sorts any request holding an unfinished task ahead of one that fully finished. */
+function requestRank(tasks: readonly TaskRecord[]): number {
+  return allCompleted(tasks) ? 1 : 0;
+}
+
+const singleTaskVerb: Record<Status, string> = {
+  completed: "finished",
+  failed: "failed",
+  cancelled: "was cancelled",
+  not_reported: "has not reported",
+};
+
+const groupVerb: Record<Status, string> = {
+  completed: "finished",
+  failed: "failed",
+  cancelled: "were cancelled",
+  not_reported: "have not reported",
+};
+
+/** Bad news before good news, so a length limit removing the tail never removes a failure. */
+const statusPriority: readonly Status[] = [
+  "failed",
+  "cancelled",
+  "not_reported",
+  "completed",
+];
+
+/** Describes what happened to one group of tasks, naming counts, never ids. */
+function outcomeBody(tasks: readonly TaskRecord[]): string {
+  const [only, ...rest] = tasks;
+  if (only !== undefined && rest.length === 0) {
+    return singleTaskVerb[statusOf(only)];
+  }
+  const counts = new Map<Status, number>();
+  for (const task of tasks) {
+    const status = statusOf(task);
+    counts.set(status, (counts.get(status) ?? 0) + 1);
+  }
+  const present = statusPriority.filter(
+    (status) => (counts.get(status) ?? 0) > 0
+  );
+  const [onlyPresent] = present;
+  if (onlyPresent !== undefined && present.length === 1) {
+    return `all ${String(tasks.length)} tasks ${groupVerb[onlyPresent]}`;
+  }
+  return present
+    .map((status) => {
+      const count = counts.get(status) ?? 0;
+      // The verb has to agree with the count, not with the group. A mixed
+      // request with exactly one cancellation rendered "1 task were cancelled"
+      // -- visible only by printing the message, since every assertion about
+      // this sentence was checking which words appeared, not whether it reads.
+      const noun = count === 1 ? "task" : "tasks";
+      const verb = count === 1 ? singleTaskVerb[status] : groupVerb[status];
+      return `${String(count)} ${noun} ${verb}`;
+    })
+    .join("; ");
 }
 
 /**
- * Renders what the records hold for every cohort this message answers.
+ * A claim with a sentence ending, so two claims cannot run together.
  *
- * Outcomes and uncertainty are reserved first and are never trimmed; supporting
- * claims fill what is left and the ones that did not fit are counted. Failures
- * are ranked ahead of successes across the entire batch, because bad news last
- * is bad news a length limit can remove.
+ * Worker text arrives without a guaranteed terminator, and joining "Ordered the
+ * part" to the next claim with only a space produced "Ordered the part According
+ * to the worker: Submitted the form" -- one broken sentence in a message a person
+ * reads. Adding a full stop cannot change what a claim asserts; leaving two
+ * claims fused can.
+ */
+function endedSentence(claim: string) {
+  const text = claim.trim();
+  return text.length === 0 || /[.!?]$/u.test(text) ? text : `${text}.`;
+}
+
+/** Where a cohort sits among every cohort this session has opened, oldest first. */
+function chronologicalPosition(cohortId: string): number {
+  const position = allCohorts().findIndex(
+    (candidate) => candidate.cohortId === cohortId
+  );
+  return position === -1 ? 0 : position;
+}
+
+/** One sentence for one request's tasks, labelled only when more than one request is in play. */
+function requestOutcomeSentence(
+  tasks: readonly TaskRecord[],
+  label: string | undefined
+): string {
+  const body = outcomeBody(tasks);
+  if (label === undefined) return `${capitalize(body)}.`;
+  return tasks.length === 1
+    ? `${capitalize(label)} ${body}.`
+    : `${capitalize(label)}: ${body}.`;
+}
+
+function provenanceGroup(
+  fact: BoundedFact
+): "corroborated" | "worker" | "unknown" {
+  if (corroborated(fact)) return "corroborated";
+  return fact.evidence === "worker_assertion" ? "worker" : "unknown";
+}
+
+/** Renders the claims that fit, grouped so one attribution covers only the claims it is about. */
+function renderClaims(facts: readonly BoundedFact[]): string {
+  const corroboratedClaims = facts
+    .filter((fact) => provenanceGroup(fact) === "corroborated")
+    .map((fact) => endedSentence(fact.claim));
+  const workerClaims = facts
+    .filter((fact) => provenanceGroup(fact) === "worker")
+    .map((fact) => endedSentence(fact.claim));
+  const unknownClaims = facts
+    .filter((fact) => provenanceGroup(fact) === "unknown")
+    .map((fact) => endedSentence(fact.claim));
+
+  const sentences: string[] = [];
+  if (corroboratedClaims.length > 0)
+    sentences.push(corroboratedClaims.join(" "));
+  // One attribution for the whole group, placed only next to the claims it
+  // covers -- never worded so it could be read as covering the corroborated or
+  // unknown-source claims sitting in their own sentences.
+  if (workerClaims.length > 0) {
+    sentences.push(`According to the worker: ${workerClaims.join(" ")}`);
+  }
+  if (unknownClaims.length > 0) {
+    sentences.push(
+      `Also recorded, though the source is unknown: ${unknownClaims.join(" ")}`
+    );
+  }
+  return sentences.join(" ");
+}
+
+/**
+ * Appends whole candidates, most important first, up to `maxLength`, counting
+ * -- never truncating -- whatever does not fit.
+ *
+ * Candidates are dropped from the end (least important first) until the base
+ * text, the surviving candidates, and the omission notice for the rest all fit
+ * together. Nothing here ever returns part of a candidate: a candidate is
+ * either whole in the result or entirely absent from it and counted.
+ */
+function appendBounded(
+  base: string,
+  maxLength: number,
+  candidates: readonly string[],
+  noticeFor: (omitted: number) => string
+): string {
+  const kept = [...candidates];
+  for (;;) {
+    const notice =
+      kept.length < candidates.length
+        ? noticeFor(candidates.length - kept.length)
+        : "";
+    const combined = [base, ...kept, notice]
+      .filter((part) => part.length > 0)
+      .join(" ");
+    if (combined.length <= maxLength || kept.length === 0) return combined;
+    kept.pop();
+  }
+}
+
+/**
+ * Renders what the records hold for every request this message answers.
+ *
+ * The result leads with the outcome -- failure first, across the whole batch,
+ * never below optional detail -- and never carries a cohort or task id in any
+ * form. Several requests are told apart by ordinal ("the first request"), never
+ * by the identifiers the records use internally.
  *
  * Keyed by cohort rather than by re-asking the policy, because the caller binds
  * the obligation before composing: by then the cohorts are `delivery_pending`
@@ -126,76 +298,126 @@ function provenanceOf(fact: BoundedFact) {
 export function completionReportText(
   cohortIds: readonly string[]
 ): string | undefined {
-  const members = cohortIds.flatMap((cohortId) =>
-    taskRecords(cohortId).map((task) => ({ cohortId, task }))
+  const requests = cohortIds
+    .map((cohortId) => ({ cohortId, tasks: taskRecords(cohortId) }))
+    .filter((request) => request.tasks.length > 0)
+    // The ordinal is fixed here, in the order the requests were made, BEFORE
+    // anything is reordered for display. Numbering after the failure sort made
+    // "the first request" mean "the first failure", so a request the user made
+    // second was described to them as their first -- a label that reads as fact
+    // and is wrong. Failures still lead; only the wording is anchored.
+    .map((request) => ({
+      // Position among EVERY cohort this session holds, in creation order --
+      // not the index in the array handed to this function. The policy supplies
+      // only the cohorts that are reportable, so if the user's first request is
+      // still running and their second and third are ready, numbering the
+      // supplied array called those "the first" and "the second". The label
+      // reads as a plain fact about their own conversation and pointed at the
+      // wrong request.
+      askedAt: chronologicalPosition(request.cohortId),
+      cohortId: request.cohortId,
+      tasks: request.tasks,
+    }));
+  if (requests.length === 0) return undefined;
+
+  const ordered = requests.toSorted(
+    (left, right) => requestRank(left.tasks) - requestRank(right.tasks)
   );
-  if (members.length === 0) return undefined;
+  const multiple = ordered.length > 1;
 
-  // Every task's outcome, always, and tagged with the request it belongs to:
-  // one message about several requests is only useful if a reader can tell
-  // which outcome is which.
-  const outcomes = members
-    .toSorted(
-      (left, right) => completedLast(left.task) - completedLast(right.task)
+  const outcomeSentences = ordered.map((request) =>
+    requestOutcomeSentence(
+      request.tasks,
+      multiple ? requestLabel(request.askedAt) : undefined
     )
-    .map(
-      (member) =>
-        `${shortIdentifier(member.cohortId)}/${shortIdentifier(member.task.taskId)} ${outcomeOf(member.task)}`
-    )
-    .join("; ");
+  );
+  const body = outcomeSentences.join(" ");
 
-  const facts = members.flatMap((member) => member.task.terminal?.facts ?? []);
-  const ordered = [
-    ...facts.filter((fact) => corroborated(fact)),
-    ...facts.filter((fact) => fact.evidence === "worker_assertion"),
-    ...facts.filter((fact) => fact.evidence === "unknown"),
-  ];
+  // What is still unknown, in the words of the module that decides it. Its
+  // text never varies with a request's identity, only with its disposition, so
+  // several requests sharing one disposition state it once rather than
+  // repeating it -- that is preserving the qualification, not diluting it.
+  const unknownByLine = new Map<string, string[]>();
+  for (const request of ordered) {
+    for (const line of recoveryProgress({ turnId: request.cohortId })
+      .unknownRemainder) {
+      const labels = unknownByLine.get(line) ?? [];
+      // Same anchoring as the outcome sentences: the label names the request
+      // the user made, not its position after the failure sort.
+      if (multiple) labels.push(requestLabel(request.askedAt));
+      unknownByLine.set(line, labels);
+    }
+  }
+  const uncertaintySentences = [...unknownByLine.entries()].map(
+    ([line, labels]) => {
+      if (labels.length === 0) return line;
+      if (labels.length === ordered.length)
+        return `For all ${String(ordered.length)} requests: ${line}`;
+      return `For ${joinLabels(labels)}: ${line}`;
+    }
+  );
 
+  let text = appendBounded(
+    body,
+    // Reserved so the claim-omission notice appended below always fits. Without
+    // it the loop accepted an over-long body once every claim had already been
+    // dropped, and a mixed-status batch rendered 948 characters against this
+    // 900-character bound.
+    maximumReportBodyLength - claimNoticeReserve,
+    uncertaintySentences,
+    (omitted) =>
+      `(${String(omitted)} further unresolved-outcome note${omitted === 1 ? " is" : "s are"} not shown here.)`
+  );
+
+  const facts = ordered.flatMap((request) =>
+    request.tasks.flatMap((task) => task.terminal?.facts ?? [])
+  );
   // Whole or not at all. Shortening a claim can reverse it -- a sentence whose
   // middle holds "not" becomes its own opposite, and a reader cannot tell it
   // was shortened. Omission is visible; mutation is not.
-  const shown: BoundedFact[] = [];
-  let spent = 0;
-  for (const fact of ordered) {
-    if (shown.length >= maximumClaims) break;
-    if (spent + fact.claim.length > maximumClaimBudget) continue;
+  const prioritized = [
+    ...facts.filter((fact) => provenanceGroup(fact) === "corroborated"),
+    ...facts.filter((fact) => provenanceGroup(fact) === "worker"),
+    ...facts.filter((fact) => provenanceGroup(fact) === "unknown"),
+  ];
+  const eligibleFacts = prioritized.filter(
     // The channel removes artifact image markdown on its way out, and a claim
     // is not safe from that: "The order was ![not](/artifacts/...) submitted"
     // arrives as "The order was  submitted", which is the opposite of what was
-    // recorded. Nothing here can carry such a claim intact, so it is omitted and
-    // counted with the rest that did not fit.
-    if (extractImageArtifactMarkdownReferences(fact.claim).length > 0) continue;
-    shown.push(fact);
-    spent += fact.claim.length;
+    // recorded. Nothing here can carry such a claim intact, so it is omitted
+    // and counted with the rest that did not fit.
+    (fact) => extractImageArtifactMarkdownReferences(fact.claim).length === 0
+  );
+
+  const shownFacts = eligibleFacts.slice(0, maximumClaims);
+  // Claims are the optional detail: when the outcome and the uncertainty above
+  // have already spent the budget, a claim is dropped -- whole, never cut --
+  // before either of those, starting with the ones added last (worker-only,
+  // then unknown-source, since corroborated claims were listed first).
+  for (;;) {
+    const omitted = prioritized.length - shownFacts.length;
+    const rendered = shownFacts.length > 0 ? renderClaims(shownFacts) : "";
+    const notice =
+      omitted > 0
+        ? `${String(omitted)} further recorded claim${omitted === 1 ? " is" : "s are"} not shown here.`
+        : "";
+    const combined = [text, rendered, notice]
+      .filter((part) => part.length > 0)
+      .join(" ");
+    if (combined.length <= maximumReportBodyLength || shownFacts.length === 0) {
+      text = combined;
+      break;
+    }
+    shownFacts.pop();
   }
 
-  const lines = [`What the records hold: ${outcomes}.`];
-  for (const fact of shown) {
-    lines.push(`${fact.claim} (${provenanceOf(fact)}).`);
-  }
-  if (ordered.length > shown.length) {
-    lines.push(
-      `${String(ordered.length - shown.length)} further recorded claims are not shown here.`
-    );
-  }
   if (facts.length === 0) {
-    lines.push("There is no recorded evidence of what the work achieved.");
+    const withNoEvidence = `${text} There is no recorded evidence of what the work achieved.`;
+    text =
+      withNoEvidence.length <= maximumReportBodyLength ? withNoEvidence : text;
   }
-  // What the records leave unresolved, in the words of the module that decides
-  // it, for each request separately. Empty for a corroborated completion, so
-  // nothing invents a doubt the records do not support.
-  //
-  // Each line names its request. Untagged, two requests in one message produce
-  // "an action was dispatched and its outcome was never confirmed" next to "no
-  // stopped part left a dispatch unconfirmed", and a reader cannot tell which
-  // request holds the action that must not be repeated.
-  for (const cohortId of cohortIds) {
-    for (const line of recoveryProgress({ turnId: cohortId })
-      .unknownRemainder) {
-      lines.push(`${shortIdentifier(cohortId)}: ${line}`);
-    }
-  }
-  return lines.join(" ");
+
+  return text;
 }
 
 /**
