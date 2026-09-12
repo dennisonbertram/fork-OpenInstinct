@@ -66,6 +66,8 @@ export default defineConfig({
   webServer: {
     command: "node scripts/dev.ts",
     env: runnerEnvironment,
+    stdout: "pipe",
+    stderr: "pipe",
     gracefulShutdown: {
       signal: "SIGTERM",
       timeout: 30_000,

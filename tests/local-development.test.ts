@@ -388,22 +388,29 @@ setInterval(() => undefined, 1_000);
     it("recovers only the exact stale fixture project and removes its record", async () => {
       const directory = await mkdtemp(join(tmpdir(), "open-instinct-stale-"));
       temporaryDirectories.push(directory);
-      const repositoryRoot = await createLifecycleRepository(directory);
       const logPath = join(directory, "commands.log");
       const appPort = await unusedPort();
       const marketingPort = await unusedPort();
+      const agentationPort = await unusedPort();
+      const repositoryRoot = await createLifecycleRepository(
+        directory,
+        agentationPort
+      );
+      const agentation = await startFixtureAgentation(agentationPort);
       const serverPath = join(directory, "ready-server.mjs");
-      await Promise.all([
-        writeFile(
-          join(directory, "docker"),
-          `#!/bin/sh
+      let startupProcess: ChildProcess | undefined;
+      try {
+        await Promise.all([
+          writeFile(
+            join(directory, "docker"),
+            `#!/bin/sh
 printf 'docker %s\\n' "$*" >> "${logPath}"
 if [ "$4" = "port" ]; then printf '127.0.0.1:49152\\n'; fi
 `
-        ),
-        writeFile(
-          join(directory, "pnpm"),
-          `#!/bin/sh
+          ),
+          writeFile(
+            join(directory, "pnpm"),
+            `#!/bin/sh
 printf 'pnpm %s\\n' "$*" >> "${logPath}"
 if [ "$1" = "db:migrate" ]; then
   if [ -n "$DEV_MIGRATE_EXIT" ]; then exit "$DEV_MIGRATE_EXIT"; fi
@@ -412,169 +419,185 @@ fi
 if [ "$1" = "dev:app" ]; then exec "${process.execPath}" "${serverPath}" "$3"; fi
 if [ "$1" = "--dir" ]; then exec "${process.execPath}" "${serverPath}" "$5"; fi
 `
-        ),
-        writeFile(
-          serverPath,
-          `import { createServer } from "node:http";
+          ),
+          writeFile(
+            serverPath,
+            `import { createServer } from "node:http";
 createServer((_request, response) => { response.writeHead(200); response.end("ready"); }).listen(Number(process.argv[2]), "127.0.0.1");
 `
-        ),
-      ]);
-      await Promise.all([
-        chmod(join(directory, "docker"), 0o755),
-        chmod(join(directory, "pnpm"), 0o755),
-      ]);
-      const start = spawn(
-        process.execPath,
-        [join(repositoryRoot, "scripts", "dev.ts")],
-        {
-          cwd: repositoryRoot,
-          env: syntheticEnvironment({
-            DEV_PROFILE: "fixture",
-            DEV_RUN_ID: `stale-${randomBytes(8).toString("hex")}`,
-            PATH: directory,
-            PORT: String(appPort),
-            MARKETING_PORT: String(marketingPort),
-            DEV_TEST_LOG: logPath,
-            DEV_TEST_NODE: process.execPath,
-            DEV_TEST_SERVER: serverPath,
-          }),
-          stdio: ["ignore", "pipe", "pipe"] as const,
-        }
-      );
-      const startExit = waitForSupervisorClose(start);
-      try {
-        await waitForSupervisorOutput(start, '"lifecycle":"ready"');
-      } catch (error) {
-        throw new Error(
-          error instanceof Error ? error.message : String(error),
-          { cause: error }
+          ),
+        ]);
+        await Promise.all([
+          chmod(join(directory, "docker"), 0o755),
+          chmod(join(directory, "pnpm"), 0o755),
+        ]);
+        const start = spawn(
+          process.execPath,
+          [join(repositoryRoot, "scripts", "dev.ts")],
+          {
+            cwd: repositoryRoot,
+            env: syntheticEnvironment({
+              DEV_PROFILE: "fixture",
+              DEV_RUN_ID: `stale-${randomBytes(8).toString("hex")}`,
+              PATH: directory,
+              PORT: String(appPort),
+              MARKETING_PORT: String(marketingPort),
+              DEV_TEST_LOG: logPath,
+              DEV_TEST_NODE: process.execPath,
+              DEV_TEST_SERVER: serverPath,
+            }),
+            stdio: ["ignore", "pipe", "pipe"] as const,
+          }
         );
-      }
-      const recordPath = await onlyRunRecord(repositoryRoot);
-      const leasePath = join(
-        repositoryRoot,
-        ".eve",
-        "dev-runs",
-        "worktree-operation.json"
-      );
-      const record = copiedRunRecordSchema.parse(
-        JSON.parse(await readFile(recordPath, "utf8"))
-      );
-      process.kill(record.owner.pid, "SIGKILL");
-      await startExit;
-      const recordedChildren: readonly (DevRunProcess | undefined)[] = [
-        record.children.agentation,
-        record.children.app,
-        record.children.marketing,
-      ];
-      await Promise.all(
-        recordedChildren
-          .filter(isDefined)
-          .map((child) => waitForExit(child.pid))
-      );
-      const stubbornPath = join(directory, "stubborn-stale-child.mjs");
-      const stubbornPidPath = join(directory, "stubborn-stale-child.pid");
-      await writeFile(
-        stubbornPath,
-        `import { writeFileSync } from "node:fs";
+        startupProcess = start;
+        const startExit = waitForSupervisorClose(start);
+        try {
+          await waitForSupervisorOutput(start, '"lifecycle":"ready"');
+        } catch (error) {
+          throw new Error(
+            error instanceof Error ? error.message : String(error),
+            { cause: error }
+          );
+        }
+        const recordPath = await onlyRunRecord(repositoryRoot);
+        const leasePath = join(
+          repositoryRoot,
+          ".eve",
+          "dev-runs",
+          "worktree-operation.json"
+        );
+        const record = copiedRunRecordSchema.parse(
+          JSON.parse(await readFile(recordPath, "utf8"))
+        );
+        process.kill(record.owner.pid, "SIGKILL");
+        await startExit;
+        const recordedChildren: readonly (DevRunProcess | undefined)[] = [
+          record.children.agentation,
+          record.children.app,
+          record.children.marketing,
+        ];
+        await Promise.all(
+          recordedChildren
+            .filter(isDefined)
+            .map((child) => waitForExit(child.pid))
+        );
+        const stubbornPath = join(directory, "stubborn-stale-child.mjs");
+        const stubbornPidPath = join(directory, "stubborn-stale-child.pid");
+        await writeFile(
+          stubbornPath,
+          `import { writeFileSync } from "node:fs";
 process.on("SIGTERM", () => undefined);
 writeFileSync(process.argv[2], String(process.pid));
 setInterval(() => undefined, 1_000);
 `
-      );
-      const stubbornWrapper = spawn(
-        process.execPath,
-        [
-          join(repositoryRoot, "scripts", "local", "service-supervisor.mjs"),
-          "--repository-root",
-          repositoryRoot,
-          "--parent-pid",
-          String(process.pid),
-          "--run-nonce",
-          record.nonce,
-          "--",
+        );
+        const stubbornWrapper = spawn(
           process.execPath,
-          stubbornPath,
-          stubbornPidPath,
-        ],
-        { cwd: repositoryRoot, detached: true, stdio: "ignore" }
-      );
-      await waitForFile(stubbornPidPath);
-      const stubbornWrapperStart = await processStartTime(
-        stubbornWrapper.pid ?? 0
-      );
-      const stubbornPid = Number(await readFile(stubbornPidPath, "utf8"));
-      if (
-        stubbornWrapper.pid === undefined ||
-        stubbornWrapperStart === undefined
-      ) {
-        throw new Error("Could not identify the copied stubborn wrapper.");
-      }
-      try {
-        record.children.app = {
-          pid: stubbornWrapper.pid,
-          processStartTime: stubbornWrapperStart,
-          processGroup: stubbornWrapper.pid,
-        };
-        await writeFile(recordPath, `${JSON.stringify(record)}\n`);
-        expect(
-          await isVerifiedRunChild(record, record.children.app, repositoryRoot)
-        ).toBe(true);
-        const directChildren = await execFileAsync("/usr/bin/pgrep", [
-          "-P",
-          String(stubbornWrapper.pid),
-        ]);
-        expect(directChildren.stdout.split(/\s+/u)).toContain(
-          String(stubbornPid)
+          [
+            join(repositoryRoot, "scripts", "local", "service-supervisor.mjs"),
+            "--repository-root",
+            repositoryRoot,
+            "--parent-pid",
+            String(process.pid),
+            "--run-nonce",
+            record.nonce,
+            "--",
+            process.execPath,
+            stubbornPath,
+            stubbornPidPath,
+          ],
+          { cwd: repositoryRoot, detached: true, stdio: "ignore" }
         );
-        const stopStarted = Date.now();
-        const result = await runCopiedSupervisor(repositoryRoot, ["--stop"], {
-          PATH: directory,
-          DEV_TEST_LOG: logPath,
-        });
+        await waitForFile(stubbornPidPath);
+        const stubbornWrapperStart = await processStartTime(
+          stubbornWrapper.pid ?? 0
+        );
+        const stubbornPid = Number(await readFile(stubbornPidPath, "utf8"));
+        if (
+          stubbornWrapper.pid === undefined ||
+          stubbornWrapperStart === undefined
+        ) {
+          throw new Error("Could not identify the copied stubborn wrapper.");
+        }
+        try {
+          record.children.app = {
+            pid: stubbornWrapper.pid,
+            processStartTime: stubbornWrapperStart,
+            processGroup: stubbornWrapper.pid,
+          };
+          await writeFile(recordPath, `${JSON.stringify(record)}\n`);
+          expect(
+            await isVerifiedRunChild(
+              record,
+              record.children.app,
+              repositoryRoot
+            )
+          ).toBe(true);
+          const directChildren = await execFileAsync("/usr/bin/pgrep", [
+            "-P",
+            String(stubbornWrapper.pid),
+          ]);
+          expect(directChildren.stdout.split(/\s+/u)).toContain(
+            String(stubbornPid)
+          );
+          const stopStarted = Date.now();
+          const result = await runCopiedSupervisor(repositoryRoot, ["--stop"], {
+            PATH: directory,
+            DEV_TEST_LOG: logPath,
+          });
 
-        if (result.code !== 0) {
-          throw new Error(`Copied stale stop failed: ${result.stderr}`);
-        }
-        expect(result.code).toBe(0);
-        const stubbornStartAfterStop = await processStartTime(stubbornPid);
-        if (stubbornStartAfterStop !== undefined) {
-          throw new Error(
-            `Stale stop reported recovery before owned child exited: ${JSON.stringify({ stdout: result.stdout, stderr: result.stderr })}`
+          if (result.code !== 0) {
+            throw new Error(`Copied stale stop failed: ${result.stderr}`);
+          }
+          expect(result.code).toBe(0);
+          const stubbornStartAfterStop = await processStartTime(stubbornPid);
+          if (stubbornStartAfterStop !== undefined) {
+            throw new Error(
+              `Stale stop reported recovery before owned child exited: ${JSON.stringify({ stdout: result.stdout, stderr: result.stderr })}`
+            );
+          }
+          if (Date.now() - stopStarted < 4_500) {
+            throw new Error(
+              `Stale stop returned before wrapper escalation grace: ${JSON.stringify({ stdout: result.stdout, stderr: result.stderr })}`
+            );
+          }
+          await waitForExit(stubbornPid, 7_000);
+          expect(result.stdout).toContain(
+            `Recovered owned fixture resources for stale run ${record.runId}.`
           );
-        }
-        if (Date.now() - stopStarted < 4_500) {
-          throw new Error(
-            `Stale stop returned before wrapper escalation grace: ${JSON.stringify({ stdout: result.stdout, stderr: result.stderr })}`
+          expect(await readFile(logPath, "utf8")).toContain(
+            `docker compose --project-name ${record.composeProject} down --volumes\n`
           );
+          await expect(stat(recordPath)).rejects.toMatchObject({
+            code: "ENOENT",
+          });
+          await expect(stat(leasePath)).rejects.toMatchObject({
+            code: "ENOENT",
+          });
+          const restarted = await runCopiedSupervisor(repositoryRoot, [], {
+            DEV_PROFILE: "fixture",
+            DEV_RUN_ID: `restarted-${randomBytes(8).toString("hex")}`,
+            PATH: directory,
+            PORT: String(appPort),
+            MARKETING_PORT: String(marketingPort),
+            DEV_MIGRATE_EXIT: "7",
+          });
+          expect(restarted.code).toBe(1);
+          expect(restarted.stderr).toContain("migrate");
+          await expect(stat(leasePath)).rejects.toMatchObject({
+            code: "ENOENT",
+          });
+        } finally {
+          killOwnedGroup(stubbornWrapper.pid);
+          killOwnedGroup(stubbornPid);
+          await waitForExit(stubbornWrapper.pid);
         }
-        await waitForExit(stubbornPid, 7_000);
-        expect(result.stdout).toContain(
-          `Recovered owned fixture resources for stale run ${record.runId}.`
-        );
-        expect(await readFile(logPath, "utf8")).toContain(
-          `docker compose --project-name ${record.composeProject} down --volumes\n`
-        );
-        await expect(stat(recordPath)).rejects.toMatchObject({
-          code: "ENOENT",
-        });
-        await expect(stat(leasePath)).rejects.toMatchObject({ code: "ENOENT" });
-        const restarted = await runCopiedSupervisor(repositoryRoot, [], {
-          DEV_PROFILE: "fixture",
-          DEV_RUN_ID: `restarted-${randomBytes(8).toString("hex")}`,
-          PATH: directory,
-          PORT: String(appPort),
-          MARKETING_PORT: String(marketingPort),
-          DEV_MIGRATE_EXIT: "7",
-        });
-        expect(restarted.code).toBe(1);
-        expect(restarted.stderr).toContain("migrate");
-        await expect(stat(leasePath)).rejects.toMatchObject({ code: "ENOENT" });
       } finally {
-        killOwnedGroup(stubbornWrapper.pid);
-        killOwnedGroup(stubbornPid);
-        await waitForExit(stubbornWrapper.pid);
+        if (startupProcess?.pid !== undefined) {
+          killOwnedGroup(startupProcess.pid);
+          await waitForExit(startupProcess.pid);
+        }
+        await closeServer(agentation);
       }
     });
 
@@ -583,10 +606,14 @@ setInterval(() => undefined, 1_000);
         join(tmpdir(), "open-instinct-foreign-http-")
       );
       temporaryDirectories.push(directory);
-      const repositoryRoot = await createLifecycleRepository(directory);
       const logPath = join(directory, "commands.log");
       const appPort = await unusedPort();
       const marketingPort = await unusedPort();
+      const agentationPort = await unusedPort();
+      const repositoryRoot = await createLifecycleRepository(
+        directory,
+        agentationPort
+      );
       await Promise.all([
         writeFile(
           join(directory, "docker"),
@@ -613,40 +640,47 @@ if [ "$1" = "--dir" ]; then while :; do /bin/sleep 1; done; fi
         chmod(join(directory, "docker"), 0o755),
         chmod(join(directory, "pnpm"), 0o755),
       ]);
-      const supervisor = runCopiedSupervisor(repositoryRoot, [], {
-        DEV_PROFILE: "connected",
-        DEV_RUN_ID: `foreign-${randomBytes(8).toString("hex")}`,
-        DEV_SUPERVISOR_LOG: logPath,
-        KERNEL_API_KEY: "test-kernel-key",
-        PATH: directory,
-        PORT: String(appPort),
-        MARKETING_PORT: String(marketingPort),
-      });
+      const agentation = await startFixtureAgentation(agentationPort);
       try {
-        await waitForSupervisorLogEntry(logPath, "app launched");
-      } catch (error) {
-        const result = await supervisor;
-        throw new Error(
-          `${error instanceof Error ? error.message : String(error)} stdout: ${result.stdout} stderr: ${result.stderr}`,
-          { cause: error }
-        );
-      }
-      let requests = 0;
-      const foreign = createHttpServer((request, response) => {
-        requests += 1;
-        response.writeHead(200);
-        response.end(request.url === "/eve/v1/health" ? "healthy" : "foreign");
-      });
-      await listen(foreign, appPort, "127.0.0.1");
-      const started = Date.now();
-      try {
-        const result = await supervisor;
-        expect(result.code).toBe(1);
-        expect(Date.now() - started).toBeLessThan(5_000);
-        expect(requests).toBeGreaterThanOrEqual(2);
-        expect(await readFile(logPath, "utf8")).toContain(" down");
+        const supervisor = runCopiedSupervisor(repositoryRoot, [], {
+          DEV_PROFILE: "connected",
+          DEV_RUN_ID: `foreign-${randomBytes(8).toString("hex")}`,
+          DEV_SUPERVISOR_LOG: logPath,
+          KERNEL_API_KEY: "test-kernel-key",
+          PATH: directory,
+          PORT: String(appPort),
+          MARKETING_PORT: String(marketingPort),
+        });
+        try {
+          await waitForSupervisorLogEntry(logPath, "app launched");
+        } catch (error) {
+          const result = await supervisor;
+          throw new Error(
+            `${error instanceof Error ? error.message : String(error)} stdout: ${result.stdout} stderr: ${result.stderr}`,
+            { cause: error }
+          );
+        }
+        let requests = 0;
+        const foreign = createHttpServer((request, response) => {
+          requests += 1;
+          response.writeHead(200);
+          response.end(
+            request.url === "/eve/v1/health" ? "healthy" : "foreign"
+          );
+        });
+        await listen(foreign, appPort, "127.0.0.1");
+        const started = Date.now();
+        try {
+          const result = await supervisor;
+          expect(result.code).toBe(1);
+          expect(Date.now() - started).toBeLessThan(5_000);
+          expect(requests).toBeGreaterThanOrEqual(2);
+          expect(await readFile(logPath, "utf8")).toContain(" down");
+        } finally {
+          await closeServer(foreign);
+        }
       } finally {
-        await closeServer(foreign);
+        await closeServer(agentation);
       }
     }, 15_000);
 
@@ -883,7 +917,10 @@ printf '%s\n' "$*" >> "$DEV_SUPERVISOR_LOG"
   };
 }
 
-async function createLifecycleRepository(directory: string) {
+async function createLifecycleRepository(
+  directory: string,
+  agentationPort?: number
+) {
   const repositoryRoot = join(directory, "repository");
   const localDirectory = join(repositoryRoot, "scripts", "local");
   await mkdir(localDirectory, { recursive: true });
@@ -898,6 +935,20 @@ async function createLifecycleRepository(directory: string) {
       copyFile(join(sourceRoot, path), join(repositoryRoot, path))
     )
   );
+  if (agentationPort !== undefined) {
+    const developmentScriptPath = join(repositoryRoot, "scripts", "dev.ts");
+    const developmentScript = await readFile(developmentScriptPath, "utf8");
+    const configuredScript = developmentScript.replace(
+      'const agentationOrigin = "http://127.0.0.1:4747";',
+      `const agentationOrigin = "http://127.0.0.1:${String(agentationPort)}";`
+    );
+    if (configuredScript === developmentScript) {
+      throw new Error(
+        "Copied supervisor does not declare the Agentation origin."
+      );
+    }
+    await writeFile(developmentScriptPath, configuredScript);
+  }
   await Promise.all([
     mkdir(join(repositoryRoot, ".git", "refs", "heads"), { recursive: true }),
     mkdir(join(repositoryRoot, ".git", "objects"), { recursive: true }),
@@ -919,6 +970,20 @@ async function createLifecycleRepository(directory: string) {
     ),
   ]);
   return repositoryRoot;
+}
+
+async function startFixtureAgentation(port: number) {
+  const server = createHttpServer((request, response) => {
+    if (request.url !== "/pending") {
+      response.writeHead(404);
+      response.end("not found");
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end("[]");
+  });
+  await listen(server, port, "127.0.0.1");
+  return server;
 }
 
 async function runCopiedSupervisor(
