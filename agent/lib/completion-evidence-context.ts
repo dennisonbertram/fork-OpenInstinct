@@ -1,5 +1,6 @@
 import {
   allCohorts,
+  reportableCohorts,
   taskRecords,
   type BoundedFact,
   type CohortRecord,
@@ -42,12 +43,14 @@ import {
  * task the cohort admitted has a terminal record -- a cohort with one pending
  * member is still in flight, not settled, no matter its phase.
  *
- * Prior cohorts are never lumped together as generic "prior work": a cohort's
- * reporting phase decides which of three headings it renders under --
- * `delivered` (the user actually received a report), `unconfirmed` (a report
- * was sent but the channel never confirmed arrival), or everything else
- * (settled but a report is still owed). Labelling an unsent or unconfirmed
- * cohort as already delivered would tell the model false history.
+ * Prior cohorts are never lumped together as generic "prior work". Four
+ * headings separate them: `delivered` (the user actually received a report),
+ * `unconfirmed` (a report was sent but the channel never confirmed arrival),
+ * `owed` (a report is still outstanding), and everything else, which owes
+ * nothing because it was superseded, set aside, or is already being delivered.
+ * Labelling an unsent or unconfirmed cohort as already delivered would tell the
+ * model false history; telling it a summary is owed for work that owes none
+ * invites a duplicate report.
  *
  * Task and cohort identifiers are deliberately kept out of the rendered text.
  * They are internal bookkeeping a user should never see quoted back to them,
@@ -72,24 +75,31 @@ const deliveredHeading =
 const owedHeading =
   "Prior work that settled earlier in this session but has not been reported " +
   "to the user yet (a report is still owed):";
-const supersededHeading =
-  "Earlier work from a request that was replaced before it was reported. It owes no summary; it is here only so its findings are not mistaken for the current request's.";
+const noReportOwedHeading =
+  "Earlier work that owes no summary from this turn -- it is already being " +
+  "reported, or was replaced or set aside. It is here only so its findings are " +
+  "not mistaken for the current request's.";
 const unconfirmedHeading =
   "Prior work that was sent to the user earlier in this session, but whether " +
   "it arrived has not been confirmed:";
 
-/** Which of the three prior-work headings a settled cohort renders under. */
+/**
+ * Which of the four prior-work headings a settled cohort renders under.
+ *
+ * Whether a report is owed is not re-derived from the phase here: it is asked
+ * of `reportableCohorts()`, the same function the reporting path itself uses.
+ * Enumerating phases instead got it wrong in both directions -- a superseded
+ * cohort, and one whose report is already bound and in flight, were both
+ * described to the model as still owing a summary, which invites a second
+ * report for work that is either set aside or already being delivered.
+ */
 function reportingGroupOf(
-  cohort: CohortRecord
-): "delivered" | "owed" | "superseded" | "unconfirmed" {
+  cohort: CohortRecord,
+  owed: ReadonlySet<string>
+): "delivered" | "no_report_owed" | "owed" | "unconfirmed" {
   if (cohort.phase === "delivered") return "delivered";
   if (cohort.phase === "unconfirmed") return "unconfirmed";
-  // Superseded work owes nothing -- `reportableCohorts` excludes it, so telling
-  // the model a report is still owed for it states an obligation that does not
-  // exist. Its facts are still worth showing; the heading has to be honest
-  // about what they are.
-  if (cohort.phase === "superseded") return "superseded";
-  return "owed";
+  return owed.has(cohort.cohortId) ? "owed" : "no_report_owed";
 }
 
 /**
@@ -140,8 +150,8 @@ function isFullySettled(cohortId: string): boolean {
 type EvidenceGroup =
   | "current"
   | "delivered"
+  | "no_report_owed"
   | "owed"
-  | "superseded"
   | "unconfirmed";
 
 interface EvidenceLine {
@@ -222,19 +232,22 @@ export function completionEvidenceContext(turnId: string): string | undefined {
   );
 
   // Owed first: an outstanding obligation is the thing most worth acting on.
-  // Superseded last: it is history, and the heading says so.
+  // Work owing nothing last: it is history, and the heading says so.
   const priorGroupOrder = [
     "owed",
     "unconfirmed",
     "delivered",
-    "superseded",
+    "no_report_owed",
   ] as const;
+  const owedCohortIds = new Set(
+    reportableCohorts().map((cohort) => cohort.cohortId)
+  );
 
   const entries: EvidenceLine[] = [
     ...(current ? linesForCohort(current.cohortId, "current", 0) : []),
     ...priorGroupOrder.flatMap((group) =>
       priorCohorts
-        .filter((cohort) => reportingGroupOf(cohort) === group)
+        .filter((cohort) => reportingGroupOf(cohort, owedCohortIds) === group)
         .flatMap((cohort) =>
           linesForCohort(
             cohort.cohortId,
@@ -249,8 +262,8 @@ export function completionEvidenceContext(turnId: string): string | undefined {
   const headingFor: Record<EvidenceGroup, string> = {
     current: currentHeading,
     delivered: deliveredHeading,
+    no_report_owed: noReportOwedHeading,
     owed: owedHeading,
-    superseded: supersededHeading,
     unconfirmed: unconfirmedHeading,
   };
 

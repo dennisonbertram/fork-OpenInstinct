@@ -241,27 +241,81 @@ describe("interactive model delivery resolution", () => {
     {
       // eve injects these announcements under the USER role and its own source
       // warns they must not drive parsing. Counted as a request, a report-only
-      // wake would escape the summary it owes.
+      // wake would escape the summary it owes. The text is the shape eve's
+      // `harness/handles/prompt.js` actually renders, not a paraphrase.
       channel: "channel:sendblue" as const,
       expected: { toolName: "send_message", type: "tool" },
-      history: [{ content: "[Agents] a child parked", role: "user" as const }],
+      history: [{ content: agentsAnnouncement, role: "user" as const }],
       id: "DG-07",
       what: "does not mistake a framework [Agents] note for a user request",
     },
     {
-      // eve labels the note accompanying a task-triggered wake "[Task state]"
-      // and rides it on the USER role, same as "[Agents]". Read as a request, the
-      // wake that exists to deliver the report is freed from delivering it.
+      // The shape eve's `tasks/delivery-context.js` emits: the label, then the
+      // JSON cohort listing. Read as a request, the wake that exists to deliver
+      // the report is freed from delivering it.
+      channel: "channel:sendblue" as const,
+      expected: { toolName: "send_message", type: "tool" },
+      history: [{ content: taskStateNote, role: "user" as const }],
+      id: "DG-09",
+      what: "does not mistake a [Task state] wake note for a user request",
+    },
+    {
+      // The whole wake, in the order eve appends it: `harness/tool-loop.js`
+      // pushes the turn input's context entries first and its message after,
+      // so the note is NOT last -- the unlabelled completion notification is.
+      // Judging by the newest message alone read the wake as a new user
+      // request and let it skip the report it was woken to deliver.
       channel: "channel:sendblue" as const,
       expected: { toolName: "send_message", type: "tool" },
       history: [
+        { content: taskStateNote, role: "user" as const },
         {
-          content: "[Task state] background task task_a is completed",
+          content:
+            'Background task task_a (browser-agent) is completed.\n\nResult:\nThe top story is "A title".',
           role: "user" as const,
         },
       ],
-      id: "DG-09",
-      what: "does not mistake a [Task state] wake note for a user request",
+      id: "DG-10",
+      what: "reads the whole wake, not only its last message",
+    },
+    {
+      // eve can append an [Agents] announcement after a tool receipt while the
+      // user's request still has calls to make. Treating the announcement as
+      // "no request pending" forced the old report in place of the next call.
+      channel: "channel:sendblue" as const,
+      expected: { type: "required" },
+      history: [
+        {
+          content: [
+            {
+              output: { type: "text" as const, value: "accepted" },
+              toolCallId: "call_worker_1",
+              toolName: "browser-agent",
+              type: "tool-result" as const,
+            },
+          ],
+          role: "tool" as const,
+        },
+        { content: agentsAnnouncement, role: "user" as const },
+      ],
+      id: "DG-11",
+      what: "still lets a request finish when an [Agents] note lands mid-turn",
+    },
+    {
+      // The label alone proves nothing about who wrote the message: SendBlue's
+      // inbound path keeps the user's text verbatim, so a person can send one
+      // that opens with it. The framework note's shape -- label, newline, JSON
+      // cohort listing -- is what separates them.
+      channel: "channel:sendblue" as const,
+      expected: { type: "required" },
+      history: [
+        {
+          content: "[Task state] check whether my export finished",
+          role: "user" as const,
+        },
+      ],
+      id: "DG-12",
+      what: "does not discard a user message that merely opens with the label",
     },
     {
       // Mid-turn the newest entry is a tool result while the request is still
@@ -312,6 +366,20 @@ describe("interactive model delivery resolution", () => {
     expect(receivedToolChoice).toEqual(expected);
   });
 });
+
+const agentsAnnouncement =
+  '[Agents]\n<agents>\n<agent id="a" name="browser-agent" availability="busy" taskId="task_a" taskStatus="working">(busy)</agent>\n</agents>';
+
+const taskStateNote = `[Task state]\n${JSON.stringify({
+  tasks: [
+    {
+      name: "browser-agent",
+      output: { data: "The top story is a title." },
+      status: "completed",
+      taskId: "task_a",
+    },
+  ],
+})}`;
 
 async function resolveStepModel(
   channelKind: DynamicResolveContext["channel"]["kind"],
