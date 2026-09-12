@@ -16,6 +16,19 @@ import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
 import { contractFixtureModel } from "@/evals/contract/fixture-model";
 import { isContractFixtureEnabled } from "@/env";
 
+/**
+ * A framework-injected "[Agents]" announcement.
+ *
+ * eve appends these under the USER role when the set of parked children changes,
+ * and its own `bootstrap-model-utils` warns they "are not authored input and must
+ * not drive" parsing. Parsed here rather than sniffed so the shape is checked at
+ * the boundary and the rest of the code branches on the answer.
+ */
+const frameworkAgentsNoteSchema = z.object({
+  content: z.string().startsWith("[Agents]"),
+  role: z.literal("user"),
+});
+
 export default defineAgent({
   experimental: {
     instrumentationProviders: true,
@@ -44,7 +57,24 @@ export default defineAgent({
         // Role, not text, is the signal: only a genuinely new user message
         // should let the model choose a tool other than send_message while a
         // report is owed.
-        const userRequestPending = ctx.messages.at(-1)?.role === "user";
+        // Whether this turn is carrying out a request rather than only owing a
+        // report. Two corrections an outside review forced, both verified:
+        //
+        // A framework-injected "[Agents]" announcement rides the USER role --
+        // eve's own bootstrap-model-utils says so and warns such notes "must not
+        // drive" parsing. Counting one as a request let a report-only wake
+        // escape the forced summary, so those are excluded.
+        //
+        // And mid-turn the newest entry is a tool result, not the user's
+        // message, even though the request is still unfinished. Treating that as
+        // "no request pending" put the old block back the moment a lookup needed
+        // a second call. Work in progress counts as a request in flight.
+        const newest = ctx.messages.at(-1);
+        const isFrameworkAgentsNote =
+          frameworkAgentsNoteSchema.safeParse(newest).success;
+        const userRequestPending =
+          (newest?.role === "user" && !isFrameworkAgentsNote) ||
+          newest?.role === "tool";
         const toolChoice = deliveryToolChoiceForInteractiveTurn({
           channelKind: ctx.channel.kind,
           deliveryStatus: finalDeliveryStatus(turnId),
