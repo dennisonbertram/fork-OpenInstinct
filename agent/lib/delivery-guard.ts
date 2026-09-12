@@ -26,20 +26,33 @@ const textUserMessageSchema = z.object({
 const taskCohortListingSchema = z.object({ tasks: z.array(z.unknown()) });
 
 /**
+ * The unlabelled notification eve sends when a background task settles, needs
+ * input, reports an update, or needs authorization.
+ *
+ * `formatTaskNotification` in `execution/tasks/child/steps.js` writes every one
+ * of these, and none of them carries a label -- so without this the wake that
+ * exists to deliver a report reads as a new user request.
+ */
+const taskNotificationPattern =
+  /^Background task \S+ (?:\([^)]*\) (?:is completed\.|is cancelled\.|failed\.|needs input\.|update: )|needs authorization\.)/u;
+
+/**
  * Whether eve, not the user, authored this message.
  *
- * Both of eve's runtime-authored notes ride the USER role, and neither label is
- * exported from an `eve/...` public path, so their text is all there is to go
- * on. The shape is checked as well as the label so a user's own message cannot
- * be mistaken for framework text by opening with the same words: the task note
- * is the label followed by the JSON cohort listing that
- * `tasks/delivery-context.js` emits.
+ * eve's runtime-authored text rides the USER role and none of it is exported
+ * from an `eve/...` public path, so its wording is all there is to go on. Each
+ * form is matched by its shape, not just its opening words, so a user's own
+ * message cannot be discarded for starting the same way: the task note is its
+ * label followed by the JSON cohort listing `tasks/delivery-context.js`
+ * serialises, and the announcement is its label followed by an `<agents>`
+ * element.
  */
 function isFrameworkNote(message: ModelMessage | undefined): boolean {
   const note = textUserMessageSchema.safeParse(message);
   if (!note.success) return false;
   const { content } = note.data;
   if (agentsNotePattern.test(content)) return true;
+  if (taskNotificationPattern.test(content)) return true;
   if (!content.startsWith(taskStateLabel)) return false;
   try {
     return taskCohortListingSchema.safeParse(
@@ -68,22 +81,27 @@ function isFrameworkNote(message: ModelMessage | undefined): boolean {
  *   called that "no request pending" and forced a report in place of the call
  *   the request still needed.
  *
- * So the whole trailing run of user messages is examined. If any message in it
- * is a framework note, eve wrote the run and what precedes it decides: a tool
- * result means the user's request is still in flight.
+ * Position alone cannot separate the two, because eve writes on both sides of
+ * the user's message: `harness/tool-loop.js` pushes an "[Agents]" announcement
+ * onto the history BEFORE appending the turn's own input, so a new request from
+ * someone with a worker parked arrives as the announcement followed by their
+ * words. So the whole trailing run of user-role messages is examined and the
+ * question asked of its contents: is any message in it something eve did not
+ * write? That message is the request.
+ *
+ * When none of them is -- eve wrote the whole run, or there was no trailing
+ * user message at all -- what sits underneath decides. A tool result there
+ * means a request is already running and still has calls to make.
  */
 export function userRequestPendingIn(
   messages: readonly ModelMessage[]
 ): boolean {
   let index = messages.length - 1;
-  let frameworkAuthored = false;
   while (index >= 0 && messages[index]?.role === "user") {
-    if (isFrameworkNote(messages[index])) frameworkAuthored = true;
+    if (!isFrameworkNote(messages[index])) return true;
     index -= 1;
   }
-  if (frameworkAuthored) return messages[index]?.role === "tool";
-  const newest = messages.at(-1);
-  return newest?.role === "user" || newest?.role === "tool";
+  return messages[index]?.role === "tool";
 }
 
 type DeliveryStatus = ReturnType<typeof finalDeliveryStatus>;

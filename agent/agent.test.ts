@@ -318,6 +318,21 @@ describe("interactive model delivery resolution", () => {
       what: "does not discard a user message that merely opens with the label",
     },
     {
+      // eve pushes the announcement onto the history BEFORE it appends the
+      // turn's own input (`harness/tool-loop.js`), so anyone with a worker
+      // parked sends their next request into exactly this shape. Deciding by
+      // position rather than authorship stopped that request dead to deliver an
+      // old report -- the original defect, in a new place.
+      channel: "channel:sendblue" as const,
+      expected: { type: "required" },
+      history: [
+        { content: agentsAnnouncement, role: "user" as const },
+        { content: "look up the top story", role: "user" as const },
+      ],
+      id: "DG-13",
+      what: "frees a request that arrives behind an [Agents] announcement",
+    },
+    {
       // Mid-turn the newest entry is a tool result while the request is still
       // unfinished; forcing here reinstated the original block as soon as a
       // lookup needed a second call.

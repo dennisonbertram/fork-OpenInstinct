@@ -46,8 +46,9 @@ import {
  * Prior cohorts are never lumped together as generic "prior work". Four
  * headings separate them: `delivered` (the user actually received a report),
  * `unconfirmed` (a report was sent but the channel never confirmed arrival),
- * `owed` (a report is still outstanding), and everything else, which owes
- * nothing because it was superseded, set aside, or is already being delivered.
+ * `owed` (a report is still outstanding), and everything else, for which this
+ * turn owes no summary -- superseded, set aside, already being delivered, or
+ * blocked from producing one at all.
  * Labelling an unsent or unconfirmed cohort as already delivered would tell the
  * model false history; telling it a summary is owed for work that owes none
  * invites a duplicate report.
@@ -76,9 +77,8 @@ const owedHeading =
   "Prior work that settled earlier in this session but has not been reported " +
   "to the user yet (a report is still owed):";
 const noReportOwedHeading =
-  "Earlier work that owes no summary from this turn -- it is already being " +
-  "reported, or was replaced or set aside. It is here only so its findings are " +
-  "not mistaken for the current request's.";
+  "Earlier work that this turn owes no summary for. It is here only so its " +
+  "findings are not mistaken for the current request's.";
 const unconfirmedHeading =
   "Prior work that was sent to the user earlier in this session, but whether " +
   "it arrived has not been confirmed:";
