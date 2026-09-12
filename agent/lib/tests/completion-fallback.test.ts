@@ -141,7 +141,7 @@ describe("the one bounded fallback when a summary could not be composed", () => 
     // fact the user believes. So the attribution is asserted as adjacent to the
     // claim, not merely present somewhere in the message.
     expect(text).toContain(
-      "Definitely completed the purchase (reported by the worker, not confirmed)"
+      "According to the worker: Definitely completed the purchase"
     );
     expect(text).not.toContain("Confirmed: Definitely completed the purchase");
   });
@@ -151,7 +151,7 @@ describe("the one bounded fallback when a summary could not be composed", () => 
       "task_a",
       "turn_1",
       Array.from({ length: 8 }, (_, index) => ({
-        claim: `Step ${String(index)} ${"x".repeat(500)}`,
+        claim: `Step ${String(index)} ${"x".repeat(20)}`,
         evidence: "observed" as const,
       }))
     );
@@ -203,7 +203,7 @@ describe("what the fallback may and may not assert", () => {
     ]);
 
     expect(completionFallbackText("turn_1")).toContain(
-      "I completed the purchase (reported by the worker, not confirmed)"
+      "According to the worker: I completed the purchase"
     );
   });
 

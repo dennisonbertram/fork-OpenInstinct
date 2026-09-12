@@ -64,6 +64,9 @@ function settle(
   );
 }
 
+/** cohortId and taskId in a shape nobody would mistake for a natural sentence. */
+const rawIdPattern = /turn_\S|task_\S/u;
+
 beforeEach(() => {
   for (const reset of state.resets) reset();
   policy.forcing.mockReturnValue(true);
@@ -122,7 +125,7 @@ describe("the report the records can vouch for", () => {
     const delivered = reportWithRecordedFacts(["turn_1"], "All done!");
 
     expect(delivered).toContain("I completed the purchase");
-    expect(delivered).toMatch(/worker/iu);
+    expect(delivered).toMatch(/according to the worker/iu);
   });
 
   it("RR-07: a fact of unknown provenance is not carried as the worker's word", () => {
@@ -136,8 +139,10 @@ describe("the report the records can vouch for", () => {
     // does not know would invent one, which is the same mistake as inventing a
     // fact.
     expect(delivered).toContain("Something happened on the page");
-    expect(delivered).toContain("no stated source");
-    expect(delivered).not.toMatch(/worker[^.]*Something happened on the page/u);
+    expect(delivered).toContain("the source is unknown");
+    expect(delivered).not.toMatch(
+      /according to the worker[^.]*Something happened on the page/iu
+    );
   });
 
   it("RR-05: a cohort with no recorded facts says so rather than going quiet", () => {
@@ -173,6 +178,49 @@ describe("the report the records can vouch for", () => {
     expect(
       reportWithRecordedFacts(["turn_never_admitted"], "Hello.")
     ).toContain("Hello.");
+  });
+});
+
+describe("no internal identifier ever reaches the rendered text", () => {
+  it("RR-31: a single request's report names no cohort or task id", () => {
+    settle("task_f13d217eb04bc1ab7c152c78", "turn_0", [
+      {
+        claim: 'Verified the exact page heading: "Example Domain"',
+        evidence: "observed",
+      },
+    ]);
+
+    const report = completionReportText(["turn_0"]) ?? "";
+
+    expect(report).not.toMatch(rawIdPattern);
+    expect(report).toContain(
+      'Verified the exact page heading: "Example Domain"'
+    );
+  });
+
+  it("RR-32: several requests are told apart by ordinal, never by id", () => {
+    settle("task_one", "turn_first_request", [
+      { claim: "Ordered the part", evidence: "observed" },
+    ]);
+    settle("task_two", "turn_second_request", [
+      { claim: "Cancelled the other", evidence: "observed" },
+    ]);
+
+    const report =
+      completionReportText(["turn_first_request", "turn_second_request"]) ?? "";
+
+    expect(report).not.toMatch(rawIdPattern);
+    expect(report).toMatch(/first request|second request/iu);
+  });
+
+  it("RR-33: the delivered message stays id-free even carried alongside the model's own text", () => {
+    settle("task_a", "turn_1", [
+      { claim: "Submitted the order form", evidence: "observed" },
+    ]);
+
+    const delivered = reportWithRecordedFacts(["turn_1"], "All done!");
+
+    expect(delivered).not.toMatch(rawIdPattern);
   });
 });
 
@@ -353,7 +401,9 @@ describe("what a second review found still wrong with shortening", () => {
     // all and is counted as omitted. A partial claim is the one thing that must
     // never happen, because a reader cannot tell it was shortened.
     const whole = delivered.includes(claim);
-    const counted = /further recorded claims are not shown/u.test(delivered);
+    const counted = /further recorded claims? (is|are) not shown/u.test(
+      delivered
+    );
     expect(whole || counted).toBe(true);
     expect(delivered).not.toContain(`${head}…${tail}`);
   });
@@ -370,8 +420,9 @@ describe("what a second review found still wrong with shortening", () => {
   });
 
   it("RR-19: a failure is never the outcome that gets cut off", () => {
-    // A report that outgrows the channel's limit was sliced from the end, so a
-    // failure recorded last vanished while the successes stayed.
+    // A batch of seven finished tasks and one late failure, all belonging to
+    // the same request. Bad news must survive regardless of how much padding
+    // the earlier claims carry, and it must be named before the successes.
     for (let index = 0; index < 7; index += 1) {
       settle(`task_ok_${String(index)}`, "turn_1", [
         {
@@ -393,22 +444,24 @@ describe("what a second review found still wrong with shortening", () => {
     );
 
     expect(delivered.length).toBeLessThanOrEqual(20_000);
-    expect(delivered).toContain("task_late_failure");
     expect(delivered).toMatch(/failed/iu);
+    // Bad news first: the failure is named before any of the successes are.
+    expect(delivered.indexOf("failed")).toBeLessThan(
+      delivered.indexOf("finished")
+    );
   });
 });
 
 describe("the rules that mutation showed were not actually pinned", () => {
   it("RR-20: a claim too long for the budget is omitted whole, never shortened", () => {
-    // Over the claim budget on purpose. The earlier version of this case used a
-    // 241-character claim, which fits, so nothing was ever omitted and a
-    // mutation that shortened claims survived.
+    // Far larger than the whole report body's 900-character bound, so it can
+    // never be shown whole and must be omitted rather than shortened.
     const claim = `${"a".repeat(2500)}not${"b".repeat(2500)}`;
     settle("task_a", "turn_1", [{ claim, evidence: "observed" }]);
 
     const delivered = reportWithRecordedFacts(["turn_1"], "Here it is.");
 
-    expect(delivered).toContain("1 further recorded claims are not shown");
+    expect(delivered).toContain("1 further recorded claim is not shown here");
     // No fragment of it appears. A reader cannot tell a fragment was shortened,
     // and a fragment can say the opposite of what was recorded.
     expect(delivered).not.toContain("a".repeat(200));
@@ -429,8 +482,8 @@ describe("the rules that mutation showed were not actually pinned", () => {
 
     // Order is what keeps a failure safe from any length limit: bad news first
     // survives a cut, bad news last does not.
-    expect(delivered.indexOf("task_late_fail")).toBeLessThan(
-      delivered.indexOf("task_first_ok")
+    expect(delivered.indexOf("failed")).toBeLessThan(
+      delivered.indexOf("finished")
     );
   });
 
@@ -450,89 +503,68 @@ describe("the rules that mutation showed were not actually pinned", () => {
   });
 });
 
-describe("one message answering several owed cohorts", () => {
+describe("the automatic report body stays inside its 900-character bound", () => {
   /** The largest backlog the records allow: capacity cohorts, each full. */
-  function fullBacklog() {
+  function fullBacklog(status: "completed" | "cancelled" = "completed") {
     const ids: string[] = [];
     for (let cohort = 0; cohort < completionCapacity.openCohorts; cohort += 1) {
       const turnId = `turn_${String(cohort)}`;
       ids.push(turnId);
       for (let task = 0; task < completionCapacity.tasksPerCohort; task += 1) {
-        settle(`task_${String(cohort)}_${String(task)}`, turnId, [
-          {
-            claim: `${"padding ".repeat(80)}cohort ${String(cohort)} task ${String(task)}`,
-            evidence: "observed",
-          },
-        ]);
+        settle(
+          `task_${String(cohort)}_${String(task)}`,
+          turnId,
+          [
+            {
+              claim: `${"padding ".repeat(80)}cohort ${String(cohort)} task ${String(task)}`,
+              evidence:
+                status === "cancelled" ? "executor_receipt" : "observed",
+            },
+          ],
+          status
+        );
       }
     }
     return ids;
   }
 
-  it("RR-23: the largest records the capacity permits still fit the channel", () => {
-    // The worst case the state machine allows, built deliberately rather than
-    // approximated: every cohort, every task, every fact, ids at the longest the
-    // admission schema accepts, and claims large enough that any three overrun
-    // the budget. An earlier version of this test used short ids and produced
-    // 3,770 characters, so it passed with the budget check removed entirely and
-    // proved nothing about the limit.
-    //
-    // Two separate ways this message went over 20,000: rendering each cohort
-    // separately and joining them (35,462), and outcomes built from 150-character
-    // ids (20,310 before a single claim). The channel rejects an oversized send
-    // after the obligations are already bound, so the cohorts end up pending with
-    // nothing delivered.
-    const ids: string[] = [];
-    for (let cohort = 0; cohort < completionCapacity.openCohorts; cohort += 1) {
-      const turnId = `turn_${String(cohort)}_${"c".repeat(150)}`;
-      ids.push(turnId);
-      for (let task = 0; task < completionCapacity.tasksPerCohort; task += 1) {
-        settle(
-          `task_${String(cohort)}_${String(task)}_${"t".repeat(150)}`,
-          turnId,
-          Array.from(
-            { length: completionCapacity.factsPerTask },
-            (_unused, fact) => ({
-              claim: longClaim(`cohort ${String(cohort)} fact ${String(fact)}`),
-              evidence: "executor_receipt" as const,
-            })
-          ),
-          "cancelled"
-        );
-      }
-    }
+  it("RR-23: the largest records the capacity permits still fit the whole-body bound", () => {
+    // The worst case the state machine allows: every cohort, every task, huge
+    // claims. The old renderer produced 35,462 characters here by joining
+    // per-cohort text, and 20,310 from ids alone before a single claim was
+    // added. Aggregating by outcome rather than by id is what keeps this case
+    // small: eight requests produce eight sentences, not sixty-four lines.
+    const ids = fullBacklog("cancelled");
+
+    const report = completionReportText(ids) ?? "";
+
+    expect(report.length).toBeLessThanOrEqual(900);
+    // The outcome is never dropped to make room: every request's cancellation
+    // is still named.
+    expect(
+      report.match(/were cancelled|was cancelled/gu)?.length
+    ).toBeGreaterThan(0);
+    expect(report).not.toMatch(rawIdPattern);
 
     const delivered = reportWithRecordedFacts(
       ids,
       "Here is where things got to."
     );
-
     expect(delivered.length).toBeLessThanOrEqual(20_000);
-    // And the outcomes, which are never dropped, are still all there.
-    expect(delivered.match(/was cancelled/gu)?.length ?? 0).toBe(
-      completionCapacity.openCohorts * completionCapacity.tasksPerCohort
-    );
   });
 
-  it("RR-24: no cohort is dropped to make the message fit", () => {
-    // Appending cohort by cohort kept only the last four and discarded the
-    // earlier reports as though they were expendable model text. An obligation
-    // discharged by a message that never mentions it is worse than one left
-    // owed.
-    const ids = fullBacklog();
+  it("RR-24: no request's outcome is dropped to make the message fit", () => {
+    // Appending cohort by cohort used to keep only the last four and discard
+    // the rest as though they were expendable model text. Now every request
+    // contributes exactly one outcome sentence, so all eight must appear.
+    const ids = fullBacklog("completed");
 
-    const delivered = reportWithRecordedFacts(ids, "Done.");
+    const report = completionReportText(ids) ?? "";
 
-    // Every task, not merely every cohort id: checking only that each cohort is
-    // mentioned would pass while seven of its eight outcomes went missing.
-    for (let cohort = 0; cohort < completionCapacity.openCohorts; cohort += 1) {
-      expect(delivered).toContain(`turn_${String(cohort)}`);
-      for (let task = 0; task < completionCapacity.tasksPerCohort; task += 1) {
-        expect(delivered).toContain(
-          `task_${String(cohort)}_${String(task)} finished`
-        );
-      }
-    }
+    expect(report.length).toBeLessThanOrEqual(900);
+    const finishedMentions = report.match(/tasks? finished/gu)?.length ?? 0;
+    expect(finishedMentions).toBe(completionCapacity.openCohorts);
+    expect(report).not.toMatch(rawIdPattern);
   });
 
   it("RR-25: a failure anywhere in the batch outranks every success", () => {
@@ -551,31 +583,40 @@ describe("one message answering several owed cohorts", () => {
       "Here it is."
     );
 
-    // Across the whole batch, not within each cohort: bad news last is bad news
-    // a length limit can remove.
-    expect(delivered.indexOf("task_bad")).toBeLessThan(
-      delivered.indexOf("task_ok")
+    // Across the whole batch, not within each request: bad news last is bad
+    // news a length limit can remove.
+    expect(delivered.indexOf("failed")).toBeLessThan(
+      delivered.indexOf("finished")
     );
   });
 
-  it("RR-26: every outcome says which request it belongs to", () => {
-    settle("task_one", "turn_first", [
-      { claim: "Ordered the part", evidence: "observed" },
+  it("RR-26: each request's outcome tracks that request, not its position in the argument list", () => {
+    // Three tasks all finish for one request, one task fails for the other, so
+    // the two requests read differently and a pairing mistake is visible in the
+    // text. The failing request must lead even though it is named second here.
+    settle("task_a", "turn_first", [
+      { claim: "Step one", evidence: "observed" },
     ]);
-    settle("task_two", "turn_second", [
-      { claim: "Cancelled the other", evidence: "observed" },
+    settle("task_b", "turn_first", [
+      { claim: "Step two", evidence: "observed" },
     ]);
-
-    const delivered = reportWithRecordedFacts(
-      ["turn_first", "turn_second"],
-      "Both done."
+    settle("task_c", "turn_first", [
+      { claim: "Step three", evidence: "observed" },
+    ]);
+    settle(
+      "task_bad",
+      "turn_second",
+      [{ claim: "The checkout never loaded", evidence: "observed" }],
+      "failed"
     );
 
-    // The pairing, not the presence. Asserting that both ids appear somewhere
-    // passes even if the two outcomes are attributed to each other's request,
-    // which is exactly the confusion the tagging is meant to remove.
-    expect(delivered).toContain("turn_first/task_one finished");
-    expect(delivered).toContain("turn_second/task_two finished");
+    const report = completionReportText(["turn_first", "turn_second"]) ?? "";
+
+    // Named for when it was asked -- the failing one was the second request --
+    // while still being placed first in the text so a limit cannot bury it.
+    expect(report).toContain("The second request failed.");
+    expect(report).toMatch(/first request: all 3 tasks finished/iu);
+    expect(report.indexOf("failed")).toBeLessThan(report.indexOf("finished"));
   });
 
   it("RR-27: an empty batch leaves the model's message alone", () => {
@@ -590,11 +631,8 @@ function longClaim(label: string) {
 
 describe("the claim budget is spent once for the whole message", () => {
   it("RR-28: claims that are each small enough but too large together are counted, not crammed in", () => {
-    // Three claims of 2,000 characters each pass any per-claim limit and still
-    // overrun a 4,000-character budget together. A budget checked per claim
-    // rather than against what has already been spent lets the message grow
-    // with the number of requests, which is the failure this whole batch change
-    // exists to prevent.
+    // Three claims of roughly 2,000 characters each pass any per-claim limit
+    // and still overrun the whole report body's 900-character bound together.
     settle("task_a", "turn_a", [
       { claim: longClaim("first"), evidence: "observed" },
     ]);
@@ -605,12 +643,12 @@ describe("the claim budget is spent once for the whole message", () => {
       { claim: longClaim("third"), evidence: "observed" },
     ]);
 
-    const report = completionReportText(["turn_a", "turn_b", "turn_c"]);
+    const report = completionReportText(["turn_a", "turn_b", "turn_c"]) ?? "";
 
     // Whatever did not fit is counted rather than silently absent, and the
-    // claims section stays inside its budget.
-    expect(report).toContain("further recorded claims are not shown here");
-    expect(report?.length ?? 0).toBeLessThan(6_000);
+    // whole report stays inside its bound.
+    expect(report).toMatch(/further recorded claims? (is|are) not shown here/u);
+    expect(report.length).toBeLessThanOrEqual(900);
   });
 });
 
@@ -632,12 +670,13 @@ describe("what the channel would change on the way out", () => {
 
     expect(report).not.toContain("The order was");
     expect(report).toContain("The cart held three items");
-    expect(report).toContain("1 further recorded claims are not shown here");
+    expect(report).toContain("1 further recorded claim is not shown here");
   });
 
-  it("RR-30: an uncertain outcome says which request it belongs to", () => {
+  it("RR-30: an uncertain outcome names which request it belongs to, by ordinal, never by id", () => {
     // Two requests in one message, one of them holding an action that must not
-    // be repeated. Untagged, the reader cannot tell which.
+    // be repeated. Untagged, the reader cannot tell which; tagged by id, the
+    // reader learns nothing useful and something they should never see.
     settle("task_done", "turn_safe", [
       { claim: "The page was read", evidence: "observed" },
     ]);
@@ -650,13 +689,81 @@ describe("what the channel would change on the way out", () => {
 
     const report = completionReportText(["turn_safe", "turn_risky"]) ?? "";
 
-    // The sentence about an unconfirmed dispatch must arrive attached to the
-    // request that holds it, not floating between two of them.
+    // turn_risky is the only one with an unfinished task, so it leads the text.
+    // It was asked second, so it is "the second request" -- the sentence about
+    // the unconfirmed dispatch must attach to the request the user actually
+    // made second, not to whichever one sorted first.
     expect(report).toContain(
-      "turn_risky: Part of this objective stopped before finishing"
+      "For the second request: Part of this objective stopped before finishing"
     );
-    // And only that request carries it: the other one finished, so attaching the
-    // same doubt to it would invent one the records do not support.
-    expect(report).not.toContain("turn_safe: Part of this objective stopped");
+    // And only once, not repeated for the request that finished cleanly.
+    expect(
+      report.match(/Part of this objective stopped before finishing/gu)?.length
+    ).toBe(1);
+    expect(report).not.toMatch(rawIdPattern);
+  });
+});
+
+describe("uncertainty shared by several requests is stated once", () => {
+  it("RR-35: a request is numbered by when it was asked, not by where it sorts", () => {
+    // Failures are shown first so a length limit cannot hide them, and requests
+    // are named by ordinal now that ids are gone. Those two rules collided: the
+    // ordinal was taken from the position AFTER the failure sort, so a request
+    // the user made second was described to them as "the first request".
+    //
+    // The label reads as a plain fact about their own conversation, so getting
+    // it wrong is not cosmetic -- it points the user at the wrong request. No
+    // case caught this; it was found by printing what the message would say.
+    settle("task_first", "turn_first", [
+      { claim: "Ordered the part", evidence: "observed" },
+    ]);
+    settle(
+      "task_second",
+      "turn_second",
+      [{ claim: "The checkout never loaded", evidence: "observed" }],
+      "failed"
+    );
+
+    const report = completionReportText(["turn_first", "turn_second"]) ?? "";
+
+    // Named for when it was asked...
+    expect(report).toContain("The second request failed");
+    expect(report).toContain("The first request finished");
+    // ...while the failure still comes first in the text.
+    expect(report.indexOf("failed")).toBeLessThan(report.indexOf("finished"));
+  });
+
+  it("RR-34: requests with the same unresolved disposition share one sentence", () => {
+    // Two requests that both dispatched an action nothing corroborated. The
+    // sentence describing that is fixed text from recoveryProgress -- it does
+    // not vary with which request it is about -- so repeating it verbatim for
+    // each request would just be the same sentence twice.
+    settle(
+      "task_one",
+      "turn_one",
+      [
+        {
+          claim: "Dispatched the first submission",
+          evidence: "executor_receipt",
+        },
+      ],
+      "failed"
+    );
+    settle(
+      "task_two",
+      "turn_two",
+      [
+        {
+          claim: "Dispatched the second submission",
+          evidence: "executor_receipt",
+        },
+      ],
+      "failed"
+    );
+
+    const report = completionReportText(["turn_one", "turn_two"]) ?? "";
+
+    expect(report.match(/was never confirmed/gu)?.length).toBe(1);
+    expect(report).toMatch(/for all 2 requests/iu);
   });
 });
