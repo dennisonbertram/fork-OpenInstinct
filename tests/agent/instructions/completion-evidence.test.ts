@@ -44,6 +44,7 @@ import {
   completionCapacity,
   recordTerminal,
   settleCohortReport,
+  supersedeCohort,
 } from "@/agent/lib/completion-obligations";
 
 beforeEach(() => {
@@ -316,6 +317,27 @@ describe("completion evidence instruction", () => {
     expect(content).not.toMatch(/further recorded claims are not shown here/);
   });
 });
+describe("what the projection says is owed", () => {
+  it("CE-13: superseded work is not described to the model as owing a report", async () => {
+    // `reportableCohorts` excludes a superseded cohort, so no report is owed for
+    // it. The projection classified every phase that was not delivered or
+    // unconfirmed as "owed", which told the model it still owed a summary for
+    // work the state machine had already set aside -- an obligation stated as
+    // fact that does not exist. Its findings are still worth showing, under a
+    // heading that says what they are.
+    settle("task_old", "turn_replaced", [
+      { claim: "Read the first draft", evidence: "observed" },
+    ]);
+    supersedeCohort("turn_replaced");
+
+    const block = (await resolve("turn_now"))?.content ?? "";
+
+    expect(block).toContain("Read the first draft");
+    expect(block).toContain("owes no summary");
+    expect(block).not.toMatch(/still owed|owes a summary|not yet reported/iu);
+  });
+});
+
 describe("reconciling before projecting", () => {
   it("CE-07: a terminal that only the framework projection knows about still reaches the model", async () => {
     // Instructions can only resolve on session.started or turn.started, and the

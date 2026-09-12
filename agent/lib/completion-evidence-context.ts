@@ -72,6 +72,8 @@ const deliveredHeading =
 const owedHeading =
   "Prior work that settled earlier in this session but has not been reported " +
   "to the user yet (a report is still owed):";
+const supersededHeading =
+  "Earlier work from a request that was replaced before it was reported. It owes no summary; it is here only so its findings are not mistaken for the current request's.";
 const unconfirmedHeading =
   "Prior work that was sent to the user earlier in this session, but whether " +
   "it arrived has not been confirmed:";
@@ -79,9 +81,14 @@ const unconfirmedHeading =
 /** Which of the three prior-work headings a settled cohort renders under. */
 function reportingGroupOf(
   cohort: CohortRecord
-): "delivered" | "owed" | "unconfirmed" {
+): "delivered" | "owed" | "superseded" | "unconfirmed" {
   if (cohort.phase === "delivered") return "delivered";
   if (cohort.phase === "unconfirmed") return "unconfirmed";
+  // Superseded work owes nothing -- `reportableCohorts` excludes it, so telling
+  // the model a report is still owed for it states an obligation that does not
+  // exist. Its facts are still worth showing; the heading has to be honest
+  // about what they are.
+  if (cohort.phase === "superseded") return "superseded";
   return "owed";
 }
 
@@ -130,7 +137,12 @@ function isFullySettled(cohortId: string): boolean {
   return tasks.length > 0 && tasks.every((task) => task.terminal !== undefined);
 }
 
-type EvidenceGroup = "current" | "delivered" | "owed" | "unconfirmed";
+type EvidenceGroup =
+  | "current"
+  | "delivered"
+  | "owed"
+  | "superseded"
+  | "unconfirmed";
 
 interface EvidenceLine {
   readonly group: EvidenceGroup;
@@ -209,7 +221,14 @@ export function completionEvidenceContext(turnId: string): string | undefined {
     priorCohorts.map((cohort, index) => [cohort.cohortId, index + 1])
   );
 
-  const priorGroupOrder = ["delivered", "owed", "unconfirmed"] as const;
+  // Owed first: an outstanding obligation is the thing most worth acting on.
+  // Superseded last: it is history, and the heading says so.
+  const priorGroupOrder = [
+    "owed",
+    "unconfirmed",
+    "delivered",
+    "superseded",
+  ] as const;
 
   const entries: EvidenceLine[] = [
     ...(current ? linesForCohort(current.cohortId, "current", 0) : []),
@@ -231,6 +250,7 @@ export function completionEvidenceContext(turnId: string): string | undefined {
     current: currentHeading,
     delivered: deliveredHeading,
     owed: owedHeading,
+    superseded: supersededHeading,
     unconfirmed: unconfirmedHeading,
   };
 
