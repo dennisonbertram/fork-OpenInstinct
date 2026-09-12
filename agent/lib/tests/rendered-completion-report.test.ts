@@ -680,10 +680,14 @@ describe("what the channel would change on the way out", () => {
     settle("task_done", "turn_safe", [
       { claim: "The page was read", evidence: "observed" },
     ]);
+    // An executor receipt on a task that did not complete is what makes the
+    // disposition `uncertain_effect`. With a worker_assertion here the fixture
+    // produced the generic stopped-before-finishing text instead, so this case
+    // named the unconfirmed dispatch it was protecting but never created one.
     settle(
       "task_dispatched",
       "turn_risky",
-      [{ claim: "Submitted the form", evidence: "worker_assertion" }],
+      [{ claim: "Submitted the form", evidence: "executor_receipt" }],
       "failed"
     );
 
@@ -694,11 +698,13 @@ describe("what the channel would change on the way out", () => {
     // the unconfirmed dispatch must attach to the request the user actually
     // made second, not to whichever one sorted first.
     expect(report).toContain(
-      "For the second request: Part of this objective stopped before finishing"
+      "For the second request: An action was dispatched and its outcome was never confirmed"
     );
     // And only once, not repeated for the request that finished cleanly.
     expect(
-      report.match(/Part of this objective stopped before finishing/gu)?.length
+      report.match(
+        /An action was dispatched and its outcome was never confirmed/gu
+      )?.length
     ).toBe(1);
     expect(report).not.toMatch(rawIdPattern);
   });

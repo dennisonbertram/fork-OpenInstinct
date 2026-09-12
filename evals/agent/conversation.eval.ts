@@ -254,6 +254,10 @@ const jcr02 = defineEval({
     );
     deferred.expectOk();
     deferred.succeeded();
+    // Without this the case passes vacuously: if the model never delegates,
+    // no report is ever owed and the second turn has nothing to be blocked by,
+    // which is precisely the condition this case exists to exercise.
+    deferred.calledSubagent("browser-agent", { count: 1 });
     await requireDeliveredText(t, deferred);
 
     const unrelated = await t.send("What is 15 percent of 240?");
@@ -269,7 +273,12 @@ const jcr02 = defineEval({
       text,
       satisfies<string>(
         (value) =>
+          // The identifier that actually reached a person was
+          // "turn_0/task_f13d217eb04bc1ab7c152c78". The previous guard looked
+          // for `task` followed by a DIGIT, so it matched none of it: the
+          // character after "task_" is a letter. These match the real shapes.
           !/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/iu.test(value) &&
+          !/\b(?:task|turn|cohort)_[0-9a-z]/iu.test(value) &&
           !/\btask\s*\d/iu.test(value) &&
           !/\bcohort\b/iu.test(value),
         "no internal task/cohort ids or jargon leak into an unrelated answer"
