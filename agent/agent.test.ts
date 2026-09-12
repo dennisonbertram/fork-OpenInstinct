@@ -28,7 +28,9 @@ const services = vi.hoisted<TestServices>(() => ({
   getModel: vi.fn<typeof getGatewayModel>(),
   isActive: vi.fn<typeof isScheduledAgentRunLeaseActive>(),
   deliveryStatus: vi.fn<typeof finalDeliveryStatus>(),
-  reconcile: vi.fn<typeof reconcileBackgroundTasks>(),
+  reconcile: vi
+    .fn<typeof reconcileBackgroundTasks>()
+    .mockResolvedValue(undefined),
   owedCohorts: [],
   gateway: vi.fn<(modelId: string) => LanguageModel>(),
   contractFixtureEnabled: true,
@@ -76,6 +78,33 @@ vi.mock("@/agent/lib/completion-obligations", () => ({
   // put a cohort in it so a report is genuinely owed.
   reportableCohorts: () => services.owedCohorts,
 }));
+vi.mock("@/agent/lib/completion-report-policy", () => ({
+  reportPolicyForTurn: ({
+    intent,
+    turnId,
+  }: {
+    intent?: "report_only" | "unknown" | "user_request";
+    turnId?: string;
+  }) => ({
+    kind:
+      services.owedCohorts.filter(
+        (cohort) => intent !== "user_request" || cohort.cohortId === turnId
+      ).length === 0
+        ? "none"
+        : "must_report",
+  }),
+  turnRequestIntentFor: () => undefined,
+  turnRequestIntentFromOrigin: (
+    origin: "background_task" | "channel_input" | "unknown" | undefined
+  ) =>
+    origin === "channel_input"
+      ? "user_request"
+      : origin === "background_task"
+        ? "report_only"
+        : origin === "unknown"
+          ? "unknown"
+          : undefined,
+}));
 
 const agent = await import("./agent");
 
@@ -85,6 +114,8 @@ describe("interactive model delivery resolution", () => {
     services.deliveryStatus.mockReturnValue(undefined);
     services.contractFixtureEnabled = true;
     services.gateway.mockReset();
+    services.reconcile.mockReset();
+    services.reconcile.mockResolvedValue(undefined);
     services.evlogContext = {};
     services.owedCohorts = [];
   });
@@ -219,6 +250,7 @@ describe("interactive model delivery resolution", () => {
       expected: { type: "required" },
       history: [{ content: "look up the top story", role: "user" as const }],
       id: "DG-04",
+      origin: "channel_input" as const,
       what: "leaves a new user request free to act",
     },
     {
@@ -236,6 +268,7 @@ describe("interactive model delivery resolution", () => {
       expected: { type: "required" },
       history: [{ content: "look up the top story", role: "user" as const }],
       id: "DG-06",
+      origin: "channel_input" as const,
       what: "leaves a new user request free to act on the live SendBlue channel",
     },
     {
@@ -246,6 +279,7 @@ describe("interactive model delivery resolution", () => {
       expected: { toolName: "send_message", type: "tool" },
       history: [{ content: "[Agents] a child parked", role: "user" as const }],
       id: "DG-07",
+      origin: "background_task" as const,
       what: "does not mistake a framework [Agents] note for a user request",
     },
     {
@@ -268,41 +302,79 @@ describe("interactive model delivery resolution", () => {
         },
       ],
       id: "DG-08",
+      origin: "channel_input" as const,
       what: "keeps a half-finished request free to make its next call",
     },
-  ])("$id: an owed report $what", async ({ channel, expected, history }) => {
-    // The guard's own cases prove the decision. These prove the wiring: agent.ts
-    // derives the signal from ctx.messages, and if that derivation is lost the
-    // fix stops working in production while every guard-level case still passes.
-    services.owedCohorts = [{ cohortId: "turn_old" }];
-    let receivedToolChoice: unknown;
-    const originalDoStream =
-      contractFixtureModel.doStream.bind(contractFixtureModel);
-    vi.spyOn(contractFixtureModel, "doStream").mockImplementation(
-      async (options) => {
-        receivedToolChoice = options.toolChoice;
-        return originalDoStream(options);
-      }
-    );
+    {
+      channel: "channel:sendblue" as const,
+      expected: { toolName: "send_message", type: "tool" },
+      history: [
+        {
+          content:
+            "Background task task_synthetic (worker) is completed. This is only test data.",
+          role: "user" as const,
+        },
+      ],
+      id: "DG-09",
+      origin: "background_task" as const,
+      what: "forces a report for an unlabelled task wake",
+    },
+    {
+      channel: "channel:sendblue" as const,
+      expected: { type: "required" },
+      history: [
+        {
+          content: "[Agents] a child parked",
+          role: "user" as const,
+        },
+      ],
+      id: "DG-10",
+      origin: "channel_input" as const,
+      what: "keeps a channel request even when its text matches a framework note",
+    },
+  ])(
+    "$id: an owed report $what",
+    async ({ channel, expected, history, origin }) => {
+      // The guard's own cases prove the decision. These prove the wiring:
+      // agent.ts consumes Eve's typed origin, so losing that boundary would
+      // leave guard-level tests green while production misclassifies a wake.
+      services.owedCohorts = [{ cohortId: "turn_old" }];
+      let receivedToolChoice: unknown;
+      const originalDoStream =
+        contractFixtureModel.doStream.bind(contractFixtureModel);
+      vi.spyOn(contractFixtureModel, "doStream").mockImplementation(
+        async (options) => {
+          receivedToolChoice = options.toolChoice;
+          return originalDoStream(options);
+        }
+      );
 
-    const selection = await resolveStepModel(channel, "test", {}, history);
-    const result = streamText({
-      messages: [{ content: "silent", role: "user" }],
-      model: selection.model,
-      toolChoice: "auto",
-      tools: {},
-    });
-    await result.consumeStream();
+      const selection = await resolveStepModel(
+        channel,
+        "test",
+        {},
+        history,
+        origin
+      );
+      const result = streamText({
+        messages: [{ content: "silent", role: "user" }],
+        model: selection.model,
+        toolChoice: "auto",
+        tools: {},
+      });
+      await result.consumeStream();
 
-    expect(receivedToolChoice).toEqual(expected);
-  });
+      expect(receivedToolChoice).toEqual(expected);
+    }
+  );
 });
 
 async function resolveStepModel(
   channelKind: DynamicResolveContext["channel"]["kind"],
   authenticator = "test",
   attributes: Record<string, string> = {},
-  messages: DynamicResolveContext["messages"] = []
+  messages: DynamicResolveContext["messages"] = [],
+  origin?: "background_task" | "channel_input"
 ): Promise<
   Awaited<
     ReturnType<NonNullable<(typeof agent.default.model.events)["step.started"]>>
@@ -318,7 +390,7 @@ async function resolveStepModel(
       session: {
         auth: {
           current: {
-            attributes,
+            attributes: { workspaceId: "workspace-test", ...attributes },
             authenticator,
             principalId: "user-1",
             principalType: "user",
@@ -327,6 +399,7 @@ async function resolveStepModel(
         },
         id: "session-1",
       },
+      turn: origin === undefined ? undefined : { origin },
     }
   );
   return selection;

@@ -1,6 +1,8 @@
+import { defineState } from "eve/context";
+import type { DynamicTurnOrigin } from "eve/tools";
 import {
   bindCohortReports,
-  cohortForReportAttempt,
+  cohortsForReportCall,
   reportableCohorts,
 } from "@/agent/lib/completion-obligations";
 import type {
@@ -35,9 +37,50 @@ export type ReportPolicy =
    */
   | { readonly kind: "must_report"; readonly cohortIds: readonly string[] };
 
-export function reportPolicyForTurn(): ReportPolicy {
+export type TurnRequestIntent = "report_only" | "unknown" | "user_request";
+
+const turnIntentState = defineState<{
+  readonly byTurnId: Readonly<Record<string, TurnRequestIntent>>;
+}>("completion.report-turn-intent", () => ({ byTurnId: {} }));
+
+/** Capture the request kind at the authoritative start of its turn. */
+export function recordTurnRequestIntent(
+  turnId: string,
+  intent: TurnRequestIntent
+) {
+  // Only the current turn is relevant to tool resolution. Replacing the map
+  // keeps durable session state bounded while retaining the event's turn ID as
+  // the key used by later step resolvers.
+  turnIntentState.update(() => ({ byTurnId: { [turnId]: intent } }));
+}
+
+export function turnRequestIntentFor(turnId: string | undefined) {
+  return turnId === undefined
+    ? undefined
+    : turnIntentState.get().byTurnId[turnId];
+}
+
+/**
+ * Interprets Eve's typed delivery source without deriving intent from message
+ * text or from a role that framework wakes can also use.
+ */
+export function turnRequestIntentFromOrigin(
+  origin: DynamicTurnOrigin | undefined
+): TurnRequestIntent | undefined {
+  if (origin === "channel_input") return "user_request";
+  if (origin === "background_task") return "report_only";
+  return origin === "unknown" ? "unknown" : undefined;
+}
+
+export function reportPolicyForTurn(options?: {
+  readonly turnId?: string;
+  readonly intent?: TurnRequestIntent;
+}): ReportPolicy {
   if (!completionReportForcingActive()) return { kind: "none" };
-  const owed = reportableCohorts();
+  const owed = reportableCohorts().filter(
+    (cohort) =>
+      options?.intent !== "user_request" || cohort.cohortId === options.turnId
+  );
   return owed.length === 0
     ? { kind: "none" }
     : { cohortIds: owed.map((cohort) => cohort.cohortId), kind: "must_report" };
@@ -82,17 +125,24 @@ export function reportPartIdentityFor(input: {
   readonly callId: string;
   readonly part: ReportPart;
 }): ReportPartIdentity | undefined {
-  const cohort = cohortForReportAttempt({
-    callId: input.callId,
-    turnId: input.turnId,
-  });
-  return cohort === undefined
-    ? undefined
-    : {
-        cohortId: cohort.cohortId,
-        part: input.part,
-        reportRevision: cohort.reportRevision,
-        rootSessionId: input.rootSessionId,
-        workspaceId: input.workspaceId,
-      };
+  const cohorts = cohortsForReportCall(input.callId)
+    .filter((cohort) => cohort.report?.turnId === input.turnId)
+    .map((cohort) => ({
+      cohortId: cohort.cohortId,
+      reportRevision: cohort.reportRevision,
+    }))
+    .toSorted(
+      (left, right) =>
+        left.cohortId.localeCompare(right.cohortId) ||
+        left.reportRevision - right.reportRevision
+    );
+  const representative = cohorts[0];
+  if (!representative) return undefined;
+  return {
+    ...representative,
+    cohorts,
+    part: input.part,
+    rootSessionId: input.rootSessionId,
+    workspaceId: input.workspaceId,
+  };
 }

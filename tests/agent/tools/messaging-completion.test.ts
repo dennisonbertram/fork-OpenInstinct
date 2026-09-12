@@ -32,7 +32,7 @@ const context = {
 async function tools() {
   const resolve = messaging.events["step.started"];
   if (!resolve) throw new Error("Missing resolver");
-  return resolve({ data: { turnId: "turn_1" } }, context);
+  return resolve({ data: { stepIndex: 0, turnId: "turn_1" } }, context);
 }
 beforeEach(() => {
   for (const reset of state.resets) reset();
@@ -57,7 +57,7 @@ describe("final conversation delivery", () => {
     ).rejects.toThrow(/already.*final|final.*already/i);
     expect(
       await messaging.events["step.started"]?.(
-        { data: { turnId: "turn_1" } },
+        { data: { stepIndex: 0, turnId: "turn_1" } },
         context
       )
     ).toBeNull();
@@ -70,7 +70,7 @@ describe("final conversation delivery", () => {
     const resolve = messaging.events["step.started"];
     if (!resolve) throw new Error("Missing resolver");
     const group = await resolve(
-      { data: { turnId: "turn_1" } },
+      { data: { stepIndex: 0, turnId: "turn_1" } },
       providerContext
     );
     if (!group) throw new Error("Missing messaging tools");
@@ -94,10 +94,13 @@ describe("final conversation delivery", () => {
       )
     ).rejects.toThrow(/not confirmed|do not resend/i);
     expect(
-      await resolve({ data: { turnId: "turn_1" } }, providerContext)
+      await resolve(
+        { data: { stepIndex: 0, turnId: "turn_1" } },
+        providerContext
+      )
     ).toBeNull();
     const nextTurnTools = await resolve(
-      { data: { turnId: "turn_2" } },
+      { data: { stepIndex: 0, turnId: "turn_2" } },
       providerContext
     );
     if (!nextTurnTools) throw new Error("Missing next-turn messaging tools");
@@ -137,7 +140,7 @@ describe("final conversation delivery", () => {
     ).toEqual({ kind: "message", text: "Result" });
     expect(
       await messaging.events["step.started"]?.(
-        { data: { turnId: "turn_2" } },
+        { data: { stepIndex: 0, turnId: "turn_2" } },
         context
       )
     ).not.toBeNull();
@@ -148,6 +151,6 @@ it("removes a legacy turn-scoped messaging registration before resolving the cur
   const resolve = messaging.events["turn.started"];
   expect(resolve).toBeTypeOf("function");
   expect(
-    await resolve?.({ data: { turnId: "turn_legacy" } }, context)
+    await resolve?.({ data: { stepIndex: 0, turnId: "turn_legacy" } }, context)
   ).toBeNull();
 });

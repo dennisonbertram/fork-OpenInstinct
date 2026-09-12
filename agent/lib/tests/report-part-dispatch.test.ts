@@ -54,7 +54,11 @@ function request<T>(
 
 beforeEach(() => {
   vi.resetAllMocks();
-  seam.permit.mockResolvedValue({ claim, kind: "may_dispatch" });
+  seam.permit.mockResolvedValue({
+    claim,
+    claims: [claim],
+    kind: "may_dispatch",
+  });
   seam.accepted.mockResolvedValue(true);
   seam.unconfirmed.mockResolvedValue(true);
 });
@@ -85,7 +89,7 @@ describe("dispatchReportPart", () => {
 
     expect(outcome).toEqual({ kind: "sent", value: "handle-1" });
     expect(seam.accepted).toHaveBeenCalledWith({
-      claim,
+      claims: [claim],
       providerHandle: "handle-1",
     });
   });
@@ -94,7 +98,7 @@ describe("dispatchReportPart", () => {
     const order: string[] = [];
     seam.permit.mockImplementation(() => {
       order.push("permit");
-      return Promise.resolve({ claim, kind: "may_dispatch" });
+      return Promise.resolve({ claim, claims: [claim], kind: "may_dispatch" });
     });
     const send = vi.fn<() => Promise<string>>(() => {
       order.push("send");
@@ -115,6 +119,7 @@ describe("dispatchReportPart", () => {
   it("DP-04: a part already accepted is never sent again", async () => {
     seam.permit.mockResolvedValue({
       claim: { ...claim, providerHandle: "handle-1", state: "accepted" },
+      claims: [{ ...claim, providerHandle: "handle-1", state: "accepted" }],
       kind: "already_accepted",
     });
     const send = vi.fn<() => Promise<string>>();
@@ -129,7 +134,11 @@ describe("dispatchReportPart", () => {
   });
 
   it("DP-05: a refused part is never sent and never retried", async () => {
-    seam.permit.mockResolvedValue({ claim, kind: "do_not_dispatch" });
+    seam.permit.mockResolvedValue({
+      claim,
+      claims: [claim],
+      kind: "do_not_dispatch",
+    });
     const send = vi.fn<() => Promise<string>>();
 
     const outcome = await dispatchReportPart(request(send));
@@ -148,7 +157,7 @@ describe("dispatchReportPart", () => {
 
     // The request reached the provider, so the outcome is unknown rather than
     // failed. Recording it is what stops anything sending it again.
-    expect(seam.unconfirmed).toHaveBeenCalledWith(claim);
+    expect(seam.unconfirmed).toHaveBeenCalledWith([claim]);
     expect(seam.accepted).not.toHaveBeenCalled();
     expect(send).toHaveBeenCalledOnce();
   });
@@ -159,7 +168,7 @@ describe("dispatchReportPart", () => {
     await dispatchReportPart(request(send));
 
     expect(seam.accepted).toHaveBeenCalledWith({
-      claim,
+      claims: [claim],
       providerHandle: undefined,
     });
   });

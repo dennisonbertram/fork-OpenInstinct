@@ -945,6 +945,32 @@ describe("blockCohort, cancelCohort, supersedeCohort", () => {
     expect(cohortFor("turn_1")?.phase).toBe("cancelled");
   });
 
+  it("a later report after cancellation advances an earlier uncertain revision", () => {
+    admit({
+      taskId: "task_1",
+      parentTurnId: "turn_1",
+      workerSessionId: "session_1",
+    });
+    recordTerminal(
+      terminal({
+        taskId: "task_1",
+        parentTurnId: "turn_1",
+        childSessionId: "session_1",
+      }),
+      [fact({ evidence: "observed" })]
+    );
+    expect(
+      beginCohortReport("turn_1", { callId: "call_1", turnId: "turn_1" })
+    ).toBe(true);
+    settleCohortReport("turn_1", false);
+    cancelCohort("turn_1");
+
+    expect(
+      beginCohortReport("turn_1", { callId: "call_2", turnId: "turn_2" })
+    ).toBe(true);
+    expect(cohortFor("turn_1")).toMatchObject({ reportRevision: 1 });
+  });
+
   it("supersedeCohort sets phase superseded", () => {
     makeReportable("turn_1", "task_1", "session_1");
     supersedeCohort("turn_1");
@@ -1389,7 +1415,7 @@ function projected(
 }
 
 describe("reconcileBackgroundTasks (the root registration)", () => {
-  it("RG-01: a pending sibling keeps the cohort from owing a report", () => {
+  it("RG-01: a pending sibling keeps the cohort from owing a report", async () => {
     state.projections.members = [
       member("task_a", "turn_1", true),
       member("task_b", "turn_1", false),
@@ -1401,7 +1427,7 @@ describe("reconcileBackgroundTasks (the root registration)", () => {
       }),
     ];
 
-    reconcileBackgroundTasks();
+    await reconcileBackgroundTasks();
 
     expect(
       taskRecords("turn_1")
@@ -1412,7 +1438,7 @@ describe("reconcileBackgroundTasks (the root registration)", () => {
     expect(reportableCohorts()).toEqual([]);
   });
 
-  it("RG-02: once the sibling settles, the cohort owes exactly one report", () => {
+  it("RG-02: once the sibling settles, the cohort owes exactly one report", async () => {
     state.projections.members = [
       member("task_a", "turn_1", true),
       member("task_b", "turn_1", false),
@@ -1420,7 +1446,7 @@ describe("reconcileBackgroundTasks (the root registration)", () => {
     state.projections.terminals = [
       projected("task_a", "turn_1", { status: "success", message: "first" }),
     ];
-    reconcileBackgroundTasks();
+    await reconcileBackgroundTasks();
     expect(reportableCohorts()).toEqual([]);
 
     state.projections.members = [
@@ -1431,7 +1457,7 @@ describe("reconcileBackgroundTasks (the root registration)", () => {
       projected("task_a", "turn_1", { status: "success", message: "first" }),
       projected("task_b", "turn_1", { status: "success", message: "second" }),
     ];
-    reconcileBackgroundTasks();
+    await reconcileBackgroundTasks();
 
     expect(cohortFor("turn_1")?.phase).toBe("must_report");
     expect(reportableCohorts().map((cohort) => cohort.cohortId)).toEqual([
@@ -1439,25 +1465,25 @@ describe("reconcileBackgroundTasks (the root registration)", () => {
     ]);
   });
 
-  it("RG-03: repeating reconciliation on an unchanged projection changes nothing", () => {
+  it("RG-03: repeating reconciliation on an unchanged projection changes nothing", async () => {
     state.projections.members = [member("task_a", "turn_1", true)];
     state.projections.terminals = [
       projected("task_a", "turn_1", { status: "success", message: "done" }),
     ];
 
-    reconcileBackgroundTasks();
+    await reconcileBackgroundTasks();
     const afterFirst = {
       tasks: taskRecords("turn_1"),
       cohort: cohortFor("turn_1"),
     };
-    reconcileBackgroundTasks();
-    reconcileBackgroundTasks();
+    await reconcileBackgroundTasks();
+    await reconcileBackgroundTasks();
 
     expect(taskRecords("turn_1")).toEqual(afterFirst.tasks);
     expect(cohortFor("turn_1")).toEqual(afterFirst.cohort);
   });
 
-  it("RG-04: a worker's own result is only ever a worker_assertion here", () => {
+  it("RG-04: a worker's own result is only ever a worker_assertion here", async () => {
     state.projections.members = [member("task_a", "turn_1", true)];
     state.projections.terminals = [
       projected("task_a", "turn_1", {
@@ -1467,7 +1493,7 @@ describe("reconcileBackgroundTasks (the root registration)", () => {
       }),
     ];
 
-    reconcileBackgroundTasks();
+    await reconcileBackgroundTasks();
 
     const facts =
       taskRecords("turn_1").find((task) => task.taskId === "task_a")?.terminal
@@ -1477,7 +1503,7 @@ describe("reconcileBackgroundTasks (the root registration)", () => {
     ]);
   });
 
-  it("RG-05: two parent turns stay independent", () => {
+  it("RG-05: two parent turns stay independent", async () => {
     state.projections.members = [
       member("task_a", "turn_1", true),
       member("task_b", "turn_2", false),
@@ -1486,7 +1512,7 @@ describe("reconcileBackgroundTasks (the root registration)", () => {
       projected("task_a", "turn_1", { status: "success", message: "one" }),
     ];
 
-    reconcileBackgroundTasks();
+    await reconcileBackgroundTasks();
 
     expect(cohortFor("turn_1")?.phase).toBe("must_report");
     expect(cohortFor("turn_2")?.phase).toBe("awaiting_terminal");

@@ -1,5 +1,9 @@
 import { defineState } from "eve/context";
 import {
+  findCompletionReportPartsForCohorts,
+  type CompletionReportPartRecord,
+} from "@/db/services/completion-report-attempts";
+import {
   backgroundTaskMembers,
   backgroundTaskTerminals,
   type BackgroundTaskTerminalRecord,
@@ -108,12 +112,34 @@ interface CompletionState {
   readonly tasks: readonly TaskRecord[];
   readonly cohorts: readonly CohortRecord[];
   readonly retired: readonly RetiredCohortSummary[];
+  /** Records whether the one safe legacy recovery pass has run for this session. */
+  readonly recovery?:
+    | { readonly kind: "pending"; readonly taskIds: readonly string[] }
+    | { readonly kind: "complete" };
 }
 
 const completion = defineState<CompletionState>(
   "completion.obligations",
   () => ({ tasks: [], cohorts: [], retired: [] })
 );
+
+function isDeliveryPart(part: string) {
+  return (
+    part === "text" || part === "attachment" || part.startsWith("media-send:")
+  );
+}
+
+function isVariableMediaPart(part: string) {
+  return part.startsWith("media-upload:") || part.startsWith("media-send:");
+}
+
+function bundledDeliveryPartKey(
+  part: CompletionReportPartRecord
+): string | undefined {
+  if (part.bundleId === undefined || part.bundleCount === undefined)
+    return undefined;
+  return `${part.bundleId}\u0000${part.physicalPart}`;
+}
 
 export type AdmissionResult =
   | { readonly admitted: true; readonly cohortId: string }
@@ -356,21 +382,23 @@ function cohortAfterBinding(
     (cohort.phase === "unconfirmed" && cohort.report?.turnId !== report.turnId);
   if (!owed) return refuses;
 
-  // A previous attempt in a different turn means the user asked again, and
-  // that is a new revision. The same turn re-binding is the same attempt, so
-  // it keeps the revision it already has -- one send must not be able to
-  // claim two durable rows.
+  // A different known report turn is a new attempt even when an intervening
+  // lifecycle change moved the cohort out of `unconfirmed`. Recovered
+  // unconfirmed cohorts have no prior turn metadata, but their durable
+  // revision still reserves the old physical effect, so they advance too.
   const priorTurn = cohort.report?.turnId;
+  const isNewAttempt =
+    (priorTurn !== undefined && priorTurn !== report.turnId) ||
+    (cohort.phase === "unconfirmed" && priorTurn === undefined);
   return {
     accepts: true,
     next: {
       ...cohort,
       phase: "delivery_pending" as const,
       report,
-      reportRevision:
-        priorTurn !== undefined && priorTurn !== report.turnId
-          ? cohort.reportRevision + 1
-          : cohort.reportRevision,
+      reportRevision: isNewAttempt
+        ? cohort.reportRevision + 1
+        : cohort.reportRevision,
     },
   };
 }
@@ -700,7 +728,26 @@ export function factsFromWorkerCompletion(
  * `observed`. Under-claiming is the safe direction; a caller that can verify
  * the root session owns an artifact may classify it more strongly.
  */
-export function reconcileBackgroundTasks(): void {
+export async function reconcileBackgroundTasks(input?: {
+  readonly workspaceId: string;
+  readonly rootSessionId: string;
+}): Promise<void> {
+  const before = completion.get();
+  if (before.recovery === undefined) {
+    // Only an empty slot is reconstructed history. Existing state is already
+    // an admission record and must retain its ordinary reporting lifecycle.
+    completion.update((current) =>
+      current.tasks.length === 0 && current.cohorts.length === 0
+        ? {
+            ...current,
+            recovery: {
+              kind: "pending" as const,
+              taskIds: backgroundTaskMembers().map((member) => member.taskId),
+            },
+          }
+        : { ...current, recovery: { kind: "complete" as const } }
+    );
+  }
   for (const member of backgroundTaskMembers()) {
     admitTask({
       taskId: member.taskId,
@@ -715,4 +762,123 @@ export function reconcileBackgroundTasks(): void {
   for (const terminal of backgroundTaskTerminals()) {
     recordTerminal(terminal, factsFromWorkerCompletion(terminal.output).facts);
   }
+
+  const recovery = completion.get().recovery;
+  if (input === undefined || recovery?.kind !== "pending") return;
+  const taskIds = new Set(recovery.taskIds);
+  const cohorts = completion
+    .get()
+    .cohorts.filter(
+      (cohort) =>
+        cohort.phase === "must_report" &&
+        cohort.taskIds.some((taskId) => taskIds.has(taskId))
+    );
+  const parts = await findCompletionReportPartsForCohorts({
+    cohortIds: cohorts.map((cohort) => cohort.cohortId),
+    rootSessionId: input.rootSessionId,
+    workspaceId: input.workspaceId,
+  });
+  // No durable part exists for this reconstructed batch. It may be the first
+  // normal task terminal after a state loss, so preserve its ordinary owed
+  // report rather than silently converting it into historical uncertainty.
+  if (parts.length === 0) {
+    completion.update((current) => ({
+      ...current,
+      recovery: { kind: "complete" as const },
+    }));
+    return;
+  }
+  const latestRevision = new Map<string, number>();
+  for (const part of parts) {
+    const prior = latestRevision.get(part.cohortId);
+    if (prior === undefined || part.reportRevision > prior)
+      latestRevision.set(part.cohortId, part.reportRevision);
+  }
+
+  // A bundled row represents one member of one physical effect. Credit it only
+  // when the durable rows show the exact complete roster accepted that effect.
+  // This rejects partial, inconsistent, or mixed-state bundles without trying
+  // to infer whether a provider may have received the omitted members.
+  const bundledDeliveryParts = new Map<string, (typeof parts)[number][]>();
+  for (const part of parts) {
+    if (!isDeliveryPart(part.physicalPart)) continue;
+    const key = bundledDeliveryPartKey(part);
+    if (key === undefined) continue;
+    const group = bundledDeliveryParts.get(key) ?? [];
+    group.push(part);
+    bundledDeliveryParts.set(key, group);
+  }
+  const completeAcceptedBundleParts = new Set<string>();
+  for (const [key, group] of bundledDeliveryParts) {
+    const count = group[0]?.bundleCount;
+    const members = new Set(
+      group.map(
+        (part) => `${part.cohortId}\u0000${String(part.reportRevision)}`
+      )
+    );
+    if (
+      count !== undefined &&
+      Number.isSafeInteger(count) &&
+      count > 0 &&
+      group.length === count &&
+      members.size === count &&
+      group.every(
+        (part) => part.bundleCount === count && part.state === "accepted"
+      )
+    )
+      completeAcceptedBundleParts.add(key);
+  }
+
+  const delivered = new Set<string>();
+  for (const cohort of cohorts) {
+    const revision = latestRevision.get(cohort.cohortId);
+    if (revision === undefined) continue;
+    const partsForRevision = parts.filter(
+      (part) =>
+        part.cohortId === cohort.cohortId && part.reportRevision === revision
+    );
+    const deliveryParts = partsForRevision.filter((part) =>
+      isDeliveryPart(part.physicalPart)
+    );
+    // SendBlue sends each media item separately. The ledger records accepted
+    // effects per item, but has no durable media-count or final-item marker,
+    // so it cannot prove a recovered subset was the entire user-visible set.
+    const hasUnboundedMediaRoster = partsForRevision.some((part) =>
+      isVariableMediaPart(part.physicalPart)
+    );
+    const allDeliveryPartsAccepted = deliveryParts.every((part) => {
+      if (part.state !== "accepted") return false;
+      if (part.bundleId === undefined && part.bundleCount === undefined)
+        return true;
+      const bundleKey = bundledDeliveryPartKey(part);
+      return (
+        bundleKey !== undefined && completeAcceptedBundleParts.has(bundleKey)
+      );
+    });
+    if (
+      deliveryParts.length > 0 &&
+      allDeliveryPartsAccepted &&
+      !hasUnboundedMediaRoster
+    )
+      delivered.add(cohort.cohortId);
+  }
+  completion.update((current) => ({
+    ...current,
+    recovery: { kind: "complete" as const },
+    cohorts: current.cohorts.map((cohort) => {
+      if (!cohorts.some((candidate) => candidate.cohortId === cohort.cohortId))
+        return cohort;
+      // A legacy row names one cohort only. It cannot prove its old physical
+      // message covered a sibling, so missing or uncertain siblings stay
+      // unconfirmed and never force a fresh unrelated user reply.
+      return {
+        ...cohort,
+        reportRevision:
+          latestRevision.get(cohort.cohortId) ?? cohort.reportRevision,
+        phase: delivered.has(cohort.cohortId)
+          ? ("delivered" as const)
+          : ("unconfirmed" as const),
+      };
+    }),
+  }));
 }

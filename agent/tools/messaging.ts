@@ -7,7 +7,10 @@ import {
 } from "eve/tools";
 import {
   bindReportAttempt,
+  recordTurnRequestIntent,
   reportPolicyForTurn,
+  turnRequestIntentFromOrigin,
+  turnRequestIntentFor,
   type ReportPolicy,
 } from "../lib/completion-report-policy";
 import { cohortsForReportCall } from "../lib/completion-obligations";
@@ -25,17 +28,39 @@ import { sendMessageInputSchema } from "../lib/send-message";
 
 export default defineDynamic({
   events: {
-    // Clears registrations persisted before this resolver became step-scoped.
-    "turn.started": () => null,
+    // Records the framework delivery source before tool steps change the
+    // visible history from the input that started this turn.
+    "turn.started": (event, context) => {
+      const parsed = turnEventSchema.safeParse(event);
+      const intent = turnRequestIntentFromOrigin(context.turn?.origin);
+      if (parsed.success && intent !== undefined) {
+        recordTurnRequestIntent(parsed.data.data.turnId, intent);
+      }
+      return null;
+    },
     "step.started": (event, context) => {
       const parsed = stepEventSchema.safeParse(event);
       const turnId = parsed.success ? parsed.data.data.turnId : undefined;
+      // Keep the turn-started snapshot when present. A typed fallback makes a
+      // resolver that resumes without its earlier callback agree with the model
+      // guard, while an old runtime still never infers a request from text or
+      // from a USER role that an Eve task wake can share.
+      const storedIntent = turnRequestIntentFor(turnId);
+      const fallbackIntent = turnRequestIntentFromOrigin(context.turn?.origin);
+      const intent = storedIntent ?? fallbackIntent;
+      if (
+        storedIntent === undefined &&
+        fallbackIntent !== undefined &&
+        turnId !== undefined
+      ) {
+        recordTurnRequestIntent(turnId, fallbackIntent);
+      }
       return finalDeliveryStatus(turnId) !== undefined
         ? null
         : resolveMessaging(
             context,
             turnId,
-            reportPolicyForTurn().kind === "must_report"
+            reportPolicyForTurn({ turnId, intent }).kind === "must_report"
           );
     },
   },
@@ -105,8 +130,10 @@ function assertCanSatisfyOwedReport(
   }
 }
 
-const stepEventSchema = z.object({ data: z.object({ turnId: z.string() }) });
-
+const turnEventSchema = z.object({ data: z.object({ turnId: z.string() }) });
+const stepEventSchema = z.object({
+  data: z.object({ stepIndex: z.number(), turnId: z.string() }),
+});
 function resolveMessaging(
   context: DynamicResolveContext,
   turnId: string | undefined,
@@ -125,7 +152,10 @@ function resolveMessaging(
     inputSchema: sendMessageInputSchema,
     execute({ final, ...message }, toolContext) {
       assertDeliveryOpen(toolContext.session.turn.id);
-      const policy = reportPolicyForTurn();
+      const policy = reportPolicyForTurn({
+        intent: turnRequestIntentFor(toolContext.session.turn.id),
+        turnId: toolContext.session.turn.id,
+      });
       assertCanSatisfyOwedReport(
         {
           final,
@@ -199,7 +229,10 @@ function resolveMessaging(
       assertDeliveryOpen(toolContext.session.turn.id);
       assertCanSatisfyOwedReport(
         { tool: "react_to_message" },
-        reportPolicyForTurn()
+        reportPolicyForTurn({
+          intent: turnRequestIntentFor(toolContext.session.turn.id),
+          turnId: toolContext.session.turn.id,
+        })
       );
       if (reaction.operation === "add") {
         beginFinalDelivery(

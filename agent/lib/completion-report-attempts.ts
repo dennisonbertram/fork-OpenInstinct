@@ -1,9 +1,10 @@
 import {
-  claimCompletionReportPart,
-  markAccepted,
-  markProviderAttempted,
-  markUnconfirmed,
+  claimCompletionReportBundle,
+  markBundleAccepted,
+  markBundleProviderAttempted,
+  markBundleUnconfirmed,
   type CompletionReportClaim,
+  type CompletionReportBundleMember,
 } from "@/db/services/completion-report-attempts";
 
 /**
@@ -41,21 +42,75 @@ export interface ReportPartIdentity {
    * again is a new revision, not a retry of the old one.
    */
   readonly reportRevision: number;
+  /**
+   * The complete ordered roster covered by this one physical report. New
+   * callers must provide it; the representative fields remain for old,
+   * single-cohort callers while channel consumers are migrated.
+   */
+  readonly cohorts?: readonly CompletionReportBundleMember[];
   readonly part: ReportPart;
 }
 
 export type DispatchPermission =
   /** This caller holds the right to dispatch, and has recorded that it will. */
-  | { readonly kind: "may_dispatch"; readonly claim: CompletionReportClaim }
+  | {
+      readonly kind: "may_dispatch";
+      readonly claim: CompletionReportClaim;
+      readonly claims: readonly CompletionReportClaim[];
+    }
   /** Already accepted. Do not dispatch; report what is known. */
-  | { readonly kind: "already_accepted"; readonly claim: CompletionReportClaim }
+  | {
+      readonly kind: "already_accepted";
+      readonly claim: CompletionReportClaim;
+      readonly claims: readonly CompletionReportClaim[];
+    }
   /**
    * Someone may already have dispatched this, or still holds the right to.
    * Never dispatch and never retry; say the outcome is unknown.
    */
-  | { readonly kind: "do_not_dispatch"; readonly claim: CompletionReportClaim };
+  | {
+      readonly kind: "do_not_dispatch";
+      readonly claim: CompletionReportClaim;
+      readonly claims: readonly CompletionReportClaim[];
+    };
 
 const defaultLeaseMs = 60_000;
+
+function membersFor(identity: ReportPartIdentity) {
+  const supplied = identity.cohorts ?? [
+    { cohortId: identity.cohortId, reportRevision: identity.reportRevision },
+  ];
+  const sorted = supplied.toSorted(
+    (left, right) =>
+      left.cohortId.localeCompare(right.cohortId) ||
+      left.reportRevision - right.reportRevision
+  );
+  for (const [index, member] of supplied.entries()) {
+    const canonical = sorted.at(index);
+    if (
+      !canonical ||
+      member.cohortId !== canonical.cohortId ||
+      member.reportRevision !== canonical.reportRevision
+    )
+      throw new Error("Completion report cohorts must be in canonical order.");
+  }
+  if (
+    sorted.some(
+      (member, index) =>
+        index > 0 &&
+        member.cohortId === sorted[index - 1]?.cohortId &&
+        member.reportRevision === sorted[index - 1]?.reportRevision
+    )
+  )
+    throw new Error("Completion report cohorts must be unique.");
+  return sorted;
+}
+
+function firstClaim(claims: readonly CompletionReportClaim[]) {
+  const claim = claims.at(0);
+  if (!claim) throw new Error("Completion report bundle had no claims.");
+  return claim;
+}
 
 /**
  * Claims one report part and records the intent to dispatch, in that order.
@@ -75,53 +130,55 @@ export async function permitReportDispatch(input: {
   readonly now?: Date;
 }): Promise<DispatchPermission> {
   const now = input.now ?? new Date();
-  const outcome = await claimCompletionReportPart({
+  const members = membersFor(input.identity);
+  const outcome = await claimCompletionReportBundle({
     channel: input.channel,
     contentDigest: input.contentDigest,
     conversationId: input.conversationId,
-    // The row id is incidental; identity is the logical key below, so a
-    // regenerated model call id cannot address a second row for the same part.
-    id: `${input.identity.cohortId}:${String(input.identity.reportRevision)}:${input.identity.part}`,
-    key: {
-      cohortId: input.identity.cohortId,
-      part: input.identity.part,
-      reportRevision: input.identity.reportRevision,
-      rootSessionId: input.identity.rootSessionId,
-      workspaceId: input.identity.workspaceId,
-    },
+    members,
+    physicalPart: input.identity.part,
+    rootSessionId: input.identity.rootSessionId,
     leaseExpiresAt: new Date(now.getTime() + (input.leaseMs ?? defaultLeaseMs)),
     leaseOwner: input.leaseOwner,
     now,
+    workspaceId: input.identity.workspaceId,
   });
 
   if (outcome.kind === "settled") {
-    return { claim: outcome.claim, kind: "already_accepted" };
+    return {
+      claim: firstClaim(outcome.claims),
+      claims: outcome.claims,
+      kind: "already_accepted",
+    };
   }
   if (outcome.kind === "uncertain") {
-    return { claim: outcome.claim, kind: "do_not_dispatch" };
+    return {
+      claim: firstClaim(outcome.claims),
+      claims: outcome.claims,
+      kind: "do_not_dispatch",
+    };
   }
 
-  const attempted = await markProviderAttempted({
-    id: outcome.claim.id,
-    leaseOwner: input.leaseOwner,
-    now,
-    version: outcome.claim.version,
-  });
+  const attempted = await markBundleProviderAttempted(outcome.claims);
   return attempted === undefined
-    ? { claim: outcome.claim, kind: "do_not_dispatch" }
-    : { claim: attempted, kind: "may_dispatch" };
+    ? {
+        claim: firstClaim(outcome.claims),
+        claims: outcome.claims,
+        kind: "do_not_dispatch",
+      }
+    : { claim: firstClaim(attempted), claims: attempted, kind: "may_dispatch" };
 }
 
 /** Records that the channel accepted this part. */
 export async function reportPartAccepted(input: {
-  readonly claim: CompletionReportClaim;
+  readonly claim?: CompletionReportClaim;
+  readonly claims?: readonly CompletionReportClaim[];
   readonly providerHandle?: string;
 }): Promise<boolean> {
-  const settled = await markAccepted({
-    id: input.claim.id,
-    leaseOwner: input.claim.leaseOwner,
+  const claims = input.claims ?? (input.claim ? [input.claim] : []);
+  const settled = await markBundleAccepted({
+    claims,
     providerHandle: input.providerHandle,
-    version: input.claim.version,
   });
   return settled !== undefined;
 }
@@ -131,12 +188,10 @@ export async function reportPartAccepted(input: {
  * Terminal: there is no path from here back to a dispatch.
  */
 export async function reportPartUnconfirmed(
-  claim: CompletionReportClaim
+  claim: CompletionReportClaim | readonly CompletionReportClaim[]
 ): Promise<boolean> {
-  const settled = await markUnconfirmed({
-    id: claim.id,
-    leaseOwner: claim.leaseOwner,
-    version: claim.version,
-  });
+  const settled = await markBundleUnconfirmed(
+    Array.isArray(claim) ? claim : [claim]
+  );
   return settled !== undefined;
 }
