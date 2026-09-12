@@ -6,6 +6,7 @@ import type { EveEvalToolCall } from "eve/evals";
 import { sendMessageInputSchema } from "@/agent/lib/send-message";
 import { loadSquareFixture, squareCases } from "@/evals/square/cases";
 import { bubbleGate } from "@/evals/square/shape";
+import { invoiceRecipientsAreResolved } from "@/evals/square/invoice-customer-resolution";
 
 const fixture = loadSquareFixture();
 
@@ -157,6 +158,15 @@ export default squareCases.map((squareCase) =>
           satisfies(
             searchOrdersDrainCursor,
             "continues every SearchOrders cursor until exhausted"
+          )
+        );
+      }
+      if (squareCase.requiresInvoiceCustomerResolution) {
+        t.check(
+          turn.toolCalls,
+          satisfies(
+            invoiceRecipientsAreResolved,
+            "resolves every invoice recipient from a matching customer record"
           )
         );
       }
