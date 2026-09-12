@@ -59,7 +59,10 @@ const context = {
 async function tools(resolveContext: DynamicResolveContext = context) {
   const resolve = messaging.events["step.started"];
   if (!resolve) throw new Error("Missing resolver");
-  const group = await resolve({ data: { turnId: "turn_1" } }, resolveContext);
+  const group = await resolve(
+    { data: { stepIndex: 0, turnId: "turn_1" } },
+    resolveContext
+  );
   if (!group) throw new Error("Missing messaging tools");
   return group;
 }

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { completionEvidenceContext } from "@/agent/lib/completion-evidence-context";
 import { reconcileBackgroundTasks } from "@/agent/lib/completion-obligations";
 import { resolveModeInstructions } from "@/agent/lib/mode";
+import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
 
 /**
  * Gives the model a durable, per-claim account of settled background work on
@@ -15,14 +16,8 @@ import { resolveModeInstructions } from "@/agent/lib/mode";
  * instruction, so it reaches the model as data the model reads, not a claim it
  * has to remember it once wrote correctly.
  *
- * Eve instructions resolve only on `session.started` or `turn.started` --
- * there is no `step.started` hook for instructions -- so this reconciles the
- * completion records itself rather than relying on the model resolver's
- * `step.started` call in `agent/agent.ts`, which runs later in the turn.
- * `reconcileBackgroundTasks()`'s own docstring says admission and terminal
- * promotion are both idempotent and "repeating this is free," so calling it
- * again here, ahead of that later call, cannot double-count anything -- it
- * just means this instruction is not built from records one step stale.
+ * This resolver runs before the model step, so it reconciles records with the
+ * authenticated workspace and root-session identity before it reads them.
  */
 
 const turnStartedEventSchema = z.object({
@@ -31,9 +26,15 @@ const turnStartedEventSchema = z.object({
 
 export default defineDynamic({
   events: {
-    "turn.started": (event, context) => {
-      reconcileBackgroundTasks();
-
+    "turn.started": async (event, context) => {
+      const caller =
+        context.session.auth.current ?? context.session.auth.initiator;
+      if (caller) {
+        await reconcileBackgroundTasks({
+          rootSessionId: context.session.id,
+          workspaceId: scopeFromPrincipal(caller).workspaceId,
+        });
+      }
       const turnId = turnStartedEventSchema.safeParse(event).data?.data.turnId;
       if (turnId === undefined) return null;
 

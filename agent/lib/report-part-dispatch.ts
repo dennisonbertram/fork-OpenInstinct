@@ -71,11 +71,11 @@ export async function dispatchReportPart<T>(input: {
   } catch (error) {
     // The attempt is already recorded, so this request may have reached the
     // provider. Unknown, not failed, and never resent.
-    await reportPartUnconfirmed(permission.claim);
+    await reportPartUnconfirmed(permission.claims);
     throw error;
   }
   await reportPartAccepted({
-    claim: permission.claim,
+    claims: permission.claims,
     providerHandle: input.providerHandle?.(value),
   });
   return { kind: "sent", value };

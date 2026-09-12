@@ -25,10 +25,14 @@ vi.mock("eve/context", () => ({
 import {
   admitTask,
   beginCohortReport,
+  bindCohortReports,
   recordTerminal,
   settleCohortReport,
 } from "@/agent/lib/completion-obligations";
-import { reportPartIdentityFor } from "@/agent/lib/completion-report-policy";
+import {
+  reportPartIdentityFor,
+  reportPolicyForTurn,
+} from "@/agent/lib/completion-report-policy";
 
 beforeEach(() => {
   for (const reset of state.resets) reset();
@@ -57,6 +61,21 @@ const place = {
   workspaceId: "workspace-1",
 };
 
+describe("fresh requests with an older report debt", () => {
+  it("PI-00: reports only the current request's cohort and leaves older debt owed", () => {
+    owedCohort("turn_old", "task_old");
+    owedCohort("turn_current", "task_current");
+
+    expect(
+      reportPolicyForTurn({ intent: "user_request", turnId: "turn_current" })
+    ).toEqual({ kind: "must_report", cohortIds: ["turn_current"] });
+    expect(reportPolicyForTurn()).toEqual({
+      kind: "must_report",
+      cohortIds: ["turn_old", "turn_current"],
+    });
+  });
+});
+
 describe("reportPartIdentityFor", () => {
   it("PI-01: names the cohort and revision the bound attempt belongs to", () => {
     owedCohort("turn_1", "task_a");
@@ -71,11 +90,33 @@ describe("reportPartIdentityFor", () => {
       })
     ).toEqual({
       cohortId: "turn_1",
+      cohorts: [{ cohortId: "turn_1", reportRevision: 0 }],
       part: "text",
       reportRevision: 0,
       rootSessionId: "root-session",
       workspaceId: "workspace-1",
     });
+  });
+
+  it("PI-01B: carries every cohort a physical report will settle", () => {
+    owedCohort("turn_b", "task_b");
+    owedCohort("turn_a", "task_a");
+    bindCohortReports(["turn_b", "turn_a"], {
+      callId: "call_bundle",
+      turnId: "turn_report",
+    });
+
+    expect(
+      reportPartIdentityFor({
+        ...place,
+        callId: "call_bundle",
+        part: "text",
+        turnId: "turn_report",
+      })?.cohorts
+    ).toEqual([
+      { cohortId: "turn_a", reportRevision: 0 },
+      { cohortId: "turn_b", reportRevision: 0 },
+    ]);
   });
 
   it("PI-02: an ordinary message that answers no obligation has no identity", () => {

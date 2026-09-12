@@ -5,6 +5,7 @@ import { chatSdkChannel, messageToUserContent } from "eve/channels/chat-sdk";
 import {
   finalDeliveryStatus,
   hasUnconfirmedProviderAttempt,
+  isFinalDeliveryReplay,
   recordUnconfirmedDelivery,
   requestFinalDeliveryCompletion,
   settleFinalDelivery,
@@ -312,6 +313,7 @@ const bridge = chatSdkChannel({
     },
     async "action.result"(event, context, session) {
       if (event.status !== "completed" || !context.thread) return;
+      if (isFinalDeliveryReplay(event.turnId, event.result.callId)) return;
       const scope = scopeForSession(session);
       const reaction = reactToMessageToolResultSchema.safeParse(event.result);
       if (reaction.success) {

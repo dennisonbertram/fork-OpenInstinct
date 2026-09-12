@@ -266,6 +266,13 @@ function projectReportPart(row: StoredReportPart) {
     version: row.version,
   };
 }
+function requireReportPart(
+  row: StoredReportPart | undefined
+): StoredReportPart {
+  if (!row) throw new Error("Synthetic report attempt is missing.");
+  return row;
+}
+
 const reportAttempts = vi.hoisted(() => {
   const durable = new Map<string, StoredReportPart>();
   const byId = (id: string) => {
@@ -372,16 +379,145 @@ const reportAttempts = vi.hoisted(() => {
       row.version += 1;
       return Promise.resolve(projectReportPart(row));
     },
+    claimCompletionReportBundle: (input: {
+      workspaceId: string;
+      rootSessionId: string;
+      members: readonly { cohortId: string; reportRevision: number }[];
+      physicalPart: string;
+      leaseOwner: string;
+      leaseExpiresAt: Date;
+      now?: Date;
+    }) => {
+      const now = input.now ?? new Date();
+      const entries = input.members.map((member) => {
+        const key = { ...input, ...member, part: input.physicalPart };
+        return { key, stored: durable.get(reportPartKeyOf(key)) };
+      });
+      if (entries.some((entry) => entry.stored)) {
+        if (entries.every((entry) => entry.stored?.state === "accepted"))
+          return Promise.resolve({
+            claims: entries.map((entry) =>
+              projectReportPart(requireReportPart(entry.stored))
+            ),
+            kind: "settled" as const,
+          });
+        if (
+          entries.every(
+            (entry) =>
+              entry.stored?.state === "claimed" &&
+              entry.stored.leaseExpiresAt <= now
+          )
+        ) {
+          for (const entry of entries) {
+            requireReportPart(entry.stored).leaseExpiresAt =
+              input.leaseExpiresAt;
+            requireReportPart(entry.stored).leaseOwner = input.leaseOwner;
+            requireReportPart(entry.stored).version += 1;
+          }
+          return Promise.resolve({
+            claims: entries.map((entry) =>
+              projectReportPart(requireReportPart(entry.stored))
+            ),
+            kind: "claimed" as const,
+          });
+        }
+        return Promise.resolve({
+          claims: entries.flatMap((entry) =>
+            entry.stored ? [projectReportPart(entry.stored)] : []
+          ),
+          kind: "uncertain" as const,
+        });
+      }
+      const claims = entries.map((entry) => {
+        const created: StoredReportPart = {
+          id: reportPartKeyOf(entry.key),
+          leaseExpiresAt: input.leaseExpiresAt,
+          leaseOwner: input.leaseOwner,
+          providerHandle: null,
+          state: "claimed",
+          version: 1,
+        };
+        durable.set(reportPartKeyOf(entry.key), created);
+        return projectReportPart(created);
+      });
+      return Promise.resolve({ claims, kind: "claimed" as const });
+    },
+    markBundleProviderAttempted: (
+      claims: readonly ReturnType<typeof projectReportPart>[]
+    ) => {
+      const rows = claims.map((claim) => byId(claim.id));
+      if (
+        rows.some(
+          (row, index) =>
+            row?.state !== "claimed" ||
+            row.leaseOwner !== claims.at(index)?.leaseOwner ||
+            row.version !== claims.at(index)?.version
+        )
+      )
+        return Promise.resolve(undefined);
+      for (const row of rows) {
+        requireReportPart(row).state = "attempted";
+        requireReportPart(row).version += 1;
+      }
+      return Promise.resolve(
+        rows.map((row) => projectReportPart(requireReportPart(row)))
+      );
+    },
+    markBundleAccepted: (input: {
+      readonly claims: readonly ReturnType<typeof projectReportPart>[];
+      readonly providerHandle?: string;
+    }) => {
+      const rows = input.claims.map((claim) => byId(claim.id));
+      if (
+        rows.some(
+          (row, index) =>
+            row?.state !== "attempted" ||
+            row.leaseOwner !== input.claims.at(index)?.leaseOwner ||
+            row.version !== input.claims.at(index)?.version
+        )
+      )
+        return Promise.resolve(undefined);
+      for (const row of rows) {
+        requireReportPart(row).state = "accepted";
+        requireReportPart(row).version += 1;
+        if (input.providerHandle !== undefined)
+          requireReportPart(row).providerHandle = input.providerHandle;
+      }
+      return Promise.resolve(
+        rows.map((row) => projectReportPart(requireReportPart(row)))
+      );
+    },
+    markBundleUnconfirmed: (
+      claims: readonly ReturnType<typeof projectReportPart>[]
+    ) => {
+      const rows = claims.map((claim) => byId(claim.id));
+      if (
+        rows.some(
+          (row, index) =>
+            row?.state !== "attempted" ||
+            row.leaseOwner !== claims.at(index)?.leaseOwner ||
+            row.version !== claims.at(index)?.version
+        )
+      )
+        return Promise.resolve(undefined);
+      for (const row of rows) {
+        requireReportPart(row).state = "unconfirmed";
+        requireReportPart(row).version += 1;
+      }
+      return Promise.resolve(
+        rows.map((row) => projectReportPart(requireReportPart(row)))
+      );
+    },
     reset: () => {
       durable.clear();
     },
   };
 });
 vi.mock("@/db/services/completion-report-attempts", () => ({
-  claimCompletionReportPart: reportAttempts.claimCompletionReportPart,
-  markAccepted: reportAttempts.markAccepted,
-  markProviderAttempted: reportAttempts.markProviderAttempted,
-  markUnconfirmed: reportAttempts.markUnconfirmed,
+  claimCompletionReportBundle: reportAttempts.claimCompletionReportBundle,
+  markBundleAccepted: reportAttempts.markBundleAccepted,
+  markBundleProviderAttempted: reportAttempts.markBundleProviderAttempted,
+  markBundleUnconfirmed: reportAttempts.markBundleUnconfirmed,
 }));
 
 const { linqChannelConfig } = await import("@/agent/channels/linq");
@@ -468,7 +604,7 @@ describe("Linq message delivery", () => {
         session: { id: "root", auth: { current: null, initiator: null } },
         messages: [],
       };
-      const event = { data: { turnId: "turn-1" } };
+      const event = { data: { stepIndex: 0, turnId: "turn-1" } };
       const tools = await messaging.events["step.started"]?.(
         event,
         resolverContext
@@ -560,7 +696,7 @@ describe("Linq message delivery", () => {
       messages: [],
     };
     const tools = await messaging.events["step.started"]?.(
-      { data: { turnId: "turn-1" } },
+      { data: { stepIndex: 0, turnId: "turn-1" } },
       resolverContext
     );
     if (!tools) throw new Error("Missing messaging tools");
@@ -619,7 +755,7 @@ describe("Linq message delivery", () => {
       messages: [],
     };
     const tools = await messaging.events["step.started"]?.(
-      { data: { turnId: "turn-1" } },
+      { data: { stepIndex: 0, turnId: "turn-1" } },
       resolverContext
     );
     if (!tools) throw new Error("Missing messaging tools");
@@ -677,7 +813,7 @@ describe("Linq message delivery", () => {
         session: { id: "root", auth: { current: null, initiator: null } },
         messages: [],
       };
-      const event = { data: { turnId: "turn-1" } };
+      const event = { data: { stepIndex: 0, turnId: "turn-1" } };
       const tools = dynamicToolSetSchema.parse(
         await messaging.events["step.started"]?.(event, resolverContext)
       );
@@ -747,7 +883,7 @@ describe("Linq message delivery", () => {
       session: { id: "root", auth: { current: null, initiator: null } },
       messages: [],
     };
-    const event = { data: { turnId: "turn-1" } };
+    const event = { data: { stepIndex: 0, turnId: "turn-1" } };
     const tools = dynamicToolSetSchema.parse(
       await messaging.events["step.started"]?.(event, resolverContext)
     );
@@ -1023,7 +1159,7 @@ describe("Linq message delivery", () => {
       messages: [],
     };
     const tools = await messaging.events["step.started"]?.(
-      { data: { turnId: "turn-1" } },
+      { data: { stepIndex: 0, turnId: "turn-1" } },
       resolverContext
     );
     if (!tools) throw new Error("Missing messaging tools");

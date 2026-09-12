@@ -7,7 +7,9 @@ import {
 } from "eve/tools";
 import {
   bindReportAttempt,
+  recordTurnRequestIntent,
   reportPolicyForTurn,
+  turnRequestIntentFor,
   type ReportPolicy,
 } from "../lib/completion-report-policy";
 import { cohortsForReportCall } from "../lib/completion-obligations";
@@ -26,16 +28,38 @@ import { sendMessageInputSchema } from "../lib/send-message";
 export default defineDynamic({
   events: {
     // Clears registrations persisted before this resolver became step-scoped.
-    "turn.started": () => null,
+    "turn.started": (event, context) => {
+      const parsed = turnEventSchema.safeParse(event);
+      if (parsed.success) {
+        recordTurnRequestIntent(
+          parsed.data.data.turnId,
+          isGenuineUserRequest(context) ? "user_request" : "report_only"
+        );
+      }
+      return null;
+    },
     "step.started": (event, context) => {
       const parsed = stepEventSchema.safeParse(event);
       const turnId = parsed.success ? parsed.data.data.turnId : undefined;
+      let intent = turnRequestIntentFor(turnId);
+      // Older persisted turns may resume without the turn.started intent. Only
+      // the first model step may recover it, and only from an actual user
+      // message. Tool results and unknown roles never imply a user request.
+      if (
+        intent === undefined &&
+        parsed.success &&
+        parsed.data.data.stepIndex === 0 &&
+        isGenuineUserRequest(context)
+      ) {
+        intent = "user_request";
+        if (turnId !== undefined) recordTurnRequestIntent(turnId, intent);
+      }
       return finalDeliveryStatus(turnId) !== undefined
         ? null
         : resolveMessaging(
             context,
             turnId,
-            reportPolicyForTurn().kind === "must_report"
+            reportPolicyForTurn({ turnId, intent }).kind === "must_report"
           );
     },
   },
@@ -105,7 +129,22 @@ function assertCanSatisfyOwedReport(
   }
 }
 
-const stepEventSchema = z.object({ data: z.object({ turnId: z.string() }) });
+const turnEventSchema = z.object({ data: z.object({ turnId: z.string() }) });
+const stepEventSchema = z.object({
+  data: z.object({ stepIndex: z.number(), turnId: z.string() }),
+});
+const frameworkAgentsNoteSchema = z.object({
+  content: z.string().startsWith("[Agents]"),
+  role: z.literal("user"),
+});
+
+function isGenuineUserRequest(context: DynamicResolveContext) {
+  const newest = context.messages.at(-1);
+  return (
+    newest?.role === "user" &&
+    !frameworkAgentsNoteSchema.safeParse(newest).success
+  );
+}
 
 function resolveMessaging(
   context: DynamicResolveContext,
@@ -125,7 +164,10 @@ function resolveMessaging(
     inputSchema: sendMessageInputSchema,
     execute({ final, ...message }, toolContext) {
       assertDeliveryOpen(toolContext.session.turn.id);
-      const policy = reportPolicyForTurn();
+      const policy = reportPolicyForTurn({
+        intent: turnRequestIntentFor(toolContext.session.turn.id),
+        turnId: toolContext.session.turn.id,
+      });
       assertCanSatisfyOwedReport(
         {
           final,
@@ -199,7 +241,10 @@ function resolveMessaging(
       assertDeliveryOpen(toolContext.session.turn.id);
       assertCanSatisfyOwedReport(
         { tool: "react_to_message" },
-        reportPolicyForTurn()
+        reportPolicyForTurn({
+          intent: turnRequestIntentFor(toolContext.session.turn.id),
+          turnId: toolContext.session.turn.id,
+        })
       );
       if (reaction.operation === "add") {
         beginFinalDelivery(

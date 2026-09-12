@@ -28,6 +28,21 @@ export function hasUnconfirmedProviderAttempt(turnId: string | undefined) {
   );
 }
 
+/** Suppress a replay only after this exact final send completed or may have dispatched. */
+export function isFinalDeliveryReplay(turnId: string, callId: string) {
+  const delivery = finalDelivery.get();
+  if (
+    delivery?.turnId === turnId &&
+    delivery.callId === callId &&
+    (delivery.status === "completed" || delivery.status === "unconfirmed")
+  ) {
+    return true;
+  }
+
+  const unconfirmed = unconfirmedProviderAttempt.get();
+  return unconfirmed?.turnId === turnId && unconfirmed.callId === callId;
+}
+
 export function beginFinalDelivery(
   turnId: string,
   callId: string,

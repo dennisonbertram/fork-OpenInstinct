@@ -49,10 +49,14 @@ export default defineAgent({
         }
         const caller = ctx.session.auth.current ?? ctx.session.auth.initiator;
         if (!caller) throw new Error("An authenticated user is required.");
+        const scope = scopeFromPrincipal(caller);
         // Keep this session's record of what background work is owed in line
         // with the framework's own task index, before anything decides what to
         // say. Idempotent, so a replayed step cannot double count.
-        reconcileBackgroundTasks();
+        await reconcileBackgroundTasks({
+          rootSessionId: ctx.session.id,
+          workspaceId: scope.workspaceId,
+        });
         const turnId = stepEventSchema.safeParse(event).data?.data.turnId;
         // Role, not text, is the signal: only a genuinely new user message
         // should let the model choose a tool other than send_message while a
@@ -100,10 +104,11 @@ export default defineAgent({
         }
         return {
           model: wrapInteractiveDeliveryGuard(
-            wrapLinqModelDurationProbe(
-              gateway(await getGatewayModel(scopeFromPrincipal(caller))),
-              { auth: caller, sessionId: ctx.session.id, turnId }
-            ),
+            wrapLinqModelDurationProbe(gateway(await getGatewayModel(scope)), {
+              auth: caller,
+              sessionId: ctx.session.id,
+              turnId,
+            }),
             toolChoice
           ),
         };

@@ -7,7 +7,13 @@ import {
   setDatabaseForIntegrationTest,
 } from "@/db";
 import {
+  claimCompletionReportBundle,
   claimCompletionReportPart,
+  completionReportBundlePart,
+  findCompletionReportPartsForCohorts,
+  markBundleAccepted,
+  markBundleProviderAttempted,
+  markBundleUnconfirmed,
   findCompletionReportPart,
   markAccepted,
   markProviderAttempted,
@@ -428,6 +434,297 @@ describe.skipIf(realPostgres === undefined)(
           ]
         );
         expect(rows.rowCount).toBe(1);
+      } finally {
+        resetDatabaseForIntegrationTest();
+        await pool.end();
+      }
+    });
+
+    it("reserves an exact report bundle without allowing legacy or overlapping roster bypasses", async () => {
+      if (!realPostgres) throw new Error("Real Postgres was not initialized.");
+      const pool = new Pool({
+        connectionString: realPostgres.connectionString,
+      });
+      const database = drizzle({ client: pool, schema });
+      setDatabaseForIntegrationTest(database);
+      const now = new Date();
+      const scope = {
+        rootSessionId: "bundle-root",
+        workspaceId: "bundle-workspace",
+      };
+      const memberA = { cohortId: "turn_a", reportRevision: 0 };
+      const memberB = { cohortId: "turn_b", reportRevision: 0 };
+      const memberC = { cohortId: "turn_c", reportRevision: 0 };
+      const memberD = { cohortId: "turn_d", reportRevision: 0 };
+      const memberE = { cohortId: "turn_e", reportRevision: 0 };
+      const memberG = { cohortId: "turn_g", reportRevision: 0 };
+      const memberH = { cohortId: "turn_h", reportRevision: 0 };
+      const memberI = { cohortId: "turn_i", reportRevision: 0 };
+      const memberJ = { cohortId: "turn_j", reportRevision: 0 };
+      const memberK = { cohortId: "turn_k", reportRevision: 0 };
+      const call = (members: readonly (typeof memberA)[], owner: string) =>
+        claimCompletionReportBundle({
+          ...scope,
+          channel: "sendblue",
+          contentDigest: "synthetic-digest",
+          conversationId: "synthetic-conversation",
+          leaseExpiresAt: new Date(now.getTime() + 60_000),
+          leaseOwner: owner,
+          members,
+          now,
+          physicalPart: "text",
+        });
+      try {
+        await pool.query(
+          `INSERT INTO workspaces (id, lifecycle_state, created_at)
+             VALUES ($1, 'active', $2), ($3, 'active', $2)`,
+          [scope.workspaceId, now, "bundle-workspace-other"]
+        );
+
+        // A legacy accepted `text` row for A is not evidence that a later
+        // physical [A,B] report reached the provider. The whole new bundle is
+        // therefore uncertain, never falsely settled or sent.
+        const legacy = await claimCompletionReportPart({
+          channel: "sendblue",
+          contentDigest: "old",
+          conversationId: "old",
+          id: "legacy-a",
+          key: { ...scope, ...memberA, part: "text" },
+          leaseExpiresAt: new Date(now.getTime() + 60_000),
+          leaseOwner: "legacy",
+          now,
+        });
+        if (legacy.kind !== "claimed") throw new Error("expected legacy claim");
+        const legacyAttempted = await markProviderAttempted({
+          id: legacy.claim.id,
+          leaseOwner: "legacy",
+          version: legacy.claim.version,
+          now,
+        });
+        if (!legacyAttempted) throw new Error("expected legacy attempt");
+        await markAccepted({
+          id: legacyAttempted.id,
+          leaseOwner: "legacy",
+          version: legacyAttempted.version,
+          now,
+        });
+        await expect(
+          call([memberA, memberB], "new-owner")
+        ).resolves.toMatchObject({ kind: "uncertain" });
+
+        // A fresh exact roster claims both rows, records both before one
+        // provider call, and treats a changed model call id/replay as settled
+        // only after every member was accepted.
+        const exactPart = completionReportBundlePart({
+          ...scope,
+          members: [memberB, memberC],
+          physicalPart: "text",
+        });
+        const exact = await call([memberB, memberC], "owner-a");
+        expect(exact.kind).toBe("claimed");
+        if (exact.kind !== "claimed") throw new Error("expected bundle claim");
+        expect(exact.claims).toHaveLength(2);
+        const attempted = await markBundleProviderAttempted(exact.claims);
+        expect(attempted).toHaveLength(2);
+        if (!attempted) throw new Error("expected bundle attempted");
+        await expect(
+          markBundleAccepted({
+            claims: attempted,
+            providerHandle: "provider-1",
+          })
+        ).resolves.toHaveLength(2);
+        const restartPool = new Pool({
+          connectionString: realPostgres.connectionString,
+        });
+        setDatabaseForIntegrationTest(drizzle({ client: restartPool, schema }));
+        try {
+          await expect(
+            call([memberB, memberC], "owner-replay")
+          ).resolves.toMatchObject({ kind: "settled" });
+        } finally {
+          await restartPool.end();
+          setDatabaseForIntegrationTest(database);
+        }
+
+        // A different roster sharing B cannot encode a new part to bypass the
+        // accepted [B,C] physical effect.
+        await expect(
+          call([memberA, memberB], "owner-overlap")
+        ).resolves.toMatchObject({ kind: "uncertain" });
+
+        // A stale version in one member rolls back the *entire* pre-dispatch
+        // transition. No subset may reach attempted, because the provider call
+        // is permitted only after all rows say attempted.
+        const faultPart = completionReportBundlePart({
+          ...scope,
+          members: [memberD, memberE],
+          physicalPart: "text",
+        });
+        const fault = await call([memberD, memberE], "fault-owner");
+        if (fault.kind !== "claimed") throw new Error("expected fault claim");
+        const [faultFirst, faultSecond] = fault.claims;
+        if (!faultFirst || !faultSecond)
+          throw new Error("expected two fault claims");
+        await expect(
+          markBundleProviderAttempted([
+            faultFirst,
+            { ...faultSecond, version: faultSecond.version + 1 },
+          ])
+        ).resolves.toBeUndefined();
+        const afterFault = await findCompletionReportPartsForCohorts({
+          ...scope,
+          cohortIds: [memberD.cohortId, memberE.cohortId],
+        });
+        expect(afterFault).toHaveLength(2);
+        expect(afterFault.every((row) => row.state === "claimed")).toBe(true);
+
+        // An exact expired claimed roster is recoverable only when it is the
+        // complete compatible history. A legacy accepted row for one member
+        // makes coverage mixed, so recovery must remain uncertain.
+        const mixed = await call([memberJ, memberK], "mixed-owner");
+        if (mixed.kind !== "claimed") throw new Error("expected mixed claim");
+        await pool.query(
+          `UPDATE completion_report_attempts SET lease_expires_at = $1
+             WHERE root_session_id = $2 AND cohort_id IN ($3, $4)`,
+          [
+            new Date(now.getTime() - 1_000),
+            scope.rootSessionId,
+            memberJ.cohortId,
+            memberK.cohortId,
+          ]
+        );
+        await pool.query(
+          `INSERT INTO completion_report_attempts
+             (id, workspace_id, root_session_id, channel, conversation_id,
+              cohort_id, report_revision, part, state, content_digest,
+              lease_owner, lease_expires_at, version, created_at, updated_at)
+           VALUES ($1, $2, $3, 'sendblue', 'legacy-conversation', $4, 0,
+                   'text', 'accepted', 'legacy-digest', 'legacy-owner', $5,
+                   2, $5, $5)`,
+          [
+            "mixed-legacy-j",
+            scope.workspaceId,
+            scope.rootSessionId,
+            memberJ.cohortId,
+            now,
+          ]
+        );
+        await expect(
+          call([memberJ, memberK], "mixed-recovery-owner")
+        ).resolves.toMatchObject({ kind: "uncertain" });
+
+        // A pre-dispatch crash is recoverable only after every lease expired;
+        // the new owner receives every member. Once attempted, the existing
+        // earlier crash-window test proves the row is never taken over.
+        await pool.query(
+          `UPDATE completion_report_attempts SET lease_expires_at = $1 WHERE part = $2`,
+          [new Date(now.getTime() - 1_000), faultPart]
+        );
+        const recoveredClaim = await call([memberD, memberE], "recovery-owner");
+        expect(recoveredClaim.kind).toBe("claimed");
+        if (recoveredClaim.kind !== "claimed")
+          throw new Error("expected recovered bundle claim");
+        const recoveredAttempt = await markBundleProviderAttempted(
+          recoveredClaim.claims
+        );
+        if (!recoveredAttempt)
+          throw new Error("expected recovered bundle attempt");
+        const [recoveredFirst, recoveredSecond] = recoveredAttempt;
+        if (!recoveredFirst || !recoveredSecond)
+          throw new Error("expected two recovered attempts");
+        await expect(
+          markBundleAccepted({
+            claims: [
+              recoveredFirst,
+              {
+                ...recoveredSecond,
+                version: recoveredSecond.version + 1,
+              },
+            ],
+          })
+        ).resolves.toBeUndefined();
+        const afterAcceptedFault = await findCompletionReportPartsForCohorts({
+          ...scope,
+          cohortIds: [memberD.cohortId, memberE.cohortId],
+        });
+        expect(
+          afterAcceptedFault.every((row) => row.state === "attempted")
+        ).toBe(true);
+        await expect(
+          markBundleUnconfirmed(recoveredAttempt)
+        ).resolves.toHaveLength(2);
+        await expect(
+          call([memberD, memberE], "never-retry-owner")
+        ).resolves.toMatchObject({ kind: "uncertain" });
+
+        // Overlapping fresh rosters are serialized by the scoped advisory
+        // lock. Exactly one may reserve shared member E.
+        const races = await Promise.all([
+          call([memberG, memberH], "race-a"),
+          call([memberH, memberI], "race-b"),
+        ]);
+        expect(
+          races.filter((outcome) => outcome.kind === "claimed")
+        ).toHaveLength(1);
+        expect(
+          races.filter((outcome) => outcome.kind === "uncertain")
+        ).toHaveLength(1);
+
+        // Same cohort names in another scope are independent. This also proves
+        // UUID row IDs do not collide across root/session scopes.
+        const isolated = await claimCompletionReportBundle({
+          ...scope,
+          workspaceId: "bundle-workspace-other",
+          members: [memberA, memberB],
+          channel: "sendblue",
+          contentDigest: "isolated",
+          conversationId: "isolated",
+          leaseExpiresAt: new Date(now.getTime() + 60_000),
+          leaseOwner: "isolated",
+          now,
+          physicalPart: "text",
+        });
+        expect(isolated.kind).toBe("claimed");
+
+        const otherRoot = await claimCompletionReportBundle({
+          ...scope,
+          rootSessionId: "bundle-root-other",
+          members: [memberA, memberB],
+          channel: "sendblue",
+          contentDigest: "other-root",
+          conversationId: "other-root",
+          leaseExpiresAt: new Date(now.getTime() + 60_000),
+          leaseOwner: "other-root",
+          now,
+          physicalPart: "text",
+        });
+        expect(otherRoot.kind).toBe("claimed");
+
+        const recovered = await findCompletionReportPartsForCohorts({
+          ...scope,
+          cohortIds: ["turn_a", "turn_b", "turn_c"],
+        });
+        expect(recovered).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              cohortId: "turn_a",
+              part: "text",
+              state: "accepted",
+            }),
+            expect.objectContaining({
+              cohortId: "turn_b",
+              part: exactPart,
+              state: "accepted",
+              bundleCount: 2,
+            }),
+            expect.objectContaining({
+              cohortId: "turn_c",
+              part: exactPart,
+              state: "accepted",
+              bundleCount: 2,
+            }),
+          ])
+        );
       } finally {
         resetDatabaseForIntegrationTest();
         await pool.end();

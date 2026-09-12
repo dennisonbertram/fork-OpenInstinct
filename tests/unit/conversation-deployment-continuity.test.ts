@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { defineState } from "eve/context";
 import {
   ContextContainer,
   contextStorage,
 } from "../../node_modules/eve/dist/src/context/container.js";
+import { ContextKey } from "../../node_modules/eve/dist/src/context/key.js";
 import {
   deserializeContext,
   serializeContext,
@@ -37,6 +39,24 @@ function keyRegistry(): Map<string, unknown> {
 }
 
 const DROPPED_KEY_NAME = "completion.obligations";
+const CODEC_KEY_NAME = "completion.codec";
+const CONTINUITY_KEY_NAMES = [
+  DROPPED_KEY_NAME,
+  CODEC_KEY_NAME,
+  "eve.taskMembers",
+  "eve.taskTerminals",
+] as const;
+
+const codecKey = new ContextKey<Date>(CODEC_KEY_NAME, {
+  codec: {
+    deserialize(value) {
+      return new Date(z.string().parse(value));
+    },
+    serialize(value) {
+      return value.toISOString();
+    },
+  },
+});
 
 /** The completion records this case hands from one revision to the next. */
 interface OwedCompletionRecords {
@@ -60,41 +80,36 @@ interface OwedCompletionRecords {
 }
 
 describe("conversation deployment continuity", () => {
-  let savedRegistryEntry: unknown;
-  let registryEntrySaved = false;
+  const savedRegistryEntries = new Map<string, unknown>();
+  let registryEntriesSaved = false;
 
   afterEach(() => {
     // The key registry is process-global (shared with every other test file
     // in this run), so a simulated "older build" MUST be undone here even if
     // an assertion above throws mid-test.
-    if (registryEntrySaved) {
-      keyRegistry().set(DROPPED_KEY_NAME, savedRegistryEntry);
-      registryEntrySaved = false;
+    if (registryEntriesSaved) {
+      const registry = keyRegistry();
+      for (const name of CONTINUITY_KEY_NAMES) {
+        const saved = savedRegistryEntries.get(name);
+        if (saved === undefined) {
+          registry.delete(name);
+        } else {
+          registry.set(name, saved);
+        }
+      }
+      savedRegistryEntries.clear();
+      registryEntriesSaved = false;
     }
   });
 
   /**
-   * CDC-01: On 2026-09-10, a live conversation's turn at 21:07:49Z ran on a
-   * revision that had just shipped the completion-obligations feature and
-   * admitted a background-task cohort that still owed the user a completion
-   * report. The next turn of that same conversation, at 21:40:37Z, was routed
-   * to an older running deployment (commit 61b801c) that predated the
-   * feature and had never registered the "completion.obligations" context
-   * key (nor "eve.taskTerminals" / "eve.taskMembers"). Deserializing the
-   * handed-off context silently dropped the unrecognized keys -- logging
-   * only "[eve:context.serialize] dropping unknown context key" -- so the
-   * cohort's obligation to report vanished with no error and no report, and
-   * the user received a Tapback instead of the result they were owed.
+   * CDC-01: an old root deployment may deserialize a context emitted by a
+   * newer child even though it has not registered the child's completion and
+   * task-projection keys. The old root cannot interpret those values, but it
+   * must serialize them unchanged before the next compatible child hydrates
+   * the continuation. Otherwise an owed completion report disappears.
    */
-  // Skipped, and only because the repair is not decided yet -- not because the
-  // reproduction is doubted. It fails today for exactly the right reason, and
-  // plan 017 requires Slice A to settle a routing decision before code: an
-  // internal wake carries no acceptedDeploymentId and should therefore start on
-  // the current deployment, so what actually routed those two turns to a day-old
-  // revision is still unexplained. Writing the fix now would be the guessed fix
-  // the plan forbids. Unskip it with the repair, and do not weaken it.
-  // oxlint-disable-next-line vitest/no-disabled-tests -- deliberate: the reproduction is correct and fails today; the repair is blocked on plan 017 Slice A's routing decision, and the reason is written above.
-  it.skip("CDC-01: deserializing a payload with a key this build never registered must not silently erase that key's state", async () => {
+  it("CDC-01: an old root preserves unknown state for a compatible child", async () => {
     const container = new ContextContainer();
 
     // Shaped like the real completion state so the payload carries genuine
@@ -130,56 +145,112 @@ describe("conversation deployment continuity", () => {
       retired: [],
     };
 
+    const codecValue = new Date("2026-09-12T01:03:02.762Z");
     contextStorage.run(container, () => {
       completion.update(() => cohortOwingAReport);
+      container.set(codecKey, codecValue);
     });
 
     // Step 1: the newer revision hands off the turn.
-    const payload = serializeContext(container);
+    const taskMembers = [
+      {
+        parentTurnId: "turn_21:07:49Z",
+        settled: true,
+        taskId: "task_report_writer",
+        workerName: "worker",
+      },
+    ];
+    const taskTerminals = [
+      {
+        output: "Example Domain",
+        parentTurnId: "turn_21:07:49Z",
+        status: "completed",
+        taskId: "task_report_writer",
+        terminalTaskId: "task_report_writer",
+        workerName: "worker",
+      },
+    ];
+    const payload = Object.assign(serializeContext(container), {
+      "eve.taskMembers": taskMembers,
+      "eve.taskTerminals": taskTerminals,
+    });
     expect(payload[DROPPED_KEY_NAME]).toEqual(cohortOwingAReport);
 
-    // Step 2: simulate the older build (commit 61b801c) receiving that
-    // handoff -- it never imported completion-obligations.ts, so its
-    // registry has no entry for this key name.
+    // Step 2: simulate the old root receiving the newer child's handoff.
+    // Its build predates these keys, so it has no registry entries for them.
     const registry = keyRegistry();
-    savedRegistryEntry = registry.get(DROPPED_KEY_NAME);
-    registryEntrySaved = true;
-    registry.delete(DROPPED_KEY_NAME);
+    for (const name of CONTINUITY_KEY_NAMES) {
+      savedRegistryEntries.set(name, registry.get(name));
+      registry.delete(name);
+    }
+    registryEntriesSaved = true;
 
     // Step 3: the older build deserializes the payload.
     const deserialized = await deserializeContext(payload);
 
-    // Step 4: assert the defect. Nothing surfaces the loss -- deserializing
-    // does not throw or report an error the caller can see.
-    const survivingKeyNames = [...deserialized.entries()].map(
-      ([key]) => key.name
+    // Step 4: a module can register a key while the old root is still running.
+    // The stored value remains its wire form, so forwarding must not apply that
+    // codec a second time. Serializing models the old root returning control to
+    // a compatible child.
+    registry.set(CODEC_KEY_NAME, codecKey);
+    const forwardedPayload = serializeContext(deserialized);
+    expect(forwardedPayload).toMatchObject({
+      "completion.codec": codecValue.toISOString(),
+      "completion.obligations": cohortOwingAReport,
+      "eve.taskMembers": taskMembers,
+      "eve.taskTerminals": taskTerminals,
+    });
+
+    // The compatible child resolves the registered handle while hydrating the
+    // forwarded payload, so the owed cohort reaches its delivery policy intact.
+    for (const name of CONTINUITY_KEY_NAMES) {
+      const saved = savedRegistryEntries.get(name);
+      if (saved === undefined) {
+        registry.delete(name);
+      } else {
+        registry.set(name, saved);
+      }
+    }
+    savedRegistryEntries.clear();
+    registryEntriesSaved = false;
+    const recoveredContext = await deserializeContext(forwardedPayload);
+    const recovered = contextStorage.run(recoveredContext, () =>
+      completion.get()
     );
-
-    // This is the behaviour we want: a build must not be able to silently
-    // discard state it cannot resolve. Today it does, so this fails.
-    //
-    // Two repairs would satisfy the requirement and this case deliberately
-    // encodes the second, because it is the one that keeps the user's report:
-    //
-    //   (a) refuse loudly -- deserialization throws, the turn fails visibly, and
-    //       nothing is lost because nothing proceeds.
-    //   (b) opaque pass-through -- an unresolvable entry is carried through
-    //       deserialize/serialize untouched, so a build that cannot read the
-    //       state also cannot destroy it, and the next compatible turn still
-    //       owes and can deliver the report.
-    //
-    // (a) turns a silent data loss into a visible outage; (b) turns it into a
-    // delay. If a maintainer chooses (a), this case must be rewritten to expect
-    // the throw rather than weakened to accept the drop.
-    expect(survivingKeyNames).toContain(DROPPED_KEY_NAME);
-
-    // The cohort's obligation to report is the actual lost state, not a log
-    // string or a revision comparison. Restore the registry so the current
-    // build's own key handle can read the deserialized container back.
-    registry.set(DROPPED_KEY_NAME, savedRegistryEntry);
-    registryEntrySaved = false;
-
-    const recovered = contextStorage.run(deserialized, () => completion.get());
     expect(recovered).toEqual(cohortOwingAReport);
+    expect(recoveredContext.get(codecKey)).toEqual(codecValue);
+  });
+
+  it("CDC-02: an ordinary hydrated update replaces an opaque predecessor", async () => {
+    const newerChild = new ContextContainer();
+    const originalValue = new Date("2026-09-12T01:03:02.762Z");
+    newerChild.set(codecKey, originalValue);
+    const payload = serializeContext(newerChild);
+
+    const registry = keyRegistry();
+    savedRegistryEntries.set(CODEC_KEY_NAME, registry.get(CODEC_KEY_NAME));
+    registryEntriesSaved = true;
+    registry.delete(CODEC_KEY_NAME);
+    const oldRoot = await deserializeContext(payload);
+
+    // A compatible runtime module may load before the old root finishes. Its
+    // normal update supersedes the opaque wire value rather than being
+    // overwritten by it during the next serialization boundary.
+    registry.set(CODEC_KEY_NAME, codecKey);
+    const updatedValue = new Date("2026-09-12T01:05:00.000Z");
+    oldRoot.set(codecKey, updatedValue);
+    const forwardedPayload = serializeContext(oldRoot);
+    expect(forwardedPayload[CODEC_KEY_NAME]).toBe(updatedValue.toISOString());
+
+    const saved = savedRegistryEntries.get(CODEC_KEY_NAME);
+    if (saved === undefined) {
+      registry.delete(CODEC_KEY_NAME);
+    } else {
+      registry.set(CODEC_KEY_NAME, saved);
+    }
+    savedRegistryEntries.clear();
+    registryEntriesSaved = false;
+    const compatibleChild = await deserializeContext(forwardedPayload);
+    expect(compatibleChild.get(codecKey)).toEqual(updatedValue);
   });
 });

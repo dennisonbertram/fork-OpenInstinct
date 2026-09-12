@@ -211,7 +211,7 @@
 
 <main>
   <header>
-    <p class="eyebrow">agent/ · eve 0.49 · read 2026-09-04</p>
+    <p class="eyebrow">agent/ · eve 0.49 · read 2026-09-12</p>
     <h1>OpenInstinct Agent Loop</h1>
     <p>
       How one user message becomes one reply. Every box names the file that owns
@@ -349,17 +349,23 @@
           agent/hooks/session-owner.ts
         </text>
         <text x="592" y="126" font-size="12">
-          one session per thread, survives
+          one session per thread; compatible
         </text>
-        <text x="592" y="142" font-size="12">restarts and redeploys</text>
-        <text x="592" y="170" font-size="12" class="mono">session.started</text>
-        <text x="592" y="186" font-size="12">ensureScope · claimSession</text>
-        <text x="592" y="208" font-size="12" class="mono">
+        <text x="592" y="142" font-size="12">deploys preserve known state</text>
+        <text x="592" y="160" font-size="12">
+          unknown context forwards opaque
+        </text>
+        <text x="592" y="176" font-size="12">
+          until its owner can hydrate it
+        </text>
+        <text x="592" y="202" font-size="12" class="mono">session.started</text>
+        <text x="592" y="218" font-size="12">ensureScope · claimSession</text>
+        <text x="592" y="238" font-size="12" class="mono">
           message.received
         </text>
-        <text x="592" y="224" font-size="12">saveChat</text>
-        <text x="592" y="246" font-size="12" class="mono">turn.started</text>
-        <text x="592" y="262" font-size="12">checkBudget(model_tokens)</text>
+        <text x="592" y="254" font-size="12">saveChat</text>
+        <text x="592" y="274" font-size="12" class="mono">turn.started</text>
+        <text x="592" y="290" font-size="12">checkBudget(model_tokens)</text>
 
         <line
           x1="540"
@@ -465,13 +471,13 @@
           linq.ts · sendblue.ts · messaging.ts
         </text>
         <text x="312" y="412" font-size="12">
-          1. model calls send_message, one call = one bubble
+          1. resolve the current report policy
         </text>
         <text x="312" y="428" font-size="12">
-          2. checkBudget(provider_message) · attach artifacts
+          2. claim report members · check budget
         </text>
         <text x="312" y="444" font-size="12">
-          3. thread.post(); channel never re-splits the text
+          3. thread.post once; settled replays skip
         </text>
 
         <!-- reply box, web -->
@@ -505,10 +511,10 @@
           marker-end="url(#arrow-accent)"
         />
         <text x="120" y="330" font-size="11.5" class="accent-text">
-          thread.post() once per send_message call,
+          report members claim and mark attempted
         </text>
         <text x="120" y="346" font-size="11.5" class="accent-text">
-          in order; each call carries its own attachments
+          before post; exact settled callback replays skip
         </text>
 
         <!-- typing status note -->
@@ -540,12 +546,20 @@
       provider message ID. Its Chat SDK locks and pending input IDs live in
       Postgres, so an exact text reply resumes the parked Eve request rather
       than starting a new model turn. The session, vault, Square grant, and
-      usage ledger all key on that scope. The turn runs as a Workflow SDK
-      durable workflow; the accent path is the reply leaving the turn. On
-      iMessage each
-      <code>send_message</code> call becomes exactly one provider message; text
-      is never re-split by paragraph or bullet. The provider contract and eval
-      gym gate this mapping, native attachments, Tapbacks, and approval text.
+      usage ledger all key on that scope. Patched Eve forwards a context entry
+      an older bundle cannot read without interpreting or deleting it; a
+      compatible bundle can hydrate it later. This does not retroactively repair
+      a root that an earlier deployed revision already drove. If completion
+      state is absent, recovery compares typed task terminals with durable
+      report parts. Only known, latest, complete accepted coverage is delivered;
+      partial or ambiguous history is unconfirmed and is never automatically
+      resent. A fresh request with no current report obligation can therefore
+      send its own text without old task content. A report-only wake binds every
+      currently owed cohort. Before a physical report reaches the provider, its
+      whole roster is claimed and marked attempted together; acceptance is then
+      recorded for that roster. An exact SendBlue callback replay after
+      completed or unconfirmed final delivery is skipped. Provider acceptance is
+      not evidence that the recipient received or read a message.
     </figcaption>
   </figure>
 
@@ -833,11 +847,12 @@
           <tr>
             <td>step.started</td>
             <td>
-              check auth and lease, then pick the workspace gateway model;
-              model-free contract evals select their local fixture. On an
-              ordinary Eve or Linq turn with no delivery attempt yet, require
-              one model tool call; pending, unconfirmed, and completed attempts
-              keep the model's normal tool choice.
+              check auth and lease, reconcile durable completion state, then
+              pick the workspace gateway model; model-free contract evals select
+              their local fixture. On an ordinary Eve or Linq turn with no
+              delivery attempt yet, require one model tool call; pending,
+              unconfirmed, and completed attempts keep the model's normal tool
+              choice.
               <code>agent/agent.ts</code>
             </td>
           </tr>
@@ -982,11 +997,14 @@
           follows the same turn-scoped completion path, while remove does not.
           Later sends after a pending, unconfirmed, or completed final delivery
           are rejected and the next step omits messaging tools; a later turn has
-          a fresh delivery state. Web chat keeps its session observer open while
-          waiting and retires delivered or cancelled worker observers; worker
-          approvals appear in the normal conversation without requiring the
-          developer trace. Parent completion receipts also settle the task
-          sidebar, without polling or opening another child stream.
+          a fresh delivery state. SendBlue skips only an exact completed or
+          unconfirmed action-result replay before provider work; it does not
+          retry an uncertain send, and provider acceptance is not recipient
+          receipt. Web chat keeps its session observer open while waiting and
+          retires delivered or cancelled worker observers; worker approvals
+          appear in the normal conversation without requiring the developer
+          trace. Parent completion receipts also settle the task sidebar,
+          without polling or opening another child stream.
         </li>
       </ul>
     </div>

@@ -146,7 +146,49 @@ const store = {
   },
 };
 
+function requireClaim(
+  claim: CompletionReportClaim | undefined
+): CompletionReportClaim {
+  if (!claim) throw new Error("Synthetic report transition was lost.");
+  return claim;
+}
+
 vi.mock("@/db/services/completion-report-attempts", () => ({
+  claimCompletionReportBundle: async (input: {
+    workspaceId: string;
+    rootSessionId: string;
+    members: readonly { cohortId: string; reportRevision: number }[];
+    physicalPart: string;
+    leaseOwner: string;
+    leaseExpiresAt: Date;
+    now?: Date;
+  }) => {
+    const outcomes = await Promise.all(
+      input.members.map((member) =>
+        store.claim({
+          id: keyOf({ ...input, ...member, part: input.physicalPart }),
+          key: { ...input, ...member, part: input.physicalPart },
+          leaseExpiresAt: input.leaseExpiresAt,
+          leaseOwner: input.leaseOwner,
+          now: input.now,
+        })
+      )
+    );
+    if (outcomes.every((outcome) => outcome.kind === "claimed"))
+      return {
+        claims: outcomes.map((outcome) => outcome.claim),
+        kind: "claimed" as const,
+      };
+    if (outcomes.every((outcome) => outcome.kind === "settled"))
+      return {
+        claims: outcomes.map((outcome) => outcome.claim),
+        kind: "settled" as const,
+      };
+    return {
+      claims: outcomes.map((outcome) => outcome.claim),
+      kind: "uncertain" as const,
+    };
+  },
   claimCompletionReportPart: (input: Parameters<typeof store.claim>[0]) =>
     store.claim(input),
   findCompletionReportPart: (key: CompletionReportPartKey) => {
@@ -172,6 +214,62 @@ vi.mock("@/db/services/completion-report-attempts", () => ({
     leaseOwner: string;
     version: number;
   }) => Promise.resolve(store.transition("attempted", "unconfirmed", input)),
+  markBundleProviderAttempted: (claims: readonly CompletionReportClaim[]) => {
+    const rows = claims.map((claim) => byId(claim.id));
+    if (
+      rows.some(
+        (row, index) =>
+          row?.state !== "claimed" ||
+          row.leaseOwner !== claims.at(index)?.leaseOwner ||
+          row.version !== claims.at(index)?.version
+      )
+    )
+      return Promise.resolve(undefined);
+    return Promise.resolve(
+      claims.map((claim) =>
+        requireClaim(store.transition("claimed", "attempted", claim))
+      )
+    );
+  },
+  markBundleAccepted: (input: {
+    claims: readonly CompletionReportClaim[];
+    providerHandle?: string;
+  }) => {
+    const rows = input.claims.map((claim) => byId(claim.id));
+    if (
+      rows.some(
+        (row, index) =>
+          row?.state !== "attempted" ||
+          row.leaseOwner !== input.claims.at(index)?.leaseOwner ||
+          row.version !== input.claims.at(index)?.version
+      )
+    )
+      return Promise.resolve(undefined);
+    return Promise.resolve(
+      input.claims.map((claim) =>
+        requireClaim(
+          store.transition("attempted", "accepted", claim, input.providerHandle)
+        )
+      )
+    );
+  },
+  markBundleUnconfirmed: (claims: readonly CompletionReportClaim[]) => {
+    const rows = claims.map((claim) => byId(claim.id));
+    if (
+      rows.some(
+        (row, index) =>
+          row?.state !== "attempted" ||
+          row.leaseOwner !== claims.at(index)?.leaseOwner ||
+          row.version !== claims.at(index)?.version
+      )
+    )
+      return Promise.resolve(undefined);
+    return Promise.resolve(
+      claims.map((claim) =>
+        requireClaim(store.transition("attempted", "unconfirmed", claim))
+      )
+    );
+  },
 }));
 
 const { permitReportDispatch, reportPartAccepted } =

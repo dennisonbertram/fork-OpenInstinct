@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DynamicResolveContext } from "eve/instructions";
+import type { CompletionReportPartRecord } from "@/db/services/completion-report-attempts";
 
 const state = vi.hoisted(() => {
   const resets: (() => void)[] = [];
@@ -20,6 +21,16 @@ const state = vi.hoisted(() => {
   };
 });
 
+type RecoveryFinder = (input: {
+  readonly cohortIds: readonly string[];
+  readonly rootSessionId: string;
+  readonly workspaceId: string;
+}) => Promise<readonly CompletionReportPartRecord[]>;
+
+const reportParts = vi.hoisted(() => ({
+  find: vi.fn<RecoveryFinder>(),
+}));
+
 vi.mock("eve/context", () => ({
   defineState: <T>(_name: string, initial: () => T) => {
     let value = initial();
@@ -37,6 +48,10 @@ vi.mock("eve/context", () => ({
   readBackgroundTaskTerminals: () => state.taskTerminals,
 }));
 
+vi.mock("@/db/services/completion-report-attempts", () => ({
+  findCompletionReportPartsForCohorts: reportParts.find,
+}));
+
 import completionEvidence from "@/agent/instructions/35-completion-evidence";
 import {
   admitTask,
@@ -50,6 +65,8 @@ beforeEach(() => {
   for (const reset of state.resets) reset();
   state.taskMembers = [];
   state.taskTerminals = [];
+  reportParts.find.mockReset();
+  reportParts.find.mockResolvedValue([]);
 });
 
 /** Settles one task with the given facts, admitting it into `turnId`'s cohort. */
@@ -81,7 +98,7 @@ function context(authenticator = "linq"): DynamicResolveContext {
     session: {
       auth: {
         current: {
-          attributes: {},
+          attributes: { workspaceId: "workspace-1" },
           authenticator,
           principalId: "user-1",
           principalType: "user",
@@ -134,7 +151,7 @@ describe("completion evidence instruction", () => {
     expect(content).not.toContain("Prior work already reported");
   });
 
-  it("CE-11: a sent-but-unconfirmed cohort is described as unconfirmed, not already reported", async () => {
+  it("CE-11: an unconfirmed cohort has a neutral delivery label", async () => {
     settle("task_unconfirmed", "turn_unconfirmed", [
       { claim: "Sent the summary.", evidence: "observed" },
     ]);
@@ -147,7 +164,10 @@ describe("completion evidence instruction", () => {
     const selected = await resolve("turn_after_unconfirmed");
     const content = selected?.content ?? "";
 
-    expect(content).toContain("whether it arrived has not been confirmed");
+    expect(content).toContain(
+      "Prior work whose delivery to the user has not been confirmed"
+    );
+    expect(content).not.toContain("was sent to the user");
     expect(content).not.toContain("Prior work already reported");
   });
 

@@ -44,10 +44,11 @@ import {
  *
  * Prior cohorts are never lumped together as generic "prior work": a cohort's
  * reporting phase decides which of three headings it renders under --
- * `delivered` (the user actually received a report), `unconfirmed` (a report
- * was sent but the channel never confirmed arrival), or everything else
- * (settled but a report is still owed). Labelling an unsent or unconfirmed
- * cohort as already delivered would tell the model false history.
+ * `delivered` (the user actually received a report), `unconfirmed` (the
+ * delivery outcome is unknown), or everything else (settled but a report is
+ * still owed). Reconstructed history can be unconfirmed without any durable
+ * record that a send was attempted. Labelling an unconfirmed cohort as already
+ * delivered or sent would tell the model false history.
  *
  * Task and cohort identifiers are deliberately kept out of the rendered text.
  * They are internal bookkeeping a user should never see quoted back to them,
@@ -73,8 +74,7 @@ const owedHeading =
   "Prior work that settled earlier in this session but has not been reported " +
   "to the user yet (a report is still owed):";
 const unconfirmedHeading =
-  "Prior work that was sent to the user earlier in this session, but whether " +
-  "it arrived has not been confirmed:";
+  "Prior work whose delivery to the user has not been confirmed:";
 
 /** Which of the three prior-work headings a settled cohort renders under. */
 function reportingGroupOf(

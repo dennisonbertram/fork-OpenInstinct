@@ -28,7 +28,9 @@ const services = vi.hoisted<TestServices>(() => ({
   getModel: vi.fn<typeof getGatewayModel>(),
   isActive: vi.fn<typeof isScheduledAgentRunLeaseActive>(),
   deliveryStatus: vi.fn<typeof finalDeliveryStatus>(),
-  reconcile: vi.fn<typeof reconcileBackgroundTasks>(),
+  reconcile: vi
+    .fn<typeof reconcileBackgroundTasks>()
+    .mockResolvedValue(undefined),
   owedCohorts: [],
   gateway: vi.fn<(modelId: string) => LanguageModel>(),
   contractFixtureEnabled: true,
@@ -85,6 +87,8 @@ describe("interactive model delivery resolution", () => {
     services.deliveryStatus.mockReturnValue(undefined);
     services.contractFixtureEnabled = true;
     services.gateway.mockReset();
+    services.reconcile.mockReset();
+    services.reconcile.mockResolvedValue(undefined);
     services.evlogContext = {};
     services.owedCohorts = [];
   });
@@ -318,7 +322,7 @@ async function resolveStepModel(
       session: {
         auth: {
           current: {
-            attributes,
+            attributes: { workspaceId: "workspace-test", ...attributes },
             authenticator,
             principalId: "user-1",
             principalType: "user",
