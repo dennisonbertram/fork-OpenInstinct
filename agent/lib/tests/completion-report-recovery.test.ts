@@ -138,6 +138,7 @@ describe("recovery after a completion-state loss", () => {
     expect(
       allCohorts().find((cohort) => cohort.cohortId === "turn_old_a")
     ).toMatchObject({ phase: "unconfirmed" });
+    expect(reportableCohorts()).toEqual([]);
   });
 
   it("CR-03: preserves uncertainty when a report text was accepted but its media send was attempted", async () => {
@@ -166,6 +167,82 @@ describe("recovery after a completion-state loss", () => {
     expect(
       allCohorts().find((cohort) => cohort.cohortId === "turn_old_a")
     ).toMatchObject({ phase: "unconfirmed" });
+    expect(reportableCohorts()).toEqual([]);
+  });
+
+  it("CR-10: preserves uncertainty after only the first SendBlue media send was accepted", async () => {
+    reports.find.mockResolvedValueOnce([
+      {
+        cohortId: "turn_old_a",
+        part: "media-send:0",
+        physicalPart: "media-send:0",
+        reportRevision: 0,
+        state: "accepted",
+      },
+    ]);
+
+    await reconcileBackgroundTasks({
+      rootSessionId: "root",
+      workspaceId: "workspace",
+    });
+
+    expect(
+      allCohorts().find((cohort) => cohort.cohortId === "turn_old_a")
+    ).toMatchObject({ phase: "unconfirmed" });
+    expect(reportableCohorts()).toEqual([]);
+  });
+
+  it("CR-12: does not treat a complete one-member bundle as a complete media roster", async () => {
+    reports.find.mockResolvedValueOnce([
+      {
+        bundleCount: 1,
+        bundleId: "bundle",
+        cohortId: "turn_old_a",
+        part: "bundle/bundle/1/media-send:0",
+        physicalPart: "media-send:0",
+        reportRevision: 0,
+        state: "accepted",
+      },
+    ]);
+
+    await reconcileBackgroundTasks({
+      rootSessionId: "root",
+      workspaceId: "workspace",
+    });
+
+    expect(
+      allCohorts().find((cohort) => cohort.cohortId === "turn_old_a")
+    ).toMatchObject({ phase: "unconfirmed" });
+    expect(reportableCohorts()).toEqual([]);
+  });
+
+  it("CR-11: preserves uncertainty when text and a media upload were accepted without a media send", async () => {
+    reports.find.mockResolvedValueOnce([
+      {
+        cohortId: "turn_old_a",
+        part: "text",
+        physicalPart: "text",
+        reportRevision: 0,
+        state: "accepted",
+      },
+      {
+        cohortId: "turn_old_a",
+        part: "media-upload:0",
+        physicalPart: "media-upload:0",
+        reportRevision: 0,
+        state: "accepted",
+      },
+    ]);
+
+    await reconcileBackgroundTasks({
+      rootSessionId: "root",
+      workspaceId: "workspace",
+    });
+
+    expect(
+      allCohorts().find((cohort) => cohort.cohortId === "turn_old_a")
+    ).toMatchObject({ phase: "unconfirmed" });
+    expect(reportableCohorts()).toEqual([]);
   });
 
   it("CR-04: gives a user-directed report after recovered uncertainty a new revision", async () => {

@@ -129,6 +129,10 @@ function isDeliveryPart(part: string) {
   );
 }
 
+function isVariableMediaPart(part: string) {
+  return part.startsWith("media-upload:") || part.startsWith("media-send:");
+}
+
 function bundledDeliveryPartKey(
   part: CompletionReportPartRecord
 ): string | undefined {
@@ -829,11 +833,18 @@ export async function reconcileBackgroundTasks(input?: {
   for (const cohort of cohorts) {
     const revision = latestRevision.get(cohort.cohortId);
     if (revision === undefined) continue;
-    const deliveryParts = parts.filter(
+    const partsForRevision = parts.filter(
       (part) =>
-        part.cohortId === cohort.cohortId &&
-        part.reportRevision === revision &&
-        isDeliveryPart(part.physicalPart)
+        part.cohortId === cohort.cohortId && part.reportRevision === revision
+    );
+    const deliveryParts = partsForRevision.filter((part) =>
+      isDeliveryPart(part.physicalPart)
+    );
+    // SendBlue sends each media item separately. The ledger records accepted
+    // effects per item, but has no durable media-count or final-item marker,
+    // so it cannot prove a recovered subset was the entire user-visible set.
+    const hasUnboundedMediaRoster = partsForRevision.some((part) =>
+      isVariableMediaPart(part.physicalPart)
     );
     const allDeliveryPartsAccepted = deliveryParts.every((part) => {
       if (part.state !== "accepted") return false;
@@ -844,7 +855,11 @@ export async function reconcileBackgroundTasks(input?: {
         bundleKey !== undefined && completeAcceptedBundleParts.has(bundleKey)
       );
     });
-    if (deliveryParts.length > 0 && allDeliveryPartsAccepted)
+    if (
+      deliveryParts.length > 0 &&
+      allDeliveryPartsAccepted &&
+      !hasUnboundedMediaRoster
+    )
       delivered.add(cohort.cohortId);
   }
   completion.update((current) => ({
