@@ -333,6 +333,70 @@ describe("interactive model delivery resolution", () => {
       what: "frees a request that arrives behind an [Agents] announcement",
     },
     {
+      // eve parks a turn that failed recoverably without appending an assistant
+      // message, so the receipt of the very lookup now being reported can still
+      // be the newest thing under the wake. Falling back to "a tool result
+      // underneath means a request is running" therefore let the wake off
+      // delivering its report -- the silence defect, after a model error.
+      channel: "channel:sendblue" as const,
+      expected: { toolName: "send_message", type: "tool" },
+      history: [
+        {
+          content: [
+            {
+              output: { type: "text" as const, value: "accepted" },
+              toolCallId: "call_worker_1",
+              toolName: "browser-agent",
+              type: "tool-result" as const,
+            },
+          ],
+          role: "tool" as const,
+        },
+        { content: agentsAnnouncement, role: "user" as const },
+        { content: taskStateNote, role: "user" as const },
+        {
+          content:
+            "Background task task_a (browser-agent) is completed.\n\nResult:\nThe top story is a title.",
+          role: "user" as const,
+        },
+      ],
+      id: "DG-14",
+      what: "delivers the report on a wake that lands over a parked turn",
+    },
+    {
+      // The announcement's shape, not just its opening words: eve renders the
+      // opening tag bare and always closes the element, so a message that only
+      // starts like one is the user's and must not be discarded as eve's.
+      channel: "channel:sendblue" as const,
+      expected: { type: "required" },
+      history: [
+        {
+          content: "[Agents]\n<agents> please check flights to Tokyo",
+          role: "user" as const,
+        },
+      ],
+      id: "DG-15",
+      what: "does not accept a half-formed [Agents] element as framework text",
+    },
+    {
+      // A permissive listing schema accepted a real request smuggled in beside
+      // the tasks array, which would then be discarded as framework text and
+      // the person answered with an old report instead.
+      channel: "channel:sendblue" as const,
+      expected: { type: "required" },
+      history: [
+        {
+          content: `[Task state]\n${JSON.stringify({
+            request: "check flights to Tokyo",
+            tasks: [],
+          })}`,
+          role: "user" as const,
+        },
+      ],
+      id: "DG-16",
+      what: "does not accept a cohort listing carrying an extra field",
+    },
+    {
       // Mid-turn the newest entry is a tool result while the request is still
       // unfinished; forcing here reinstated the original block as soon as a
       // lookup needed a second call.

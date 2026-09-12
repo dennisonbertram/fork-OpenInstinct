@@ -5,11 +5,14 @@ import type { finalDeliveryStatus } from "./message-delivery";
 /**
  * An "[Agents]" announcement, matched by its shape rather than its first word.
  *
- * eve renders it as the label, a newline, then an `<agents>` element
- * (`harness/handles/prompt.js`). Matching only the label would let a user whose
- * own message happens to start with "[Agents]" be discarded as framework text.
+ * eve renders exactly the label, a newline, and an `<agents>` element whose
+ * opening tag has no attributes (`harness/handles/prompt.js`; the empty case is
+ * `[Agents]\n<agents>\n</agents>`). The closing tag is required too, because a
+ * looser match let a person's own message impersonate the note simply by
+ * opening with "[Agents]\n<agents> ..." -- which SendBlue's inbound path
+ * delivers verbatim.
  */
-const agentsNotePattern = /^\[Agents\]\n<agents[\s>]/u;
+const agentsNotePattern = /^\[Agents\]\n<agents>\n[\S\s]*<\/agents>$/u;
 
 const taskStateLabel = "[Task state]\n";
 
@@ -20,10 +23,23 @@ const textUserMessageSchema = z.object({
 });
 
 /**
- * The cohort listing eve puts after the "[Task state]" label: the JSON
- * `{ tasks: [...] }` that `tasks/delivery-context.js` serialises.
+ * The cohort listing eve puts after the "[Task state]" label.
+ *
+ * Every field `projectTaskCohort` emits, and nothing else: strict, because a
+ * permissive object accepted `{"tasks":[],"request":"..."}` -- a listing shape
+ * with a person's request smuggled alongside it, which would then be discarded
+ * as framework text.
  */
-const taskCohortListingSchema = z.object({ tasks: z.array(z.unknown()) });
+const taskCohortListingSchema = z.strictObject({
+  tasks: z.array(
+    z.strictObject({
+      name: z.string(),
+      output: z.unknown().optional(),
+      status: z.string(),
+      taskId: z.string(),
+    })
+  ),
+});
 
 /**
  * The unlabelled notification eve sends when a background task settles, needs
@@ -37,21 +53,14 @@ const taskNotificationPattern =
   /^Background task \S+ (?:\([^)]*\) (?:is completed\.|is cancelled\.|failed\.|needs input\.|update: )|needs authorization\.)/u;
 
 /**
- * Whether eve, not the user, authored this message.
+ * Whether this message is eve telling the parent about background task
+ * activity: the "[Task state]" cohort listing, or one of the notifications
+ * that accompanies it.
  *
- * eve's runtime-authored text rides the USER role and none of it is exported
- * from an `eve/...` public path, so its wording is all there is to go on. Each
- * form is matched by its shape, not just its opening words, so a user's own
- * message cannot be discarded for starting the same way: the task note is its
- * label followed by the JSON cohort listing `tasks/delivery-context.js`
- * serialises, and the announcement is its label followed by an `<agents>`
- * element.
+ * Its presence in a turn's own messages is what marks the turn a task wake,
+ * which is the turn that exists to deliver an owed report.
  */
-function isFrameworkNote(message: ModelMessage | undefined): boolean {
-  const note = textUserMessageSchema.safeParse(message);
-  if (!note.success) return false;
-  const { content } = note.data;
-  if (agentsNotePattern.test(content)) return true;
+function isTaskDeliveryNote(content: string): boolean {
   if (taskNotificationPattern.test(content)) return true;
   if (!content.startsWith(taskStateLabel)) return false;
   try {
@@ -61,6 +70,25 @@ function isFrameworkNote(message: ModelMessage | undefined): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * What eve's own runtime-authored text this message is, if it is any of it.
+ *
+ * eve's notes ride the USER role and none of their wording is exported from an
+ * `eve/...` public path, so their text is all there is to go on. Each form is
+ * matched by its whole shape rather than its opening words: matching a label
+ * alone would let a person's own message be discarded for starting the same
+ * way, and SendBlue delivers their text verbatim.
+ */
+function frameworkNoteKind(
+  message: ModelMessage | undefined
+): "agents" | "task-delivery" | undefined {
+  const note = textUserMessageSchema.safeParse(message);
+  if (!note.success) return undefined;
+  const { content } = note.data;
+  if (agentsNotePattern.test(content)) return "agents";
+  return isTaskDeliveryNote(content) ? "task-delivery" : undefined;
 }
 
 /**
@@ -85,22 +113,32 @@ function isFrameworkNote(message: ModelMessage | undefined): boolean {
  * the user's message: `harness/tool-loop.js` pushes an "[Agents]" announcement
  * onto the history BEFORE appending the turn's own input, so a new request from
  * someone with a worker parked arrives as the announcement followed by their
- * words. So the whole trailing run of user-role messages is examined and the
- * question asked of its contents: is any message in it something eve did not
- * write? That message is the request.
+ * words. So the whole trailing run of user-role messages is read, and its
+ * contents answer in this order:
  *
- * When none of them is -- eve wrote the whole run, or there was no trailing
- * user message at all -- what sits underneath decides. A tool result there
- * means a request is already running and still has calls to make.
+ * 1. A message eve did not write is the request. Nothing outranks it.
+ * 2. Otherwise a task note or notification marks this turn a wake -- the turn
+ *    that exists to deliver the owed report, and nothing else.
+ * 3. Otherwise only what sits underneath is left to go on, and a tool result
+ *    there means a request is already running with calls still to make.
+ *
+ * Step 2 has to outrank step 3, because a tool result underneath does not
+ * always belong to a live request: eve parks a turn that failed recoverably
+ * without appending an assistant message, so the receipt of the very lookup
+ * being reported can still be the newest thing under the wake.
  */
 export function userRequestPendingIn(
   messages: readonly ModelMessage[]
 ): boolean {
   let index = messages.length - 1;
+  let taskWake = false;
   while (index >= 0 && messages[index]?.role === "user") {
-    if (!isFrameworkNote(messages[index])) return true;
+    const kind = frameworkNoteKind(messages[index]);
+    if (kind === undefined) return true;
+    if (kind === "task-delivery") taskWake = true;
     index -= 1;
   }
+  if (taskWake) return false;
   return messages[index]?.role === "tool";
 }
 
