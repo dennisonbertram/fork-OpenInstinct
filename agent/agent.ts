@@ -41,10 +41,15 @@ export default defineAgent({
         // say. Idempotent, so a replayed step cannot double count.
         reconcileBackgroundTasks();
         const turnId = stepEventSchema.safeParse(event).data?.data.turnId;
+        // Role, not text, is the signal: only a genuinely new user message
+        // should let the model choose a tool other than send_message while a
+        // report is owed.
+        const userRequestPending = ctx.messages.at(-1)?.role === "user";
         const toolChoice = deliveryToolChoiceForInteractiveTurn({
           channelKind: ctx.channel.kind,
           deliveryStatus: finalDeliveryStatus(turnId),
           reportOwed: reportPolicyForTurn().kind === "must_report",
+          userRequestPending,
           mode:
             caller.authenticator === "scheduled-result"
               ? "scheduled-report"

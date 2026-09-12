@@ -13,6 +13,12 @@ interface InteractiveDeliveryGuardContext {
    * tool that can instead of leaving the model a choice.
    */
   readonly reportOwed?: boolean;
+  /**
+   * Whether the newest message in the turn is from the user, so this turn
+   * exists to carry out a request rather than only to deliver an owed
+   * report (e.g. a scheduled wake with no new user message).
+   */
+  readonly userRequestPending?: boolean;
 }
 
 export function deliveryToolChoiceForInteractiveTurn({
@@ -20,6 +26,7 @@ export function deliveryToolChoiceForInteractiveTurn({
   deliveryStatus,
   mode,
   reportOwed = false,
+  userRequestPending = false,
 }: InteractiveDeliveryGuardContext) {
   if (
     (channelKind !== "channel:linq" &&
@@ -30,7 +37,11 @@ export function deliveryToolChoiceForInteractiveTurn({
   )
     return undefined;
 
-  return reportOwed
+  // An owed report must not force send_message as the first and only action
+  // of a new user request; the debt stays owed and is discharged later. It
+  // still forces send_message when there is no pending user request (e.g. a
+  // wake with nothing new to act on).
+  return reportOwed && !userRequestPending
     ? ({ type: "tool", toolName: "send_message" } as const)
     : ({ type: "required" } as const);
 }
