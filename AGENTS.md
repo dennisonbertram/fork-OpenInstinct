@@ -24,6 +24,13 @@ Use its owning runbooks for command syntax and current acceptance evidence.
 - Keep discovery bounded: inspect the relevant docs, owning code, and tests;
   implement the smallest complete requested behavior. Expand investigation when
   evidence requires it. Summarize the outcome, verification, and any blockers.
+- Turn summary: at the end of each turn, provide a structured summary stating:
+  1. The epic worked on and current slice status.
+  2. Epic completion state: whether the whole epic is complete, and if not, what
+     remains to land on `main`, have commits staged and merged, worktree cleaned,
+     child issues closed, and the GitHub epic closed.
+  3. User impact and product stories: what product stories this changes, how it
+     impacts the user, and what concrete behavior changes for the user.
 
 ## Development priorities and safety
 
