@@ -290,7 +290,6 @@ function messageAppended(turnId: string) {
   return {
     data: {
       messageDelta: "private output stays omitted",
-      messageSoFar: "private output stays omitted",
       sequence: 3,
       stepIndex: 0,
       turnId,

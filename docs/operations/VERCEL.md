@@ -1164,6 +1164,29 @@ treated as exposed even when the repository scan is clean.
    repair; do not disable shared production isolation.
 6. Re-run health, web-chat, isolation, and artifact checks, plus acceptance for every configured channel affected by the rollback. Linq is required only when it is configured and affected; do not substitute a registry or health check for an authorized channel round trip.
 
+## Eve 0.54.3 task-index transition
+
+Live sessions store the parent task index in Eve/Workflow durable state under
+`eve.tasks`, not in `db/services/sessions.ts`. A 0.49.0 index is a version-less
+`{ tasks }` object and may carry `operationId` plus executor
+`childSessionId` / `childTurnId` / `lifecycle`. Unpatched 0.54.3 throws
+`Unsupported task index version` on that shape. The 0.54.3 package patch
+accepts it on both `getSessionTaskIndex` and `getSessionTaskCohorts` without a
+write, then rewrites `{ tasks, version: 2 }` on the next `recordSessionTask` or
+`cacheTerminalTaskView`.
+
+Rollback by restoring the 0.49.0 pin is unsafe after that write: 0.49.0 rejects
+the `version` key, and 0.51+ reject a missing version. Do not roll Eve back
+across this boundary for conversations that have already taken a post-deploy
+turn. If a session must keep running on 0.49.0, it has to be a conversation that
+never wrote a version-2 index (no background-task record or cache after the
+bump). There is no operator cutover that resets conversations in this runbook;
+the compatibility hunk is the supported transition.
+
+After deploy, search production logs for `Unsupported task index version`. If it
+appears, that is a Slice 1 regression: list every affected session id and do not
+treat those conversations as measured #214 evidence.
+
 ## Backup and restore rehearsal
 
 Back up Neon using the approved provider procedure before migrations and on the

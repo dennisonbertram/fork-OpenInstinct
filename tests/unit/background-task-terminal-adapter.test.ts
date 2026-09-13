@@ -4,10 +4,14 @@ import {
   contextStorage,
 } from "../../node_modules/eve/dist/src/context/container.js";
 import {
+  attachChildIdentityToTerminalView,
   setSessionTaskTerminals,
   TaskTerminalsKey,
   type BackgroundTaskTerminal,
 } from "../../node_modules/eve/dist/src/tasks/terminal-projection.js";
+import { cacheTerminalTaskView } from "../../node_modules/eve/dist/src/tasks/session-index.js";
+import { createDurableSessionState } from "../../node_modules/eve/dist/src/execution/durable-session-store.js";
+import { routeDeliverToChildren } from "../../node_modules/eve/dist/src/execution/route-child-delivery.js";
 import type { SessionStateMap } from "../../node_modules/eve/dist/src/harness/types.js";
 import {
   backgroundTaskMembers,
@@ -383,6 +387,226 @@ describe("backgroundTaskTerminals", () => {
         taskId: "task_settled",
         parentTurnId: "turn_1",
         childSessionId: undefined,
+        childTurnId: undefined,
+        workerName: "browser",
+        status: "completed",
+        output: { ok: true },
+      },
+    ]);
+  });
+
+  it("projects child identity from a native 0.54.3 executor binding after persist", () => {
+    const nativeView = {
+      executor: {
+        binding: {
+          data: {
+            address: { kind: "agent/local", sessionId: "session_native" },
+            childSessionId: "session_native",
+          },
+          kind: "workflow-task",
+        },
+      },
+      lastOutput: { data: { ok: true }, type: "result" as const },
+      metadata: subagentMetadata,
+      status: "completed" as const,
+      taskId: "task_a",
+    };
+    const state = {
+      "eve.tasks": {
+        tasks: [
+          {
+            createdByTurnId: "turn_1",
+            metadata: subagentMetadata,
+            taskId: "task_a",
+            taskInboxToken: "private-routing-credential",
+            taskRunId: "run_a",
+          },
+        ],
+        version: 2,
+      },
+    };
+    const persisted = cacheTerminalTaskView(state, nativeView);
+    const context = new ContextContainer();
+    setSessionTaskTerminals(context, persisted);
+    const records = contextStorage.run(context, () =>
+      backgroundTaskTerminals()
+    );
+
+    expect(records).toEqual([
+      {
+        taskId: "task_a",
+        parentTurnId: "turn_1",
+        childSessionId: "session_native",
+        childTurnId: undefined,
+        workerName: "browser",
+        status: "completed",
+        output: { ok: true },
+      },
+    ]);
+  });
+
+  it("copies handle-store session identity onto a native terminal view before release", () => {
+    const view = {
+      executor: { binding: { data: {}, kind: "workflow-task" } },
+      lastOutput: { data: { done: true }, type: "result" as const },
+      metadata: subagentMetadata,
+      status: "completed" as const,
+      taskId: "task_a",
+    };
+    const state = {
+      "eve.agent.handles": {
+        handles: [
+          {
+            address: {
+              continuationToken: "child-token",
+              kind: "agent/local",
+              sessionId: "session_from_handle",
+            },
+            identity: {
+              id: "ag_browser:1",
+              name: "browser",
+              nodeId: "browser-agent",
+            },
+            ownerId: "task_a",
+            phase: "claimed",
+            operationId: "op_1",
+          },
+        ],
+      },
+      "eve.tasks": {
+        tasks: [
+          {
+            createdByTurnId: "turn_1",
+            metadata: subagentMetadata,
+            taskId: "task_a",
+            taskInboxToken: "private-routing-credential",
+            taskRunId: "run_a",
+          },
+        ],
+        version: 2,
+      },
+    };
+
+    const enriched = attachChildIdentityToTerminalView(state, view);
+    expect(enriched.executor?.binding?.data).toMatchObject({
+      childSessionId: "session_from_handle",
+    });
+  });
+
+  it("keeps native child identity after a child settlement that releases the handle", async () => {
+    const metadata = {
+      agentId: "ag_browser:1",
+      kind: "subagent" as const,
+      mode: "local" as const,
+      name: "browser",
+    };
+    const usage = {
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+    };
+    const session = {
+      agent: { dynamicModel: true as const, system: "", tools: [] },
+      compaction: {
+        recentWindowSize: 1,
+        threshold: 1,
+        thresholdPercent: 1,
+      },
+      continuationToken: "parent-token",
+      history: [],
+      sessionId: "session-parent",
+      state: {
+        "eve.agent.handles": {
+          handles: [
+            {
+              address: {
+                continuationToken: "child-token",
+                kind: "agent/local",
+                sessionId: "session_child",
+              },
+              callId: "call_1",
+              identity: {
+                id: "ag_browser:1",
+                name: "browser",
+                nodeId: "browser-agent",
+              },
+              operationId: "op_1",
+              ownerId: "task_a",
+              phase: "claimed",
+            },
+          ],
+        },
+        "eve.tasks": {
+          tasks: [
+            {
+              createdByTurnId: "turn_1",
+              executor: { data: {}, kind: "workflow-task" },
+              metadata,
+              taskId: "task_a",
+              taskInboxToken: "private-routing-credential",
+              taskRunId: "run_a",
+            },
+          ],
+          version: 2,
+        },
+      },
+    };
+    const delivered = await routeDeliverToChildren({
+      parentWritable: new WritableStream(),
+      delivery: {
+        kind: "deliver",
+        payloads: [
+          {
+            task: {
+              agentRequests: [
+                {
+                  replyTo: "reply",
+                  request: {
+                    kind: "agent-settled",
+                    result: {
+                      callId: "call_1",
+                      kind: "subagent-result",
+                      origin: "child",
+                      outcome: {
+                        kind: "terminal",
+                        result: { kind: "succeeded", output: { ok: true } },
+                        usageDelta: usage,
+                      },
+                      output: { ok: true },
+                      subagentName: "browser",
+                    },
+                  },
+                  taskId: "task_a",
+                },
+              ],
+              views: [
+                {
+                  lastOutput: { data: { ok: true }, type: "result" },
+                  metadata,
+                  status: "completed",
+                  taskId: "task_a",
+                },
+              ],
+            },
+          },
+        ],
+      },
+      serializedContext: {},
+      sessionState: createDurableSessionState({ session }),
+    });
+    const context = new ContextContainer();
+    setSessionTaskTerminals(
+      context,
+      delivered.sessionState.snapshot?.session.state
+    );
+    expect(
+      contextStorage.run(context, () => backgroundTaskTerminals())
+    ).toEqual([
+      {
+        taskId: "task_a",
+        parentTurnId: "turn_1",
+        childSessionId: "session_child",
         childTurnId: undefined,
         workerName: "browser",
         status: "completed",

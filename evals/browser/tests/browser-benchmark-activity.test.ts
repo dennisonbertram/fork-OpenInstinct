@@ -46,8 +46,7 @@ describe("browser benchmark live activity", () => {
         } satisfies MessageStreamEvent,
         {
           data: {
-            messageDelta: "Searching",
-            messageSoFar: "Searching current Brooklyn showtimes",
+            messageDelta: "Searching current Brooklyn showtimes",
             sequence: 0,
             stepIndex: 0,
             turnId: "turn_1",

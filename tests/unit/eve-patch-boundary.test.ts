@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-const patchUrl = new URL("../../patches/eve@0.49.0.patch", import.meta.url);
+const patchUrl = new URL("../../patches/eve@0.54.3.patch", import.meta.url);
 
 describe("Eve patch boundary", () => {
   it("contains only the registered compatibility, opaque-context, final-delivery completion, and task-terminal projection hunks", async () => {
@@ -16,10 +16,6 @@ describe("Eve patch boundary", () => {
       [
         "dist/src/compiled/@linqapp/chat-sdk-adapter/index.js",
         "dist/src/compiled/@linqapp/chat-sdk-adapter/index.js",
-      ],
-      [
-        "dist/src/compiled/_chunks/workflow/wait-until-BtySPYD0.js",
-        "dist/src/compiled/_chunks/workflow/wait-until-BtySPYD0.js",
       ],
       [
         "dist/src/compiled/chat/index.d.ts",
@@ -46,8 +42,20 @@ describe("Eve patch boundary", () => {
       ["dist/src/dynamic/definition.d.ts", "dist/src/dynamic/definition.d.ts"],
       ["dist/src/eve-channel/index.js", "dist/src/eve-channel/index.js"],
       [
+        "dist/src/execution/route-child-delivery.js",
+        "dist/src/execution/route-child-delivery.js",
+      ],
+      [
+        "dist/src/execution/tasks/parent/hitl-proxy-steps.js",
+        "dist/src/execution/tasks/parent/hitl-proxy-steps.js",
+      ],
+      [
         "dist/src/execution/workflow-steps.js",
         "dist/src/execution/workflow-steps.js",
+      ],
+      [
+        "dist/src/execution/wire/session-inbox-wire.v4.migration.js",
+        "dist/src/execution/wire/session-inbox-wire.v4.migration.js",
       ],
       ["dist/src/harness/tool-loop.js", "dist/src/harness/tool-loop.js"],
       [
@@ -57,6 +65,11 @@ describe("Eve patch boundary", () => {
       ["dist/src/public/context/index.js", "dist/src/public/context/index.js"],
       ["dist/src/public/index.d.ts", "dist/src/public/index.d.ts"],
       ["dist/src/public/tools/index.d.ts", "dist/src/public/tools/index.d.ts"],
+      ["dist/src/tasks/session-index.js", "dist/src/tasks/session-index.js"],
+      [
+        "dist/src/tasks/session-task-cohorts.js",
+        "dist/src/tasks/session-task-cohorts.js",
+      ],
       [
         "dist/src/tasks/terminal-projection.d.ts",
         "dist/src/tasks/terminal-projection.d.ts",
@@ -76,15 +89,18 @@ describe("Eve patch boundary", () => {
     expect(patch).toContain("withRouteAuth(handleSessionCallbackRequest)");
     expect(patch).toContain("withRouteAuth(handleTaskInputResponseRequest)");
     expect(patch).toContain('export * from "chat"');
-    expect(patch).toContain("u.has(e.resolverSlug)");
+    expect(patch).toContain("u.has(t.resolverSlug)");
     expect(patch).toContain("requestTurnCompletion");
     expect(patch).toContain("consumeTurnCompletionRequest");
     expect(patch).toContain("readBackgroundTaskTerminals");
     expect(patch).toContain("readBackgroundTaskMembers");
-    expect(patch).toContain("setSessionTaskTerminals(l,c.state)");
+    expect(patch).toContain("setSessionTaskTerminals(i,r.state)");
+    expect(patch).toContain("isCompatibleTaskIndexVersion");
+    expect(patch).toContain("n.childSessionId=t.childSessionId");
     expect(patch).toContain("DynamicTurnOrigin");
     expect(patch).toContain("TurnTaskDeliveryKey");
     expect(patch).not.toContain("diff --git a/package.json");
+    expect(patch).not.toContain("wait-until-BtySPYD0.js");
   });
 
   it("publishes only a typed turn origin, never private task routing data", async () => {
