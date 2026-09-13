@@ -23,9 +23,10 @@ this runbook.
 ## Current runbook and operations tooling
 
 This runbook describes the current Vercel/Eve procedure. This branch contains
-the bounded Plan 024 wrapper and deterministic `pnpm verify` gate, both locally
-verified but not an accepted production procedure or production-verified. See
-[Plan 024](../../plans/024-production-operations.md).
+the bounded Plan 024 wrapper and deterministic `pnpm verify` gate. A bounded
+production release observation has completed, but it does not attest admin
+runtime identity, rollback compatibility, credentials, provider delivery, or a
+full user journey. See [Plan 024](../../plans/024-production-operations.md).
 The wrapper observes the existing Git-connected release after a reviewed merge;
 it does not create a second deployment. It keeps provisioning, migrations,
 configuration rotation, channel activation, and other recovery work with their
@@ -73,8 +74,9 @@ merge triggers both. For current Railway project, environment, service, domain,
 and deployment evidence, see
 [Agent development system](../AGENT_DEVELOPMENT.md#know-which-surface-is-running).
 Release acceptance checks the matching deployment's status and scope and then
-checks public HTTP health; deployment success alone does not establish serving
-health or the full user journey.
+checks public HTTP health. For marketing, it also requires the
+[signup gate](#railway-marketing-observation-and-signup-gate); deployment
+success alone does not establish serving health or the full user journey.
 
 A separate current Vercel observation reported `Ready` for app deployment
 `https://jory-cmidtpppl-dennisons-projects.vercel.app` on full SHA
@@ -83,6 +85,81 @@ A separate current Vercel observation reported `Ready` for app deployment
 `/eve/v1/health` returned HTTP 200 with Eve `ready`. This health result and the
 Railway marketing HTTP 200 establish endpoint responses, not the full user
 journey or the Railway revision currently serving its domains.
+
+## Railway marketing observation and signup gate
+
+Railway operation remains outside this Vercel/Eve procedure. For a read-only
+marketing observation, use an authenticated Railway connection that has access
+to the selected identities. If it is unavailable, record the missing evidence;
+do not silently switch targets or link/mutate Railway resources. Use these
+exact read-only MCP calls with the selected production identities:
+
+```text
+mcp__railway__list_deployments({
+  projectId: "8835393a-d864-4b1f-bcc0-b45f33fec22e",
+  environmentId: "e5f11b2b-5ec2-4a92-ab64-e42286f4bbc7",
+  serviceId: "7ede8b27-07e1-4ae6-9f2b-f965a82551ef",
+  limit: 1
+})
+mcp__railway__get_service_config({
+  projectId: "8835393a-d864-4b1f-bcc0-b45f33fec22e",
+  environmentId: "e5f11b2b-5ec2-4a92-ab64-e42286f4bbc7",
+  serviceId: "7ede8b27-07e1-4ae6-9f2b-f965a82551ef"
+})
+mcp__railway__list_domains({
+  projectId: "8835393a-d864-4b1f-bcc0-b45f33fec22e",
+  environmentId: "e5f11b2b-5ec2-4a92-ab64-e42286f4bbc7",
+  serviceId: "7ede8b27-07e1-4ae6-9f2b-f965a82551ef"
+})
+mcp__railway__domain_status({
+  projectId: "8835393a-d864-4b1f-bcc0-b45f33fec22e",
+  environmentId: "e5f11b2b-5ec2-4a92-ab64-e42286f4bbc7",
+  serviceId: "7ede8b27-07e1-4ae6-9f2b-f965a82551ef",
+  domain: "<one domain returned by list_domains>"
+})
+```
+
+Require the latest deployment to be `SUCCESS` and its full `meta.commitHash` to
+equal the selected fork SHA. From `get_service_config`, retain only source
+repository/branch/root, build/start commands, and staged-change state. From the
+domain calls, retain domain, ownership, DNS, and certificate status. Those
+MCP calls expose variable names but not values. This metadata-only recipe keeps
+secret values out of its evidence. A separately authorized operator observation
+may inspect a selected public origin with secret output suppressed. Then perform
+the bounded public check for each returned marketing domain; this example uses
+the observed `heyjory.ai` domain:
+
+```bash
+MARKETING_ORIGIN='https://heyjory.ai'
+curl --fail --silent --show-error --max-time 10 --output /dev/null \
+  --write-out '%{http_code}\n' "$MARKETING_ORIGIN/"
+```
+
+This procedure establishes only control-plane metadata and an HTTP response. It
+does not establish the revision serving traffic, the Core dependency, or
+signup.
+
+Do not accept marketing release signup from domain HTTP 200 or Core health.
+The marketing `POST /api/signup` proxy uses `JORY_CORE_BASE_URL` and calls
+`<configured-public-origin>/public/signup` with a 10-second timeout; missing
+or unreachable Core returns `503 core_unreachable`. The current configured
+public origin is `https://jory-core-production.up.railway.app`. Core is
+Railway service `jory-core` (`ff7e4b6c-3b9e-4a67-b1e9-7c3288190a6d`), sourced
+from external `Jory-AI/jory` `main`; its SHA is independent of the fork and
+must not be used as a SHA-equality condition for the marketing deployment. Its
+observed `/health` HTTP 200 is liveness only. Its database/storage/schema and
+the responsible Core-side operator able to verify signup side effects remain
+unknown.
+
+For a later synthetic acceptance, designate a controlled synthetic address and
+identify the Core-side evidence reader before submission. Exercise the visible
+signup UI on the selected marketing domain, record the browser outcome and the
+bounded network status/category, then have the identified Core-side operator
+verify the intended synthetic effect through their scoped interface. An
+explicit rejection is failure/recovery evidence, not happy-path acceptance. Do
+not inspect raw storage or invent a Core owner. Without the expected
+independent Core-side effect, signup and marketing release acceptance remain
+unverified.
 
 A bounded read-only release observation on 2026-09-12 resolved the configured
 production alias to deployment `dpl_AqLjVV7GeMgVFx6qFK7TTkwqnv7w` and its

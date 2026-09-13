@@ -8,16 +8,17 @@ is not proof that its target is ready.
 
 ## Start with the operation
 
-| Need                                        | Entry point                                                          | Owner and instructions                                                           |
-| ------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Start the complete local environment        | `./init.sh`                                                          | [Development](operations/DEVELOPMENT.md); connected services, local database     |
-| Develop with synthetic data                 | `./init.sh --profile fixture`                                        | Same supervisor; disposable database, simulated model, denied external egress    |
-| Inspect or stop the local environment       | `./init.sh --status`, `./init.sh --stop`                             | Exact worktree/run ownership; never identify a process by its port alone         |
-| Prove a change before spending CI resources | `pnpm verify`                                                        | [Testing](TESTING.md); all five deterministic CI lanes                           |
-| Run a narrower iteration check              | `pnpm verify --lane checks`, `pnpm verify --quick --base <full-sha>` | Partial evidence is labeled; unknown changed paths select the full gate          |
-| Diagnose a target or bounded journey        | `pnpm diagnose`                                                      | [Diagnostics](operations/DIAGNOSTICS.md); allowlisted metadata and explicit gaps |
-| Inspect a deployed app                      | `./prod.sh status --target production --surface app`                 | [Vercel operations](operations/VERCEL.md); exact project and alias resolution    |
-| Release or recover the managed app          | Reviewed Git PR release and `prod.sh` observation/plan controls      | [Vercel operations](operations/VERCEL.md); no second local production runtime    |
+| Need                                        | Entry point                                                          | Owner and instructions                                                                                                             |
+| ------------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Start the complete local environment        | `./init.sh`                                                          | [Development](operations/DEVELOPMENT.md); connected services, local database                                                       |
+| Develop with synthetic data                 | `./init.sh --profile fixture`                                        | Same supervisor; disposable database, simulated model, denied external egress                                                      |
+| Inspect or stop the local environment       | `./init.sh --status`, `./init.sh --stop`                             | Exact worktree/run ownership; never identify a process by its port alone                                                           |
+| Prove a change before spending CI resources | `pnpm verify`                                                        | [Testing](TESTING.md); all five deterministic CI lanes                                                                             |
+| Run a narrower iteration check              | `pnpm verify --lane checks`, `pnpm verify --quick --base <full-sha>` | Partial evidence is labeled; unknown changed paths select the full gate                                                            |
+| Diagnose a target or bounded journey        | `pnpm diagnose`                                                      | [Diagnostics](operations/DIAGNOSTICS.md); allowlisted metadata and explicit gaps                                                   |
+| Inspect a deployed app                      | `./prod.sh status --target production --surface app`                 | [Vercel operations](operations/VERCEL.md); exact project and alias resolution                                                      |
+| Inspect deployed marketing                  | Railway metadata and public-health observation                       | [Railway marketing observation](operations/VERCEL.md#railway-marketing-observation-and-signup-gate); exact service and signup gate |
+| Release or recover the managed app          | Reviewed Git PR release and `prod.sh` observation/plan controls      | [Vercel operations](operations/VERCEL.md); no second local production runtime                                                      |
 
 Read the relevant runbook and its owning code. Follow other links only when
 the change crosses a boundary. [AGENT_GUIDE.md](AGENT_GUIDE.md) describes the
@@ -57,6 +58,7 @@ operations require an immutable deployment selector.
 | Preview app             | Immutable deployment in the configured Vercel app project                           | Project/team, preview target, deployment ID, URL, source, and runtime evidence when accessible |
 | Production app          | Git-connected Vercel project; canonical alias selects a deployment                  | Alias-to-deployment relationship plus independent runtime/database/config evidence             |
 | Deployed marketing site | Railway production service `jory`; marketing app                                    | Project/environment/service, deployment ID/SHA, domains, and HTTP health                       |
+| Marketing signup Core   | External Railway `jory-core` service sourced from `Jory-AI/jory`                    | Configured public origin, independent Core SHA/health, and a Core-verified synthetic effect    |
 
 The primary app is deployed by Vercel. The separate Jory marketing app is
 deployed by a Git-triggered Railway service from `main`. Its Railway project
@@ -66,9 +68,11 @@ ID is `8835393a-d864-4b1f-bcc0-b45f33fec22e`, production environment ID is
 `pnpm --filter @jory/marketing build` and
 `pnpm --filter @jory/marketing start` from the repository root. Railway's
 recorded variable names are `JORY_CORE_BASE_URL` and
-`JORY_DASHBOARD_ENABLED`; their values were not read. Merge triggers both
-deployment surfaces. The Vercel-only production wrapper does not map or operate
-the Railway service.
+`JORY_DASHBOARD_ENABLED`. A read-only, selected public-origin observation
+found `JORY_CORE_BASE_URL` points to
+`https://jory-core-production.up.railway.app`; no secret value was emitted or
+retained. Merge triggers both deployment surfaces. The Vercel-only production
+wrapper does not map or operate the Railway service.
 
 For full SHA `999537e576d965215d024dcac78ef45a14de37de`, Vercel reported the
 app deployment `Ready` at `https://jory-cmidtpppl-dennisons-projects.vercel.app`,
@@ -82,8 +86,25 @@ DNS, and valid TLS were recorded at `2026-09-13T00:29:14Z`. A separate public
 HTTP check at `2026-09-13T00:27:12.858208Z` returned 200 for the marketing
 domains. The Railway deployment evidence does not identify the revision
 currently serving those domains. Release acceptance checks each matching
-deployment's status and scope, then public HTTP health; these observations do
-not prove the full user journey.
+deployment's status and scope, then public HTTP health. Marketing also requires
+the [Railway signup gate](operations/VERCEL.md#railway-marketing-observation-and-signup-gate):
+a visible synthetic signup UI exercise, its network result, and a Core-side
+verified effect. Until then, these observations do not prove the full user
+journey.
+
+Marketing signup is a separate, unaccepted journey. `POST /api/signup` sends
+the submitted address to the configured Core origin's `/public/signup` route
+with a 10-second timeout; an unset or unreachable origin returns `503
+core_unreachable`. Its route tests mock Core. The Core service is external to
+this fork: it is Railway service
+`ff7e4b6c-3b9e-4a67-b1e9-7c3288190a6d`, sourced from `Jory-AI/jory` on
+`main`, with observed deployment
+`1e5c28a3-f97f-49c4-b862-21342d60db7a` at independent SHA
+`e920883cb5877a6a70c3816c9c342b7a0d25a060`. Its public `/health` returned
+HTTP 200 at `2026-09-13T00:50:16.041065Z`, which is liveness only. The
+configured Core variables and mounted volume do not establish database,
+storage, schema, ownership, or signup side effects; a fork merge must not be
+compared to or expected to update this Core SHA.
 
 Do not collapse these separate facts:
 
@@ -151,7 +172,7 @@ The gate does not cache previous test results as current success. Paid Square
 evals remain a separate required gate for paths listed in `AGENTS.md`; neither
 the local deterministic gate nor green PR checks substitutes for them.
 
-The final local `pnpm verify` run
+The dated local `pnpm verify` observation
 `df87a3e9-eca9-471b-9f0c-2b1a398a0ecd` passed from
 `2026-09-12T22:57:28.102Z` to `2026-09-12T23:00:16.475Z` on source fingerprint
 `a37b4e519e6b2a45e568f69dfaaf7571fec9cf252e193b38087e9dbea4709b1c`: 1,949
@@ -177,11 +198,12 @@ acceptance, and recipient delivery. An empty browser table or lossy log response
 does not prove a worker never ran. Current health does not settle an older task.
 Preserve those distinctions when deciding where to investigate next.
 
-Production remains managed by Vercel. Git merge triggers the existing release
-path; tooling observes that release instead of launching a duplicate deployment.
-Rollback requires a selected deployment and compatibility evidence. Missing
-resource mapping blocks the affected operation; it does not justify inventing
-infrastructure or changing unrelated settings.
+The primary app remains managed by Vercel. Git merge triggers its existing
+release path and the separate Railway marketing release; tooling observes them
+instead of launching duplicate deployments. Rollback requires a selected
+deployment and compatibility evidence. Missing resource mapping blocks the
+affected operation; it does not justify inventing infrastructure or changing
+unrelated settings.
 
 ## Handoff and reusable learning
 
