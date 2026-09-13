@@ -4,6 +4,40 @@ import { signInThroughBypass } from "./helpers";
 const mobileSheet = (page: Page) =>
   page.locator('[data-sidebar="sidebar"][data-mobile="true"]');
 
+async function deferMobileBreakpointUntilFirstClick(page: Page) {
+  await page.addInitScript(() => {
+    const query = "(max-width: 767px)";
+    const originalMatchMedia = window.matchMedia.bind(window);
+    let reportsMobile = false;
+    const mobileMediaQuery = originalMatchMedia(query);
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      get: () => (reportsMobile ? 390 : 1024),
+    });
+    Object.defineProperty(mobileMediaQuery, "matches", {
+      configurable: true,
+      get: () => reportsMobile,
+    });
+    window.matchMedia = (value) =>
+      value === query ? mobileMediaQuery : originalMatchMedia(value);
+    window.addEventListener(
+      "click",
+      () => {
+        reportsMobile = true;
+        // Notify after click dispatch to model a stale responsive store without
+        // adding a UI wait to the journey.
+        setTimeout(() => {
+          mobileMediaQuery.dispatchEvent(
+            new MediaQueryListEvent("change", { matches: true, media: query })
+          );
+        }, 0);
+      },
+      { capture: true, once: true }
+    );
+  });
+}
+
 async function expectReadableNotFound(page: Page) {
   await expect(page.locator("main")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
@@ -123,6 +157,24 @@ test("closes the mobile navigation after pointer and keyboard route changes", as
       })
     )
     .toEqual({ focusOutsideSheet: true, focusVisible: true });
+});
+
+test("opens the mobile sheet when the responsive store catches up after the first click", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await deferMobileBreakpointUntilFirstClick(page);
+  await page.goto("/personal-info");
+
+  await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+  await expect(mobileSheet(page)).toBeVisible();
+  await expect
+    .poll(async () =>
+      (await page.context().cookies())
+        .filter((cookie) => cookie.name === "sidebar_state")
+        .map((cookie) => cookie.value)
+    )
+    .toEqual([]);
 });
 
 test("keeps the desktop sidebar available after mobile navigation coverage", async ({

@@ -7,7 +7,7 @@ import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
 
-import { useIsMobile } from "@/hooks/use-mobile";
+import { readMobileViewport, useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,10 +100,12 @@ function SidebarProvider({
 
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
-    return isMobile
+    // The server snapshot is desktop during hydration, so read the breakpoint
+    // at interaction time before choosing which sidebar state to toggle.
+    return readMobileViewport()
       ? setOpenMobile((currentOpen) => !currentOpen)
       : setOpen((currentOpen) => !currentOpen);
-  }, [isMobile, setOpen, setOpenMobile]);
+  }, [setOpen, setOpenMobile]);
 
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
