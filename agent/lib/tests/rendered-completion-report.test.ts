@@ -875,3 +875,58 @@ describe("uncertainty shared by several requests is stated once", () => {
     expect(report).toMatch(/for all 2 requests/iu);
   });
 });
+
+/**
+ * The sentence recoveryProgress issues for an unconfirmed dispatch. It is a
+ * safety instruction -- the only thing standing between a reader and repeating
+ * an action whose effect is unknown -- so no length pressure may drop it while
+ * optional detail survives.
+ */
+const automaticRepeatProhibition =
+  "An action was dispatched and its outcome was never confirmed. This session cannot establish what it changed, so it must not be repeated automatically: repeating it is safe only if it changed nothing, and that is exactly what is unknown.";
+
+describe("the automatic-repeat prohibition is never the detail that gives way", () => {
+  /**
+   * Five full cohorts, every one carrying a failure so all of them sort into
+   * the bad-news group. The second request is the one whose dispatch was never
+   * confirmed; the other four stopped incomplete without a dispatch receipt.
+   * The mixed statuses keep every outcome sentence long, so the outcome body
+   * and the uncertainty sentences genuinely compete for the 900-character
+   * budget rather than fitting by accident: today this batch keeps the
+   * corroborated dispatch claims and drops the prohibition. Only the uncertain
+   * request's non-completed tasks carry facts, so its dispatch claims are the
+   * claims the report can keep.
+   */
+  function pressureBatch(): string[] {
+    const ids: string[] = [];
+    for (let cohort = 0; cohort < 5; cohort += 1) {
+      const turnId = `turn_pressure_${String(cohort)}`;
+      ids.push(turnId);
+      for (let task = 0; task < 8; task += 1) {
+        const status = task < 2 ? "failed" : task < 4 ? "cancelled" : "completed";
+        const facts =
+          cohort === 1 && task < 4
+            ? [{ claim: "Dispatched the payment", evidence: "executor_receipt" }]
+            : [];
+        settle(
+          `task_p_${String(cohort)}_${String(task)}`,
+          turnId,
+          facts,
+          status
+        );
+      }
+    }
+    return ids;
+  }
+
+  it("RR-39: under maximum length pressure the automatic-repeat prohibition survives in full", () => {
+    const report = completionReportText(pressureBatch()) ?? "";
+
+    // The inversion this case exists for: with the outcome body spending most
+    // of the budget, the renderer kept the corroborated dispatch claim and
+    // dropped the sentence forbidding a repeat -- the report then told a person
+    // an action was dispatched without saying it must not be sent again.
+    expect(report).toContain("Dispatched the payment");
+    expect(report).toContain(automaticRepeatProhibition);
+  });
+});
