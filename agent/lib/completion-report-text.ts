@@ -337,34 +337,50 @@ export function completionReportText(
   // text never varies with a request's identity, only with its disposition, so
   // several requests sharing one disposition state it once rather than
   // repeating it -- that is preserving the qualification, not diluting it.
-  const unknownByLine = new Map<string, string[]>();
+  //
+  // A line is mandatory when the request's next step is "report_uncertain":
+  // that is the disposition whose sentence forbids repeating an unconfirmed
+  // dispatch, and it is the reason this report exists. The classification is
+  // taken from recoveryProgress rather than re-derived from the sentence text,
+  // because that module owns the decision. A mandatory line rides in the base
+  // beside the outcomes, so no length pressure can pop it while optional
+  // detail survives; everything else stays a droppable candidate exactly as
+  // before.
+  const unknownByLine = new Map<
+    string,
+    { labels: string[]; mandatory: boolean }
+  >();
   for (const request of ordered) {
-    for (const line of recoveryProgress({ turnId: request.cohortId })
-      .unknownRemainder) {
-      const labels = unknownByLine.get(line) ?? [];
+    const progress = recoveryProgress({ turnId: request.cohortId });
+    for (const line of progress.unknownRemainder) {
+      const entry = unknownByLine.get(line) ?? { labels: [], mandatory: false };
       // Same anchoring as the outcome sentences: the label names the request
       // the user made, not its position after the failure sort.
-      if (multiple) labels.push(requestLabel(request.askedAt));
-      unknownByLine.set(line, labels);
+      if (multiple) entry.labels.push(requestLabel(request.askedAt));
+      if (progress.nextStep === "report_uncertain") entry.mandatory = true;
+      unknownByLine.set(line, entry);
     }
   }
-  const uncertaintySentences = [...unknownByLine.entries()].map(
-    ([line, labels]) => {
-      if (labels.length === 0) return line;
-      if (labels.length === ordered.length)
-        return `For all ${String(ordered.length)} requests: ${line}`;
-      return `For ${joinLabels(labels)}: ${line}`;
-    }
-  );
+  const mandatorySentences: string[] = [];
+  const advisorySentences: string[] = [];
+  for (const [line, { labels, mandatory }] of unknownByLine) {
+    const sentence =
+      labels.length === 0
+        ? line
+        : labels.length === ordered.length
+          ? `For all ${String(ordered.length)} requests: ${line}`
+          : `For ${joinLabels(labels)}: ${line}`;
+    (mandatory ? mandatorySentences : advisorySentences).push(sentence);
+  }
 
   let text = appendBounded(
-    body,
+    [body, ...mandatorySentences].filter((part) => part.length > 0).join(" "),
     // Reserved so the claim-omission notice appended below always fits. Without
     // it the loop accepted an over-long body once every claim had already been
     // dropped, and a mixed-status batch rendered 948 characters against this
     // 900-character bound.
     maximumReportBodyLength - claimNoticeReserve,
-    uncertaintySentences,
+    advisorySentences,
     (omitted) =>
       `(${String(omitted)} further unresolved-outcome note${omitted === 1 ? " is" : "s are"} not shown here.)`
   );
@@ -415,6 +431,15 @@ export function completionReportText(
     const withNoEvidence = `${text} There is no recorded evidence of what the work achieved.`;
     text =
       withNoEvidence.length <= maximumReportBodyLength ? withNoEvidence : text;
+  }
+
+  // The largest batch the capacity permits can push the outcomes plus the
+  // mandatory prohibition past the bound on their own, with every claim and
+  // advisory note already given way. Shortening a sentence to fit is the one
+  // thing this module never does -- a cut sentence can say the opposite of the
+  // recorded one -- so the excess is declared instead of hidden.
+  if (text.length > maximumReportBodyLength) {
+    text = `${text} (Every request's outcome and the unconfirmed-dispatch warning above are complete; this report ran past its usual length rather than cut either.)`;
   }
 
   return text;
