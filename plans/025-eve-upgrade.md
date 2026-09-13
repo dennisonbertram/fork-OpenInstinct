@@ -1,7 +1,8 @@
 # Plan 025: Upgrade Eve from patched 0.49.0 to a probed 0.54.x target
 
-GitHub: not yet filed. Related: #214 (lost wake, open), #246 (child-delivers,
-open, blocked on 0.49.0), #218 (closed), PR #221 (closed).
+GitHub: [#248](https://github.com/dennisonbertram/fork-OpenInstinct/issues/248).
+Related: #214 (lost wake, open), #246 (child-delivers, open, blocked),
+#218 (closed), PR #221 (closed).
 
 > **Executor instructions:** This is a dependency upgrade with a security
 > patch that must survive it. It is **not** the product fix for "the user
