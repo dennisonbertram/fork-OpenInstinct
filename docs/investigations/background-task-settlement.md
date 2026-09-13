@@ -78,8 +78,9 @@ and `resolveHarnessToolDefinition`:
 
 ```js
 if (e.tool.kind === `subagent` || e.tool.kind === `remote`)
-  return e.tasksEnabled ? createBackgroundSubagentHarnessDefinition(e.tool)
-                        : createHarnessDelegationToolDefinition(e.tool);
+  return e.tasksEnabled
+    ? createBackgroundSubagentHarnessDefinition(e.tool)
+    : createHarnessDelegationToolDefinition(e.tool);
 ```
 
 The same decision exists for dynamic subagents (which `browser-agent` is —
@@ -87,9 +88,11 @@ it is defined via a `turn.started` resolver, `agent/subagents/browser-agent/agen
 in `node_modules/eve/dist/src/context/dynamic-subagent-lifecycle.js`:
 
 ```js
-s.push(e.get(TasksEnabledKey) === !0
-  ? createBackgroundSubagentHarnessDefinition(t.prepared)
-  : createHarnessDelegationToolDefinition(t.prepared))
+s.push(
+  e.get(TasksEnabledKey) === !0
+    ? createBackgroundSubagentHarnessDefinition(t.prepared)
+    : createHarnessDelegationToolDefinition(t.prepared)
+);
 ```
 
 `TasksEnabledKey` is set per turn in `node_modules/eve/dist/src/execution/workflow-steps.js`,
@@ -170,26 +173,30 @@ terminal command:
 `projectSessionTaskTerminals` / `projectSessionTaskMembers`, verbatim:
 
 ```js
-getSessionTaskIndex(e).flatMap(e => {
+getSessionTaskIndex(e).flatMap((e) => {
   let t = e.terminalView;
-  return t === void 0 ? [] : [{
-    childSessionId: t.executor?.childSessionId,
-    childTurnId: t.executor?.childTurnId,
-    output: t.status === `cancelled` ? void 0 : t.lastOutput?.data,
-    parentTurnId: e.createdByTurnId,
-    status: t.status,
-    taskId: e.taskId,
-    terminalTaskId: t.taskId,
-    workerName: t.metadata.name
-  }]
-})
+  return t === void 0
+    ? []
+    : [
+        {
+          childSessionId: t.executor?.childSessionId,
+          childTurnId: t.executor?.childTurnId,
+          output: t.status === `cancelled` ? void 0 : t.lastOutput?.data,
+          parentTurnId: e.createdByTurnId,
+          status: t.status,
+          taskId: e.taskId,
+          terminalTaskId: t.taskId,
+          workerName: t.metadata.name,
+        },
+      ];
+});
 // members:
-getSessionTaskIndex(e).map(e => ({
+getSessionTaskIndex(e).map((e) => ({
   parentTurnId: e.createdByTurnId,
   settled: e.terminalView !== void 0,
   taskId: e.taskId,
-  workerName: e.metadata.name
-}))
+  workerName: e.metadata.name,
+}));
 ```
 
 `readBackgroundTaskTerminals()`/`readBackgroundTaskMembers()` return these
@@ -212,27 +219,27 @@ context."), they do not return `[]`.
 `backgroundTaskTerminalSchema` (`agent/lib/background-task-terminal.ts:17-26`)
 vs the terminal projection:
 
-| Field | Eve writes | Schema requires | Match |
-|---|---|---|---|
-| `taskId` | `e.taskId` (index entry id, non-empty by `sessionTaskIndexEntrySchema`) | `z.string().min(1)` | yes |
-| `terminalTaskId` | `t.taskId` (view's own id) | `z.string().min(1)` | yes |
-| `taskId === terminalTaskId` | enforced by Eve itself: index schema `.refine(... e.terminalView.taskId === e.taskId ...)` in `session-index.js` | repo re-check at `background-task-terminal.ts:50` | yes (redundant) |
-| `parentTurnId` | `e.createdByTurnId`, non-empty by index schema | `z.string().min(1)` | yes |
-| `childSessionId` | `t.executor?.childSessionId`, may be `undefined` | optional `z.string().min(1)` | yes |
-| `childTurnId` | `t.executor?.childTurnId`, may be `undefined` | optional | yes |
-| `workerName` | `t.metadata.name`; both variants of `taskMetadataSchema` require `name: z.string().min(1)` | `z.string().min(1)` | yes |
-| `status` | `t.status`, one of `completed`/`failed`/`cancelled` by `taskViewSchema` (discriminated union) | same enum | yes |
-| `output` | `t.status === 'cancelled' ? undefined : t.lastOutput?.data` — `undefined` for cancelled, but also possible for completed/failed (the index schema types `lastOutput.data` as `z.custom()`, which accepts `undefined`) | `z.unknown().optional()` | yes |
+| Field                       | Eve writes                                                                                                                                                                                                            | Schema requires                                   | Match           |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | --------------- |
+| `taskId`                    | `e.taskId` (index entry id, non-empty by `sessionTaskIndexEntrySchema`)                                                                                                                                               | `z.string().min(1)`                               | yes             |
+| `terminalTaskId`            | `t.taskId` (view's own id)                                                                                                                                                                                            | `z.string().min(1)`                               | yes             |
+| `taskId === terminalTaskId` | enforced by Eve itself: index schema `.refine(... e.terminalView.taskId === e.taskId ...)` in `session-index.js`                                                                                                      | repo re-check at `background-task-terminal.ts:50` | yes (redundant) |
+| `parentTurnId`              | `e.createdByTurnId`, non-empty by index schema                                                                                                                                                                        | `z.string().min(1)`                               | yes             |
+| `childSessionId`            | `t.executor?.childSessionId`, may be `undefined`                                                                                                                                                                      | optional `z.string().min(1)`                      | yes             |
+| `childTurnId`               | `t.executor?.childTurnId`, may be `undefined`                                                                                                                                                                         | optional                                          | yes             |
+| `workerName`                | `t.metadata.name`; both variants of `taskMetadataSchema` require `name: z.string().min(1)`                                                                                                                            | `z.string().min(1)`                               | yes             |
+| `status`                    | `t.status`, one of `completed`/`failed`/`cancelled` by `taskViewSchema` (discriminated union)                                                                                                                         | same enum                                         | yes             |
+| `output`                    | `t.status === 'cancelled' ? undefined : t.lastOutput?.data` — `undefined` for cancelled, but also possible for completed/failed (the index schema types `lastOutput.data` as `z.custom()`, which accepts `undefined`) | `z.unknown().optional()`                          | yes             |
 
 `backgroundTaskMemberSchema` (`agent/lib/background-task-terminal.ts:90-95`)
 vs the member projection: `taskId`, `parentTurnId`, `workerName` (all
 non-empty, same sources as above) and `settled` (`e.terminalView !== void 0`,
 always boolean) — all match.
 
-One hardening caveat: the *read* path (`getSessionTaskIndex`) validates the
+One hardening caveat: the _read_ path (`getSessionTaskIndex`) validates the
 full `sessionTaskIndexSchema` and **throws** on a corrupt index, so a record
 that reaches the repo's filters has already passed a stricter schema than the
-repo's own. The *write* path validates less — `cacheTerminalTaskView` checks
+repo's own. The _write_ path validates less — `cacheTerminalTaskView` checks
 only `isValidTerminalView` (status/lastOutput consistency), so a view with,
 say, an empty-string `executor.childSessionId` can be cached and would then
 make the next `getSessionTaskIndex` parse throw. That failure mode is loud
@@ -269,7 +276,11 @@ called only from `routeDeliverToChildren`
 (`node_modules/eve/dist/src/execution/route-child-delivery.js`):
 
 ```js
-(a.task?.views?.length ?? 0) > 0 && (s = await recordTerminalTaskViewsStep({ sessionState: s, views: a.task?.views ?? [] }));
+(a.task?.views?.length ?? 0) > 0 &&
+  (s = await recordTerminalTaskViewsStep({
+    sessionState: s,
+    views: a.task?.views ?? [],
+  }));
 ```
 
 `task.views` in a delivery is produced by exactly one sender: the child's wake
@@ -316,7 +327,7 @@ is not open or is `cancelled` (`:184-189`). Its docstring says the caller
 "must refuse to dispatch when admission fails: a task that already ran but was
 never admitted would settle with nobody owing its report"
 (`completion-obligations.ts:152-157`) — but that contract cannot be honoured by
-the only caller there is. `reconcileBackgroundTasks` discovers tasks *after*
+the only caller there is. `reconcileBackgroundTasks` discovers tasks _after_
 they exist, from Eve's index, and discards `admitTask`'s return value entirely
 (`completion-obligations.ts:751-760`):
 
@@ -352,15 +363,15 @@ from this checkout; what would have to be true:
 - **openCohorts (8):** the session already tracked 8 cohorts in neither
   `delivered` nor `superseded` phase when this task's admission was attempted.
   Note this limit can compound with cause 3: it blocks admission of tasks
-  belonging to *new* cohorts (`completion-obligations.ts:171-178`) — a task
+  belonging to _new_ cohorts (`completion-obligations.ts:171-178`) — a task
   joining an existing open cohort under 8 members still admits — and a cohort
   leaves "open" by being reported (`isOpen`,
   `completion-obligations.ts:148-150`) or by `supersedeCohort`
   (`:551-552`, currently with no non-test caller). So 8 wake-lost cohorts
-  permanently block every *new* cohort's tasks, and nothing in that state can
+  permanently block every _new_ cohort's tasks, and nothing in that state can
   free a slot.
 - **tasksPerCohort (8):** the incident's parent turn already started 8
-  background tasks in the same cohort (the cohort *is* the parent turn). The
+  background tasks in the same cohort (the cohort _is_ the parent turn). The
   log shows one `browser-agent` call; if it was the turn's only background
   task, this limit could not have fired.
 - **closed/cancelled cohort:** the same `parentTurnId` already had a cohort in
@@ -378,10 +389,10 @@ the cohort for that turn was closed.
 Note on the incident log: the producer of the quoted `subagents: [...]` line
 with `status: "completed"` was not identified (section 8), so treat its
 meaning cautiously. What is proven from source: `subagent.called`/`subagent.completed`
-are *control-plane dispatch* events, and the `subagent.completed` event
+are _control-plane dispatch_ events, and the `subagent.completed` event
 emitted in `local.js` at dispatch time carries `backgroundTask:
 { status: 'working' }` — it says nothing about the task terminal. If the
-logged `status: "completed"` reflects the child *session* finishing, it is
+logged `status: "completed"` reflects the child _session_ finishing, it is
 evidence the child finished, not evidence that the parent's task index ever
 saw a terminal. (`src/app/_lib/subagent-sessions.ts` was checked and is not
 the producer: its `getSubagentStatus` returns `"complete"`, never
@@ -432,7 +443,7 @@ small counters would separate them in a future incident:
   the task's `parentTurnId`, or `parentTurnId` mismatch. Zero admission
   refusals alongside unmatched terminals points away from cause 4 and at the
   terminal record itself; both signals together are consistent with cause 4 —
-  though session-level counts alone cannot prove the *same* task experienced
+  though session-level counts alone cannot prove the _same_ task experienced
   both, so the counters are triage, not verdict.
 - **`reconcileBackgroundTasks` (`agent/lib/completion-obligations.ts:751-763`):**
   record, once per root step, the member count and the settled-member count
@@ -459,7 +470,7 @@ become fabricated completion state. Not implemented here.
   index entry (silently dropped by `cacheTerminalTaskView`), or a resume that
   succeeded but whose turn crashed pre-commit. Distinguishing them requires
   the production task-run and workflow logs (look for `task wake target is
-  gone` from logger `execution.tasks.run`, and the `taskDeliveryId`
+gone` from logger `execution.tasks.run`, and the `taskDeliveryId`
   `<taskId>:ready:<status>`). Not verifiable from this checkout.
 - **Whether the task index entry existed in the parent's state at the time.**
   The emitted `subagent.completed` event proves dispatch and bind succeeded;
