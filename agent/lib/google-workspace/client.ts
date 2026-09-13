@@ -1,4 +1,5 @@
 import { auth } from "@googleapis/gmail";
+import { ConnectError } from "@vercel/connect";
 import { connect, type EveAuthorizationOptions } from "@vercel/connect/eve";
 import type { ToolContext } from "eve/tools";
 import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
@@ -73,7 +74,20 @@ export async function withGoogleAuth<T>(
       throw new Error("Google Workspace connection has been revoked.");
     }
   }
-  const { token } = await ctx.getToken(googleWorkspaceAuth);
+  let token: string;
+  try {
+    ({ token } = await ctx.getToken(googleWorkspaceAuth));
+  } catch (error) {
+    // Mirrors @vercel/connect 2.0.0 isMissingConnectorOrProjectLink
+    // (eve/connection-authorization.js). That predicate is not exported.
+    if (isMissingGoogleConnector(error)) {
+      // oxlint-disable-next-line eslint/preserve-caught-error -- this replacement is operator-facing; it must not carry vendor payload or the original ConnectError as cause.
+      throw new Error(
+        `Google Workspace is not configured for this project. GOOGLE_CONNECTOR_UID resolves to "${env.GOOGLE_CONNECTOR_UID}". Ask an operator to verify that this connector exists and is linked to this project in the current environment. See docs/operations/VERCEL.md, section "Google Workspace connector".`
+      );
+    }
+    throw error;
+  }
   if (connection) {
     await recordConnectionInstallation(connection.scope, {
       ...connection.installation,
@@ -100,4 +114,19 @@ const googleApiErrorSchema = z.object({
 export function googleApiErrorStatus(cause: unknown) {
   const result = googleApiErrorSchema.safeParse(cause);
   return result.success ? result.data.response.status : undefined;
+}
+
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- catch clauses yield unknown; this is the instanceof ConnectError boundary.
+function isMissingGoogleConnector(error: unknown) {
+  if (!(error instanceof ConnectError)) {
+    return false;
+  }
+  if (error.status === 404 && error.code === "not_found") {
+    return true;
+  }
+  return (
+    error.status === 403 &&
+    error.code === "forbidden" &&
+    /connector is not linked to this project/i.test(error.message)
+  );
 }

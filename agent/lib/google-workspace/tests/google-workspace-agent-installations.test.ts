@@ -1,3 +1,4 @@
+import { ConnectError } from "@vercel/connect";
 import type { ToolContext } from "eve/tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { accessScopeForUser } from "@/lib/access-scope";
@@ -92,7 +93,120 @@ describe("agent Google Workspace installation authorization", () => {
     expect(mocks.findInstallation).not.toHaveBeenCalled();
     expect(mocks.recordInstallation).not.toHaveBeenCalled();
   });
+
+  it("replaces a missing-connector 404 with operator configuration guidance", async () => {
+    const ctx = toolContext();
+    const original = new ConnectError("secret-token-must-not-leak", {
+      code: "not_found",
+      status: 404,
+    });
+    ctx.getToken.mockRejectedValue(original);
+    await expect(withGoogleAuth(ctx, async () => "unused")).rejects.toThrow(
+      missingConnectorMessage
+    );
+    await expect(withGoogleAuth(ctx, async () => "unused")).rejects.not.toThrow(
+      "secret-token-must-not-leak"
+    );
+    expect(mocks.recordInstallation).not.toHaveBeenCalled();
+    expect(mocks.setCredentials).not.toHaveBeenCalled();
+  });
+
+  it("replaces an unlinked-connector 403 with the same operator guidance", async () => {
+    const ctx = toolContext();
+    ctx.getToken.mockRejectedValue(
+      new ConnectError("The connector is not linked to this project", {
+        code: "forbidden",
+        status: 403,
+      })
+    );
+    await expect(withGoogleAuth(ctx, async () => "unused")).rejects.toThrow(
+      missingConnectorMessage
+    );
+    expect(mocks.recordInstallation).not.toHaveBeenCalled();
+  });
+
+  it("passes through a 403 forbidden that is not an unlinked connector", async () => {
+    const ctx = toolContext();
+    const original = new ConnectError("rate limited", {
+      code: "forbidden",
+      status: 403,
+    });
+    ctx.getToken.mockRejectedValue(original);
+    await expect(withGoogleAuth(ctx, async () => "unused")).rejects.toBe(
+      original
+    );
+  });
+
+  it("passes through a 404 that is not not_found", async () => {
+    const ctx = toolContext();
+    const original = new ConnectError("gone", {
+      code: "gone",
+      status: 404,
+    });
+    ctx.getToken.mockRejectedValue(original);
+    await expect(withGoogleAuth(ctx, async () => "unused")).rejects.toBe(
+      original
+    );
+  });
+
+  it("passes through a non-ConnectError that looks like a missing connector", async () => {
+    const ctx = toolContext();
+    const original = Object.assign(new Error("not_found"), {
+      code: "not_found",
+      status: 404,
+    });
+    ctx.getToken.mockRejectedValue(original);
+    await expect(withGoogleAuth(ctx, async () => "unused")).rejects.toBe(
+      original
+    );
+  });
+
+  it("passes through Eve's tool authorization signal unchanged", async () => {
+    const ctx = toolContext();
+    const original = Object.assign(new Error("Google authorization required"), {
+      name: "ToolAuthorizationRequiredError",
+      requests: [{ displayName: "Google" }],
+    });
+    ctx.getToken.mockRejectedValue(original);
+    await expect(withGoogleAuth(ctx, async () => "unused")).rejects.toBe(
+      original
+    );
+  });
+
+  it("does not rewrite a matching ConnectError thrown by the Google call", async () => {
+    const ctx = toolContext();
+    const original = new ConnectError(
+      "The connector is not linked to this project",
+      {
+        code: "forbidden",
+        status: 403,
+      }
+    );
+    await expect(
+      withGoogleAuth(ctx, async () => {
+        throw original;
+      })
+    ).rejects.toBe(original);
+  });
+
+  it("propagates a sentinel thrown by requireAuth on Google 401", async () => {
+    const ctx = toolContext();
+    const sentinel = new Error("require-auth-sentinel");
+    ctx.requireAuth.mockImplementation(() => {
+      throw sentinel;
+    });
+    const google401 = Object.assign(new Error("google 401"), {
+      response: { status: 401 },
+    });
+    await expect(
+      withGoogleAuth(ctx, async () => {
+        throw google401;
+      })
+    ).rejects.toBe(sentinel);
+  });
 });
+const missingConnectorMessage =
+  'Google Workspace is not configured for this project. GOOGLE_CONNECTOR_UID resolves to "google/test". Ask an operator to verify that this connector exists and is linked to this project in the current environment. See docs/operations/VERCEL.md, section "Google Workspace connector".';
 function toolContext() {
   const getToken = vi
     .fn<ToolContext["getToken"]>()
