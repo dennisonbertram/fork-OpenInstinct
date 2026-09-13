@@ -1,8 +1,10 @@
 # OpenInstinct local and Vercel operator runbook
 
 This is the supported deployment path for the current repository. It is an
-operator procedure, not a production-readiness claim. Hetzner, Railway, and
-portable provider credentials are outside this runbook.
+operator procedure, not a production-readiness claim. Hetzner deployment,
+Railway operations, and portable provider credentials are outside this runbook;
+the separate Git-triggered Railway marketing service is included only as a
+release-evidence surface.
 
 It covers four outcomes:
 
@@ -59,14 +61,28 @@ configuration, and logical-database facts. `./init.sh` starts the primary
 application and local marketing stacks; it does not establish a deployed
 marketing lifecycle.
 
-On September 12, 2026, a read-only Vercel project listing for the configured
+On September 12, 2026, the read-only Vercel project listing for the configured
 team completed in one page of 24 projects with no next page. Filtering for the
-fork repository found only the primary `jory` application project (the
-configured project ID and `main` Git ref); no matching marketing project was
-discovered in that team. This is bounded evidence for that configured team,
-not proof that no marketing project exists in another team or as an unlinked
-manual deployment. Keep marketing unmapped and do not provision it from this
-runbook.
+fork repository,
+Jory/OpenInstinct names, or `apps/marketing` found only the primary `jory`
+application project; no Vercel marketing project was found in that listing.
+Separate Railway evidence identifies the deployed Jory marketing service. The
+Plan 024 `prod.sh` wrapper is Vercel-only: it does not map or operate Railway.
+The primary app and marketing app use separate release surfaces, and a Git
+merge triggers both. For current Railway project, environment, service, domain,
+and deployment evidence, see
+[Agent development system](../AGENT_DEVELOPMENT.md#know-which-surface-is-running).
+Release acceptance checks the matching deployment's status and scope and then
+checks public HTTP health; deployment success alone does not establish serving
+health or the full user journey.
+
+A separate current Vercel observation reported `Ready` for app deployment
+`https://jory-cmidtpppl-dennisons-projects.vercel.app` on full SHA
+`999537e576d965215d024dcac78ef45a14de37de`, selected by canonical
+`https://open-instinct-ashy.vercel.app`. A separate request to the canonical
+`/eve/v1/health` returned HTTP 200 with Eve `ready`. This health result and the
+Railway marketing HTTP 200 establish endpoint responses, not the full user
+journey or the Railway revision currently serving its domains.
 
 A bounded read-only release observation on 2026-09-12 resolved the configured
 production alias to deployment `dpl_AqLjVV7GeMgVFx6qFK7TTkwqnv7w` and its

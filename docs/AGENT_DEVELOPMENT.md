@@ -49,19 +49,41 @@ declaration to compare against current evidence, not a cached health report.
 The reader resolves a production alias to its exact deployment; preview
 operations require an immutable deployment selector.
 
-| Surface                 | Runtime and data owner                                                              | Identity to check                                                                                   |
-| ----------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Connected local app     | Primary Next with integrated Eve; worktree-specific persistent Compose Postgres     | Run ID, reported origin, source state, database/migrations, provider capability state               |
-| Fixture local app       | Same app/runtime with the existing scripted model; run-specific disposable Postgres | Run ID, fixture profile, synthetic environment, exact resources and cleanup                         |
-| Local marketing site    | Separate Next application under `apps/marketing/`, started by the supervisor        | Its own origin and process; it is not the authenticated app                                         |
-| Preview app             | Immutable deployment in the configured Vercel app project                           | Project/team, preview target, deployment ID, URL, source, and runtime evidence when accessible      |
-| Production app          | Git-connected Vercel project; canonical alias selects a deployment                  | Alias-to-deployment relationship plus independent runtime/database/config evidence                  |
-| Deployed marketing site | Independent deployment surface                                                      | Unmapped until a project is positively identified; do not infer an app URL or database relationship |
+| Surface                 | Runtime and data owner                                                              | Identity to check                                                                              |
+| ----------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Connected local app     | Primary Next with integrated Eve; worktree-specific persistent Compose Postgres     | Run ID, reported origin, source state, database/migrations, provider capability state          |
+| Fixture local app       | Same app/runtime with the existing scripted model; run-specific disposable Postgres | Run ID, fixture profile, synthetic environment, exact resources and cleanup                    |
+| Local marketing site    | Separate Next application under `apps/marketing/`, started by the supervisor        | Its own origin and process; it is not the authenticated app                                    |
+| Preview app             | Immutable deployment in the configured Vercel app project                           | Project/team, preview target, deployment ID, URL, source, and runtime evidence when accessible |
+| Production app          | Git-connected Vercel project; canonical alias selects a deployment                  | Alias-to-deployment relationship plus independent runtime/database/config evidence             |
+| Deployed marketing site | Railway production service `jory`; marketing app                                    | Project/environment/service, deployment ID/SHA, domains, and HTTP health                       |
 
-The configured-team audit on 2026-09-12 read all 24 projects in one complete
-page and found only the primary `jory` project among matches for this fork,
-Jory/OpenInstinct names, or `apps/marketing`. It did not establish whether a
-marketing deployment exists in another team or under an unrecognized project.
+The primary app is deployed by Vercel. The separate Jory marketing app is
+deployed by a Git-triggered Railway service from `main`. Its Railway project
+ID is `8835393a-d864-4b1f-bcc0-b45f33fec22e`, production environment ID is
+`e5f11b2b-5ec2-4a92-ab64-e42286f4bbc7`, and service ID is
+`7ede8b27-07e1-4ae6-9f2b-f965a82551ef`. Railway builds and starts it with
+`pnpm --filter @jory/marketing build` and
+`pnpm --filter @jory/marketing start` from the repository root. Railway's
+recorded variable names are `JORY_CORE_BASE_URL` and
+`JORY_DASHBOARD_ENABLED`; their values were not read. Merge triggers both
+deployment surfaces. The Vercel-only production wrapper does not map or operate
+the Railway service.
+
+For full SHA `999537e576d965215d024dcac78ef45a14de37de`, Vercel reported the
+app deployment `Ready` at `https://jory-cmidtpppl-dennisons-projects.vercel.app`,
+selected by canonical `https://open-instinct-ashy.vercel.app`. A separate
+request to the canonical `/eve/v1/health` returned HTTP 200 with Eve `ready`.
+Railway reported deployment `c0672392-0aa8-4ef0-b60b-6455d565fc57` as
+`SUCCESS` for the same full SHA at `2026-09-13T00:27:35.339Z`. Its four public
+domains are `heyjory.ai`,
+`www.heyjory.ai`, `heyjory.com`, and `www.heyjory.com`; ownership, propagated
+DNS, and valid TLS were recorded at `2026-09-13T00:29:14Z`. A separate public
+HTTP check at `2026-09-13T00:27:12.858208Z` returned 200 for the marketing
+domains. The Railway deployment evidence does not identify the revision
+currently serving those domains. Release acceptance checks each matching
+deployment's status and scope, then public HTTP health; these observations do
+not prove the full user journey.
 
 Do not collapse these separate facts:
 
