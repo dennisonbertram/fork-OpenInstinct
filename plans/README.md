@@ -24,6 +24,7 @@ the index update to the reviewer who dispatched the work.
 | 014  | [Bounded recovery and progress](014-bounded-recovery-progress.md)                                           | P1       | M      | 005–006, 011 | TODO              |
 | 015  | [Reviewed procedure improvement](015-reviewed-procedure-improvement.md)                                     | P2       | S–M    | —            | TODO              |
 | 016  | [Matched whole-task efficiency](016-matched-task-efficiency.md)                                             | P2       | M      | —            | TODO              |
+| 018  | [Connect Gmail](018-connect-gmail.md)                                                                       | P1       | S–M    | —            | TODO              |
 | 021  | [Complete local lifecycle](021-local-lifecycle.md)                                                          | P1       | M      | —            | IN PROGRESS       |
 | 022  | [Diagnostic evidence](022-diagnostic-evidence.md)                                                           | P1       | M      | 021          | IN PROGRESS       |
 | 023  | [Local verification gate](023-local-verification-gate.md)                                                   | P1       | M      | 021–022      | IN PROGRESS       |
@@ -54,6 +55,7 @@ drift before starting Plans 003–016.
 | 014  | [#163](https://github.com/dennisonbertram/fork-OpenInstinct/issues/163) |
 | 015  | [#164](https://github.com/dennisonbertram/fork-OpenInstinct/issues/164) |
 | 016  | [#165](https://github.com/dennisonbertram/fork-OpenInstinct/issues/165) |
+| 018  | [#226](https://github.com/dennisonbertram/fork-OpenInstinct/issues/226) |
 
 ## Dependency notes
 
