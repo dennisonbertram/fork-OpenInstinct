@@ -29,6 +29,7 @@ the index update to the reviewer who dispatched the work.
 | 022  | [Diagnostic evidence](022-diagnostic-evidence.md)                                                           | P1       | M      | 021          | IN PROGRESS                                                                                                    |
 | 023  | [Local verification gate](023-local-verification-gate.md)                                                   | P1       | M      | 021–022      | IN PROGRESS                                                                                                    |
 | 024  | [Production operations](024-production-operations.md)                                                       | P1       | M      | 021–023      | IN PROGRESS                                                                                                    |
+| 025  | [Upgrade Eve from patched 0.49.0](025-eve-upgrade.md)                                                       | P1       | M–L    | —            | TODO (probe first; not the product fix for #214)                                                               |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
@@ -39,23 +40,29 @@ when this index was generated and is historical; it is not a current remote
 issue-state assertion. Revalidate issue state, dependencies, and current-head
 drift before starting Plans 003–016.
 
-| Plan | Issue                                                                   |
-| ---- | ----------------------------------------------------------------------- |
-| 003  | [#152](https://github.com/dennisonbertram/fork-OpenInstinct/issues/152) |
-| 004  | [#154](https://github.com/dennisonbertram/fork-OpenInstinct/issues/154) |
-| 005  | [#155](https://github.com/dennisonbertram/fork-OpenInstinct/issues/155) |
-| 006  | [#156](https://github.com/dennisonbertram/fork-OpenInstinct/issues/156) |
-| 007  | [#157](https://github.com/dennisonbertram/fork-OpenInstinct/issues/157) |
-| 008  | [#158](https://github.com/dennisonbertram/fork-OpenInstinct/issues/158) |
-| 009  | [#159](https://github.com/dennisonbertram/fork-OpenInstinct/issues/159) |
-| 010  | [#153](https://github.com/dennisonbertram/fork-OpenInstinct/issues/153) |
-| 011  | [#160](https://github.com/dennisonbertram/fork-OpenInstinct/issues/160) |
-| 012  | [#161](https://github.com/dennisonbertram/fork-OpenInstinct/issues/161) |
-| 013  | [#162](https://github.com/dennisonbertram/fork-OpenInstinct/issues/162) |
-| 014  | [#163](https://github.com/dennisonbertram/fork-OpenInstinct/issues/163) |
-| 015  | [#164](https://github.com/dennisonbertram/fork-OpenInstinct/issues/164) |
-| 016  | [#165](https://github.com/dennisonbertram/fork-OpenInstinct/issues/165) |
-| 018  | [#226](https://github.com/dennisonbertram/fork-OpenInstinct/issues/226) |
+| Plan  | Issue                                                                   |
+| ----- | ----------------------------------------------------------------------- |
+| 003   | [#152](https://github.com/dennisonbertram/fork-OpenInstinct/issues/152) |
+| 004   | [#154](https://github.com/dennisonbertram/fork-OpenInstinct/issues/154) |
+| 005   | [#155](https://github.com/dennisonbertram/fork-OpenInstinct/issues/155) |
+| 006   | [#156](https://github.com/dennisonbertram/fork-OpenInstinct/issues/156) |
+| 007   | [#157](https://github.com/dennisonbertram/fork-OpenInstinct/issues/157) |
+| 008   | [#158](https://github.com/dennisonbertram/fork-OpenInstinct/issues/158) |
+| 009   | [#159](https://github.com/dennisonbertram/fork-OpenInstinct/issues/159) |
+| 010   | [#153](https://github.com/dennisonbertram/fork-OpenInstinct/issues/153) |
+| 011   | [#160](https://github.com/dennisonbertram/fork-OpenInstinct/issues/160) |
+| 012   | [#161](https://github.com/dennisonbertram/fork-OpenInstinct/issues/161) |
+| 013   | [#162](https://github.com/dennisonbertram/fork-OpenInstinct/issues/162) |
+| 014   | [#163](https://github.com/dennisonbertram/fork-OpenInstinct/issues/163) |
+| 015   | [#164](https://github.com/dennisonbertram/fork-OpenInstinct/issues/164) |
+| 016   | [#165](https://github.com/dennisonbertram/fork-OpenInstinct/issues/165) |
+| 018   | [#226](https://github.com/dennisonbertram/fork-OpenInstinct/issues/226) |
+| 025   | [#248](https://github.com/dennisonbertram/fork-OpenInstinct/issues/248) |
+| 025.0 | [#249](https://github.com/dennisonbertram/fork-OpenInstinct/issues/249) |
+| 025.1 | [#250](https://github.com/dennisonbertram/fork-OpenInstinct/issues/250) |
+| 025.2 | [#251](https://github.com/dennisonbertram/fork-OpenInstinct/issues/251) |
+| 025.3 | [#252](https://github.com/dennisonbertram/fork-OpenInstinct/issues/252) |
+| 025.5 | [#253](https://github.com/dennisonbertram/fork-OpenInstinct/issues/253) |
 
 ## Dependency notes
 
@@ -136,7 +143,9 @@ Verified against source; see the plan issues linked above for detail.
   an uncalibrated judge); whether to sequence #136 first is undecided.
 
 **Cross-cutting ceiling (#214, #218):** the completion epic's browser path
-cannot be made reliable from inside this repository on eve 0.49.0. #214: a
+cannot be made reliable from inside this repository on eve 0.49.0. Plan 025
+(#248) is the Eve upgrade that may change that ceiling; 0.54.3 source still
+does not retry a gone wake, so the upgrade is not itself the product fix. #214: a
 `browser-agent` call does become a durable background task and reaches the
 parent through exactly one at-most-once wake delivery; if that delivery is
 lost, eve logs a warning and never retries, and there is no API to recover
