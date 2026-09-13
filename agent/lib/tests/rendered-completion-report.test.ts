@@ -903,10 +903,16 @@ describe("the automatic-repeat prohibition is never the detail that gives way", 
       const turnId = `turn_pressure_${String(cohort)}`;
       ids.push(turnId);
       for (let task = 0; task < 8; task += 1) {
-        const status = task < 2 ? "failed" : task < 4 ? "cancelled" : "completed";
-        const facts =
+        const status =
+          task < 2 ? "failed" : task < 4 ? "cancelled" : "completed";
+        const facts: BoundedFact[] =
           cohort === 1 && task < 4
-            ? [{ claim: "Dispatched the payment", evidence: "executor_receipt" }]
+            ? [
+                {
+                  claim: "Dispatched the payment",
+                  evidence: "executor_receipt",
+                },
+              ]
             : [];
         settle(
           `task_p_${String(cohort)}_${String(task)}`,
@@ -928,5 +934,179 @@ describe("the automatic-repeat prohibition is never the detail that gives way", 
     // an action was dispatched without saying it must not be sent again.
     expect(report).toContain("Dispatched the payment");
     expect(report).toContain(automaticRepeatProhibition);
+  });
+
+  it("RR-40: under the same pressure, optional detail is what gives way, and its omission stays visible", () => {
+    const ids = pressureBatch();
+    const report = completionReportText(ids) ?? "";
+
+    // The advisory unresolved-outcome note and the supporting claims are the
+    // material that gives way; both omissions stay counted, and the whole
+    // report still fits its bound.
+    expect(report).toContain(automaticRepeatProhibition);
+    expect(report).toContain(
+      "(1 further unresolved-outcome note is not shown here.)"
+    );
+    expect(report).toContain("1 further recorded claim is not shown here");
+    expect(report.length).toBeLessThanOrEqual(900);
+
+    const delivered = reportWithRecordedFacts(ids, "Here is where it got to.");
+    expect(delivered.length).toBeLessThanOrEqual(20_000);
+    expect(delivered).toContain(automaticRepeatProhibition);
+  });
+
+  it("RR-41: a receipt on a completed task does not manufacture a prohibition", () => {
+    // Uncertainty comes from a dispatch on a task that did not complete. A
+    // receipt vouching for a finished task says the opposite, and a failed
+    // task with no receipt at all is merely stopped -- neither may borrow the
+    // never-confirmed wording.
+    settle("task_receipt_ok", "turn_receipt", [
+      { claim: "Charge receipt recorded", evidence: "executor_receipt" },
+    ]);
+    settle("task_plain_fail", "turn_plain", [], "failed");
+
+    const report = completionReportText(["turn_receipt", "turn_plain"]) ?? "";
+
+    expect(report).not.toContain("An action was dispatched");
+    expect(report).not.toContain("must not be repeated automatically");
+    expect(report).toContain("stopped before finishing");
+  });
+
+  it("RR-42: one uncertain request among two carries the whole prohibition, labelled to itself", () => {
+    settle("task_clean", "turn_clean", [
+      { claim: "The page was read", evidence: "observed" },
+    ]);
+    settle(
+      "task_risky",
+      "turn_risky",
+      [{ claim: "Submitted the form", evidence: "executor_receipt" }],
+      "failed"
+    );
+
+    // Argument order must not matter: the label follows when the request was
+    // made, not the order the cohorts were handed over.
+    const forward = completionReportText(["turn_clean", "turn_risky"]) ?? "";
+    const reversed = completionReportText(["turn_risky", "turn_clean"]) ?? "";
+
+    for (const report of [forward, reversed]) {
+      // The whole sentence, tail included -- a prefix check is satisfied by a
+      // sentence whose ending was cut off.
+      expect(report).toContain(
+        `For the second request: ${automaticRepeatProhibition}`
+      );
+      expect(report.match(/An action was dispatched/gu)?.length).toBe(1);
+    }
+  });
+
+  it("RR-43: two uncertain requests among three are named in the order they were made", () => {
+    settle("task_ok", "turn_ok", [
+      { claim: "Confirmed the booking", evidence: "observed" },
+    ]);
+    settle(
+      "task_risky_one",
+      "turn_risky_one",
+      [
+        {
+          claim: "Dispatched the first transfer",
+          evidence: "executor_receipt",
+        },
+      ],
+      "failed"
+    );
+    settle(
+      "task_risky_two",
+      "turn_risky_two",
+      [
+        {
+          claim: "Dispatched the second transfer",
+          evidence: "executor_receipt",
+        },
+      ],
+      "failed"
+    );
+
+    const report =
+      completionReportText(["turn_ok", "turn_risky_one", "turn_risky_two"]) ??
+      "";
+
+    // The two uncertain requests were the user's second and third, and the
+    // label must say so -- not "first and second", which are their positions
+    // after the failure sort put them ahead of the completed request.
+    expect(report).toContain(
+      `For the second request and the third request: ${automaticRepeatProhibition}`
+    );
+    expect(report).not.toContain(
+      "For the first request and the second request:"
+    );
+    expect(report).not.toContain("For all 3 requests");
+  });
+
+  it("RR-44: the worst batch the capacity permits declares an over-long report rather than cutting the prohibition", () => {
+    // Eight full cohorts: the first stopped incomplete, the other seven each
+    // holding an unconfirmed dispatch. Seven distinct request labels on the
+    // prohibition plus eight mixed-status outcome sentences outgrow the
+    // 900-character bound between them, with every claim and advisory note
+    // already given way. No truthful arrangement fits, so the report says so
+    // instead of shortening anything.
+    const ids: string[] = [];
+    for (let cohort = 0; cohort < 8; cohort += 1) {
+      const turnId = `turn_worst_${String(cohort)}`;
+      ids.push(turnId);
+      for (let task = 0; task < 8; task += 1) {
+        const failed = cohort === 0 ? 3 : 2;
+        const cancelled = cohort === 0 ? 1 : 2;
+        const status =
+          task < failed
+            ? "failed"
+            : task < failed + cancelled
+              ? "cancelled"
+              : "completed";
+        const facts: BoundedFact[] =
+          task >= failed + cancelled
+            ? []
+            : [
+                {
+                  claim:
+                    cohort === 0
+                      ? "Checked the ledger"
+                      : "Dispatched the charge",
+                  evidence: cohort === 0 ? "observed" : "executor_receipt",
+                },
+              ];
+        settle(
+          `task_w_${String(cohort)}_${String(task)}`,
+          turnId,
+          facts,
+          status
+        );
+      }
+    }
+
+    const report = completionReportText(ids) ?? "";
+
+    // Nothing mandatory gave way: the whole prohibition, labelled with every
+    // request it applies to in the order they were made...
+    expect(report).toContain(
+      `For the second request, the third request, the fourth request, the fifth request, the sixth request, the seventh request and the eighth request: ${automaticRepeatProhibition}`
+    );
+    // ...and every request's outcome, failures first.
+    expect(report).toContain(
+      "The first request: 3 tasks failed; 1 task was cancelled; 4 tasks finished."
+    );
+    expect(report.match(/2 tasks failed/gu)?.length).toBe(7);
+    // The optional material gave way, visibly.
+    expect(report).toContain(
+      "(1 further unresolved-outcome note is not shown here.)"
+    );
+    expect(report).toContain("32 further recorded claims are not shown here");
+    // The bound is genuinely exceeded, and the report says so rather than
+    // cutting a sentence to hide it.
+    expect(report.length).toBeGreaterThan(900);
+    expect(report).toContain("ran past its usual length");
+    expect(report).not.toMatch(rawIdPattern);
+
+    const delivered = reportWithRecordedFacts(ids, "Here is where it got to.");
+    expect(delivered.length).toBeLessThanOrEqual(20_000);
+    expect(delivered).toContain(automaticRepeatProhibition);
   });
 });
