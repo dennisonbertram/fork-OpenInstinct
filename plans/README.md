@@ -6,29 +6,29 @@ the index update to the reviewer who dispatched the work.
 
 ## Execution order and status
 
-| Plan | Title                                                                                                       | Priority | Effort | Depends on   | Status            |
-| ---- | ----------------------------------------------------------------------------------------------------------- | -------- | ------ | ------------ | ----------------- |
-| 001  | [Define Vercel-first multi-tenancy and make onboarding repeatable](001-architecture-onboarding-runbooks.md) | P1       | M      | —            | DONE              |
-| 002  | [Multi-tenancy product epic](002-multitenancy-epic.md)                                                      | P1       | L      | 001          | DONE (historical) |
-| 003  | [Deliver one truthful completion summary per settled task cohort](003-reliable-completion-epic.md)          | P1       | L      | —            | TODO              |
-| 004  | [Prove typed background terminal adapter](004-typed-background-terminal-adapter.md)                         | P1       | M–L    | —            | TODO              |
-| 005  | [Persist durable completion obligations](005-durable-completion-obligations.md)                             | P1       | M      | 004          | TODO              |
-| 006  | [Require one substantive completion report](006-required-completion-report.md)                              | P1       | M      | 005          | TODO              |
-| 007  | [Bind exact completion channel settlement](007-exact-completion-channel-settlement.md)                      | P1       | M–L    | 005–006      | TODO              |
-| 008  | [Approval, cancellation, and resume integration](008-approval-cancellation-and-resume.md)                   | P1       | M      | 005–007      | TODO              |
-| 009  | [Completion acceptance and release gate](009-completion-summary-acceptance.md)                              | P1       | M      | 004–008      | TODO              |
-| 010  | [Agent operating-model epic](010-agent-operating-model-epic.md)                                             | P1       | L      | —            | TODO              |
-| 011  | [Root situation view](011-root-situation-view.md)                                                           | P1       | M      | 005–006      | TODO              |
-| 012  | [Capability readiness](012-capability-readiness.md)                                                         | P1       | M      | 011          | TODO              |
-| 013  | [Browser action affordances](013-browser-action-affordances.md)                                             | P2       | M      | —            | TODO              |
-| 014  | [Bounded recovery and progress](014-bounded-recovery-progress.md)                                           | P1       | M      | 005–006, 011 | TODO              |
-| 015  | [Reviewed procedure improvement](015-reviewed-procedure-improvement.md)                                     | P2       | S–M    | —            | TODO              |
-| 016  | [Matched whole-task efficiency](016-matched-task-efficiency.md)                                             | P2       | M      | —            | TODO              |
-| 018  | [Connect Gmail](018-connect-gmail.md)                                                                       | P1       | S–M    | —            | TODO              |
-| 021  | [Complete local lifecycle](021-local-lifecycle.md)                                                          | P1       | M      | —            | IN PROGRESS       |
-| 022  | [Diagnostic evidence](022-diagnostic-evidence.md)                                                           | P1       | M      | 021          | IN PROGRESS       |
-| 023  | [Local verification gate](023-local-verification-gate.md)                                                   | P1       | M      | 021–022      | IN PROGRESS       |
-| 024  | [Production operations](024-production-operations.md)                                                       | P1       | M      | 021–023      | IN PROGRESS       |
+| Plan | Title                                                                                                       | Priority | Effort | Depends on   | Status                                                                                                         |
+| ---- | ----------------------------------------------------------------------------------------------------------- | -------- | ------ | ------------ | -------------------------------------------------------------------------------------------------------------- |
+| 001  | [Define Vercel-first multi-tenancy and make onboarding repeatable](001-architecture-onboarding-runbooks.md) | P1       | M      | —            | DONE                                                                                                           |
+| 002  | [Multi-tenancy product epic](002-multitenancy-epic.md)                                                      | P1       | L      | 001          | DONE (historical)                                                                                              |
+| 003  | [Deliver one truthful completion summary per settled task cohort](003-reliable-completion-epic.md)          | P1       | L      | —            | BLOCKED (004–007 done; 008–009 blocked)                                                                        |
+| 004  | [Prove typed background terminal adapter](004-typed-background-terminal-adapter.md)                         | P1       | M–L    | —            | DONE                                                                                                           |
+| 005  | [Persist durable completion obligations](005-durable-completion-obligations.md)                             | P1       | M      | 004          | DONE                                                                                                           |
+| 006  | [Require one substantive completion report](006-required-completion-report.md)                              | P1       | M      | 005          | DONE (CM-04 judgement deferred to plan 009, not a merge prerequisite)                                          |
+| 007  | [Bind exact completion channel settlement](007-exact-completion-channel-settlement.md)                      | P1       | M–L    | 005–006      | DONE                                                                                                           |
+| 008  | [Approval, cancellation, and resume integration](008-approval-cancellation-and-resume.md)                   | P1       | M      | 005–007      | BLOCKED (framework: `ApprovalContext` has no `requestId`)                                                      |
+| 009  | [Completion acceptance and release gate](009-completion-summary-acceptance.md)                              | P1       | M      | 004–008      | BLOCKED (operator: paid budget for a live native run)                                                          |
+| 010  | [Agent operating-model epic](010-agent-operating-model-epic.md)                                             | P1       | L      | —            | BLOCKED (013–015 done; 011 partial, 012/016 blocked)                                                           |
+| 011  | [Root situation view](011-root-situation-view.md)                                                           | P1       | M      | 005–006      | BLOCKED (partial: projection bug fixed; requested fields blocked on design — no owner supplies objective text) |
+| 012  | [Capability readiness](012-capability-readiness.md)                                                         | P1       | M      | 011          | BLOCKED (design: pre-delegation route contract undecided)                                                      |
+| 013  | [Browser action affordances](013-browser-action-affordances.md)                                             | P2       | M      | —            | DONE                                                                                                           |
+| 014  | [Bounded recovery and progress](014-bounded-recovery-progress.md)                                           | P1       | M      | 005–006, 011 | BLOCKED (step 3 done; design: "exact user action" needs an owner-backed description)                           |
+| 015  | [Reviewed procedure improvement](015-reviewed-procedure-improvement.md)                                     | P2       | S–M    | —            | DONE                                                                                                           |
+| 016  | [Matched whole-task efficiency](016-matched-task-efficiency.md)                                             | P2       | M      | —            | BLOCKED (sequencing decision: depends on #136's eval harness/baseline)                                         |
+| 018  | [Connect Gmail](018-connect-gmail.md)                                                                       | P1       | S–M    | —            | TODO                                                                                                           |
+| 021  | [Complete local lifecycle](021-local-lifecycle.md)                                                          | P1       | M      | —            | IN PROGRESS                                                                                                    |
+| 022  | [Diagnostic evidence](022-diagnostic-evidence.md)                                                           | P1       | M      | 021          | IN PROGRESS                                                                                                    |
+| 023  | [Local verification gate](023-local-verification-gate.md)                                                   | P1       | M      | 021–022      | IN PROGRESS                                                                                                    |
+| 024  | [Production operations](024-production-operations.md)                                                       | P1       | M      | 021–023      | IN PROGRESS                                                                                                    |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
@@ -75,12 +75,13 @@ drift before starting Plans 003–016.
   current production strategy uses Vercel Connect; changing credential modes is
   product code and needs a separate regression-tested implementation plan.
 
-Plans 003 and 010 are coordination epics. Plans 004–009 and 011–016 are
-planned child slices and remain TODO until their owner files, RED evidence,
-drift checks, and acceptance gates are complete. An index row does not mean
-the slice is implemented or ready to run. Plan 002 is retained as a historical
-DONE record from the existing plan set; this update does not reverify its
-claims.
+Plans 003 and 010 are coordination epics; their own status reflects whether
+all children are done. See "Epic state, 2026-09-13" below for the current,
+verified state of each child and what specifically blocks the rest. A DONE
+row means the cited evidence was checked against source at that date, not
+that the slice needs no further scrutiny — reverify before relying on a row
+you did not just check yourself. Plan 002 is retained as a historical DONE
+record from the existing plan set; this update does not reverify its claims.
 
 Plans 017–020 own the implemented development tooling and its acceptance:
 complete local lifecycle, bounded diagnostics, deterministic local verification,
@@ -92,3 +93,65 @@ not race generated output in one worktree. Use the owning runbooks for commands.
 The [overnight handoff](JORY_OVERNIGHT_HANDOFF.md) is an execution prompt and
 gate checklist. It authorizes scoped implementation and normal PR delivery;
 live sends, Gmail, secret changes, and paid budget remain separately scoped.
+
+## Epic state, 2026-09-13
+
+Verified against source; see the plan issues linked above for detail.
+
+**Epic 003 / #152 (completion summaries):**
+
+- Done: 004 (#154), 005 (#155), 006 (#156, evidence in
+  `docs/evaluation/completion-report-step-evidence.md`; the reaction-vs-words
+  judgement CM-04 is deferred to plan 009's paid eval run, not a merge gate),
+  007 (#157, both `sendblue.ts` and `linq.ts` dispatch through
+  `dispatchReportPart`).
+- Blocked on framework: 008 (#158) — the native approval gate is live, but
+  `parkApproval`/`resumeParkedApproval` have no production caller because the
+  request-time `ApprovalContext` carries no `requestId` and the seam that
+  knows the relationship is internal.
+- Blocked on operator budget: 009 (#159) — steps 2 and 4 need a paid budget
+  and a live native run.
+
+**Epic 010 / #153 (agent operating model):**
+
+- Done: 013 (#162), 015 (#164).
+- Partial, blocked on a design decision: 011 (#160) — a real projection bug
+  (claims cut mid-sentence) is fixed, but the two requested fields are not:
+  `selectedRoute` was tried and withdrawn as not equivalent to a
+  pre-delegation route, and the objective-summary field has no named owner
+  supplying the text. Also note `agent/lib/situation-view.ts` has no
+  production caller; whether it should converge with
+  `agent/lib/completion-evidence-context.ts` is an open design question.
+- Blocked on a design decision: 012 (#161) — a safe readiness read does not
+  need a root browser connection (scoped reads already exist in
+  `db/services/browsers.ts`), but the pre-delegation route contract itself is
+  undecided.
+- Done for one part, blocked on a design decision: 014 (#163) — step 3 landed
+  (`recoveryProgress.nextStep` now has a production reader, so safety wording
+  can't be dropped under length pressure); the "exact user action" text stays
+  open pending an owner-backed action description, since `nextStep ===
+"ask_user"` only means some work stopped.
+- Blocked on a sequencing decision: 016 (#165) — its stop condition trips on
+  #136 (the conversation-evaluation harness, pinned to a specific model with
+  an uncalibrated judge); whether to sequence #136 first is undecided.
+
+**Cross-cutting ceiling (#214, #218):** the completion epic's browser path
+cannot be made reliable from inside this repository on eve 0.49.0. #214: a
+`browser-agent` call does become a durable background task and reaches the
+parent through exactly one at-most-once wake delivery; if that delivery is
+lost, eve logs a warning and never retries, and there is no API to recover
+it. Separately, `admitTask` can refuse a task and its only non-test caller,
+`reconcileBackgroundTasks`, discards the refusal, so a cohort stuck in
+`awaiting_terminal` counts as open and holds a cohort slot indefinitely.
+#218: there is no public seam to wake a turn that owes a report. Both need
+upstream changes.
+
+**Stale record:** `plans/JORY_COMPLETION_HANDOFF_2026-09-11.md` is a
+point-in-time execution record from 2026-09-11 (commit `f968863`/PR #213)
+that later work overtook the same day (commit `104071a`/PR #219) and further
+since. It is stale on several claims, including that nothing calls the
+report dispatch (007 landed), that 006's composition context isn't built (it
+is), that nothing consumes the completion records (005's policy, rendering,
+evidence context, and channel settlement all do), and that 008 is otherwise
+complete. Do not edit that file; treat the epic issues and this section as
+current instead.
