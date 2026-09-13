@@ -81,7 +81,7 @@ interface ProductionOperationsOptions {
 const operationSchema = z.enum(["release", "rollback"]);
 const deploymentIdSchema = z.string().regex(/^dpl_[a-zA-Z0-9]+$/u);
 const planIdSchema = z.string().regex(/^prod-plan-v1-[a-f0-9]{20}$/u);
-const shaSchema = z.string().regex(/^[a-f0-9]{7,64}$/iu);
+const shaSchema = z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u);
 const textSchema = z.string().min(1).max(512);
 const snapshotSchema = z.object({
   projectId: textSchema,
@@ -247,7 +247,6 @@ class ProductionOperations {
         "Plan requires an exact current deployment ID."
       );
     }
-    const current = await this.snapshotFor(target, currentDeployment.data);
     if (operation.data === "release") {
       const expectedSha = shaSchema.safeParse(input.expectedSourceSha);
       if (!expectedSha.success) {
@@ -256,6 +255,7 @@ class ProductionOperations {
           "Release requires an expected source SHA."
         );
       }
+      const current = await this.snapshotFor(target, currentDeployment.data);
       const preparedAt = this.options.now().toISOString();
       const expiresAt = new Date(
         this.options.now().getTime() + 5 * 60_000
@@ -271,6 +271,7 @@ class ProductionOperations {
       });
     }
 
+    const current = await this.snapshotFor(target, currentDeployment.data);
     const knownGoodDeployment = deploymentIdSchema.safeParse(
       input.knownGoodDeploymentId
     );

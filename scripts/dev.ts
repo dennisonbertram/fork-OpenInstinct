@@ -754,6 +754,7 @@ async function start(profile: DevProfile, nonce: string) {
     delegatedNonce === undefined
       ? await acquireWorktreeLease(repositoryRoot, "development")
       : await reuseVerificationLease(repositoryRoot, delegatedNonce);
+  let manifestCreated = false;
   shutdownSignal = undefined;
   try {
     const runId = createRunId(process.env.DEV_RUN_ID);
@@ -826,9 +827,10 @@ async function start(profile: DevProfile, nonce: string) {
         provider: profile === "fixture" ? "simulated" : "pending",
       },
     };
-    const manifest = await createRunRecord(repositoryRoot, record);
     const logs = join(repositoryRoot, ".eve", "dev-runs", "logs", runId);
     await mkdir(logs, { recursive: true, mode: 0o700 });
+    const manifest = await createRunRecord(repositoryRoot, record);
+    manifestCreated = true;
     const services: RunningService[] = [];
     let terminating: NodeJS.Signals | undefined,
       serviceFailure: string | undefined,
@@ -1052,6 +1054,7 @@ async function start(profile: DevProfile, nonce: string) {
             ? 129
             : 0;
   } catch (error) {
+    if (!manifestCreated) await lease.release();
     if (error instanceof LifecycleInterrupted) {
       process.exitCode = signalExitCode(shutdownSignal);
       return;

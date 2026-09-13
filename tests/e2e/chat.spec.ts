@@ -3,6 +3,14 @@ import { expect, test } from "@playwright/test";
 test("delivers, reloads, and continues a real authenticated conversation", async ({
   page,
 }) => {
+  // Next does not prefetch dynamic routes in development. Warm this route through
+  // the authenticated test context so the first conversation navigation measures
+  // the chat journey rather than on-demand route compilation.
+  const warmedRoute = await page.request.get("/chat/e2e-route-warmup");
+  expect(warmedRoute.status()).toBe(200);
+  expect(warmedRoute.headers()["content-type"]).toContain("text/html");
+  expect(await warmedRoute.text()).toContain('aria-label="Message Jory"');
+
   await page.goto("/chat");
   const composer = page.getByRole("textbox", { name: "Message Jory" });
   const firstReply = "The first synthetic business reply arrived.";

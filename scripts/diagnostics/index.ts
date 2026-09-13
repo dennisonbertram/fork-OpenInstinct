@@ -388,6 +388,7 @@ async function addJourneyEvidence(
   }
   const journeys = await Promise.all(
     [input.selector.value, ...eve.childSessionIds].map(async (sessionId) => ({
+      sessionId,
       journey: await readProtectedJourney({
         ...eveRead.input,
         sessionId,
@@ -400,13 +401,21 @@ async function addJourneyEvidence(
     ...result.bounds,
     pagesRead: result.bounds.pagesRead + journeys.length,
   };
-  for (const { journey } of journeys) {
+  for (const { sessionId, journey } of journeys) {
     if (journey.kind === "gap") {
       appendGap(result, "operations_journey", journey.reason);
       continue;
     }
     result.observations.push(...journey.value.observations);
-    result.gaps.push(...journey.value.gaps);
+    const journeyGaps = [...journey.value.gaps];
+    if (sessionId === input.selector.value && eve.gap === undefined) {
+      const availabilityGapIndex = journeyGaps.findIndex(
+        (gap) => gap.owner === "eve" && gap.reason === "cannot_determine"
+      );
+      if (availabilityGapIndex >= 0)
+        journeyGaps.splice(availabilityGapIndex, 1);
+    }
+    result.gaps.push(...journeyGaps);
     if (journey.value.bounds.truncated)
       appendGap(result, "operations_journey", "truncated");
   }

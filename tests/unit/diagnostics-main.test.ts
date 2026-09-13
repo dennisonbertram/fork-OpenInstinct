@@ -18,13 +18,34 @@ interface AdminIdentityFixture {
 
 const diagnosticsMocks = vi.hoisted(() => ({
   readAdminIdentity: vi.fn<() => Promise<AdminIdentityFixture>>(),
+  readEveSessionMetadata: vi.fn<
+    () => Promise<{
+      observations: never[];
+      childSessionIds: string[];
+      gap?: "cannot_determine" | "forbidden" | "truncated" | "unavailable";
+    }>
+  >(),
+  readProtectedJourney: vi.fn<
+    (input: { readonly sessionId: string }) => Promise<{
+      kind: "result";
+      value: {
+        observations: never[];
+        gaps: { owner: string; reason: "cannot_determine" | "missing" }[];
+        bounds: { truncated: boolean };
+      };
+    }>
+  >(),
   readDiagnosticCookie: vi.fn<() => Promise<string>>(),
   readTarget: vi.fn<() => Promise<TargetReadFixture>>(),
 }));
 
 vi.mock("../../scripts/diagnostics/operations-query", () => ({
   readAdminIdentity: diagnosticsMocks.readAdminIdentity,
-  readProtectedJourney: vi.fn<() => void>(),
+  readProtectedJourney: diagnosticsMocks.readProtectedJourney,
+}));
+
+vi.mock("../../scripts/diagnostics/eve-stream", () => ({
+  readEveSessionMetadata: diagnosticsMocks.readEveSessionMetadata,
 }));
 
 vi.mock("../../scripts/diagnostics/read-target", () => ({
@@ -34,12 +55,73 @@ vi.mock("../../scripts/diagnostics/read-target", () => ({
 
 afterEach(() => {
   diagnosticsMocks.readAdminIdentity.mockReset();
+  diagnosticsMocks.readEveSessionMetadata.mockReset();
+  diagnosticsMocks.readProtectedJourney.mockReset();
   diagnosticsMocks.readDiagnosticCookie.mockReset();
   diagnosticsMocks.readTarget.mockReset();
   vi.restoreAllMocks();
 });
 
 describe("diagnostic CLI runtime composition", () => {
+  it("reconciles only the root database placeholder after a successful Eve stream", async () => {
+    setJourneyCliFixtures();
+    diagnosticsMocks.readEveSessionMetadata.mockResolvedValue({
+      observations: [],
+      childSessionIds: ["ses_child"],
+    });
+    diagnosticsMocks.readProtectedJourney.mockImplementation(
+      async ({ sessionId }) => ({
+        kind: "result",
+        value: {
+          observations: [],
+          gaps:
+            sessionId === "ses_root"
+              ? [
+                  { owner: "eve", reason: "cannot_determine" },
+                  { owner: "session", reason: "missing" },
+                ]
+              : [{ owner: "eve", reason: "cannot_determine" }],
+          bounds: { truncated: false },
+        },
+      })
+    );
+    const output = await runJourneyCli();
+
+    expect(output.gaps).toEqual([
+      { owner: "session", reason: "missing" },
+      { owner: "eve", reason: "cannot_determine" },
+    ]);
+    expect(diagnosticsMocks.readProtectedJourney).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["unavailable", "truncated"] as const)(
+    "retains the root database placeholder when the Eve stream is %s",
+    async (gap) => {
+      setJourneyCliFixtures();
+      diagnosticsMocks.readEveSessionMetadata.mockResolvedValue({
+        observations: [],
+        childSessionIds: [],
+        gap,
+      });
+      diagnosticsMocks.readProtectedJourney.mockResolvedValue({
+        kind: "result",
+        value: {
+          observations: [],
+          gaps: [{ owner: "eve", reason: "cannot_determine" }],
+          bounds: { truncated: false },
+        },
+      });
+      const output = await runJourneyCli();
+
+      expect(output.gaps).toEqual(
+        expect.arrayContaining([
+          { owner: "eve", reason: gap },
+          { owner: "eve", reason: "cannot_determine" },
+        ])
+      );
+    }
+  );
+
   it("retains safe operations identity versions and provider configuration through main", async () => {
     diagnosticsMocks.readTarget.mockResolvedValue({
       facts: {
@@ -97,6 +179,56 @@ describe("diagnostic CLI runtime composition", () => {
     );
   });
 });
+
+function setJourneyCliFixtures() {
+  diagnosticsMocks.readTarget.mockResolvedValue({
+    facts: {
+      environment: { status: "observed", value: "local" },
+      localRunOwner: { status: "observed", value: true },
+      localAppChild: { status: "observed", value: true },
+      localAppOrigin: { status: "observed", value: "http://127.0.0.1:3000" },
+      projectId: { status: "unknown" },
+      deploymentId: { status: "unknown" },
+      declaredSourceSha: { status: "unknown" },
+    },
+    capabilities: [],
+    gaps: [],
+  });
+  diagnosticsMocks.readDiagnosticCookie.mockResolvedValue("synthetic-cookie");
+  diagnosticsMocks.readAdminIdentity.mockResolvedValue({
+    kind: "result",
+    value: {
+      serverOrigin: { status: "unknown" },
+      facts: runtimeIdentityFixture(),
+    },
+  });
+}
+
+async function runJourneyCli() {
+  const output: string[] = [];
+  vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    output.push(String(chunk));
+    return true;
+  });
+  const { main } = await import("../../scripts/diagnostics");
+  await main([
+    "--target",
+    "local",
+    "--session",
+    "ses_root",
+    "--since",
+    "2026-09-12T10:00:00.000Z",
+    "--until",
+    "2026-09-12T11:00:00.000Z",
+    "--cookie-file",
+    "/safe",
+  ]);
+  return z
+    .object({
+      gaps: z.array(z.object({ owner: z.string(), reason: z.string() })),
+    })
+    .parse(JSON.parse(output.join("")));
+}
 
 function runtimeIdentityFixture() {
   return {

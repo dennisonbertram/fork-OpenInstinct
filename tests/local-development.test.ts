@@ -691,6 +691,12 @@ if [ "$1" = "--dir" ]; then while :; do /bin/sleep 1; done; fi
       temporaryDirectories.push(directory);
       const repositoryRoot = await createLifecycleRepository(directory);
       const logPath = join(directory, "commands.log");
+      const leasePath = join(
+        repositoryRoot,
+        ".eve",
+        "dev-runs",
+        "worktree-operation.json"
+      );
       const blocker = createServer();
       await listen(blocker, 0, "::");
       const address = blocker.address();
@@ -719,9 +725,55 @@ if [ "$1" = "--dir" ]; then while :; do /bin/sleep 1; done; fi
         await expect(readFile(logPath, "utf8")).rejects.toMatchObject({
           code: "ENOENT",
         });
+        await expect(stat(leasePath)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+
+        await closeServer(blocker);
+        const retry = await runCopiedSupervisor(repositoryRoot, [], {
+          KERNEL_API_KEY: "test-kernel-key",
+          PATH: directory,
+          DEV_SUPERVISOR_LOG: logPath,
+          PORT: String(parsedAddress.data.port),
+          MARKETING_PORT: String(await unusedPort()),
+        });
+        expect(retry.code).toBe(1);
+        expect(retry.stderr).toContain(
+          "storage: Could not resolve the owned PostgreSQL port."
+        );
+        expect(retry.stderr).not.toContain("operation already owns");
+        expect(await readFile(logPath, "utf8")).toContain(" up --detach");
+        await expect(stat(leasePath)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
       } finally {
         await closeServer(blocker);
       }
+    });
+
+    it("releases the lease when source metadata cannot initialize", async () => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "open-instinct-metadata-lease-")
+      );
+      temporaryDirectories.push(directory);
+      const repositoryRoot = await createLifecycleRepository(directory);
+      const leasePath = join(
+        repositoryRoot,
+        ".eve",
+        "dev-runs",
+        "worktree-operation.json"
+      );
+      await rm(join(repositoryRoot, ".git", "refs", "heads", "main"));
+
+      const result = await runCopiedSupervisor(repositoryRoot, [], {
+        DEV_PROFILE: "fixture",
+      });
+
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(
+        "claim: Could not resolve the exact source revision."
+      );
+      await expect(stat(leasePath)).rejects.toMatchObject({ code: "ENOENT" });
     });
   }
 );

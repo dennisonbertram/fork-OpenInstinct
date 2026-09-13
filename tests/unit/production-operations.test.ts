@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -109,6 +109,62 @@ describe("production operations", () => {
     expect(plan.expiresAt).toBe("2026-09-12T12:05:00.000Z");
     expect(owner.observeGitRelease).not.toHaveBeenCalled();
     expect(owner.rollback).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-full Git object SHAs before accepting a release plan", async () => {
+    const reader = vi.fn<Reader>(async () => targetRead());
+    const owner = ownerStub();
+    const receiptDirectory = await mkdtemp(
+      join(tmpdir(), "open-instinct-production-operations-")
+    );
+    directories.push(receiptDirectory);
+    const operations = await createProductionOperations({
+      inventoryPath: join(process.cwd(), "config", "production-targets.json"),
+      receiptDirectory,
+      readTarget: reader,
+      owner,
+      now: () => new Date("2026-09-12T12:00:00.000Z"),
+    });
+
+    await Promise.all(
+      [
+        "7875a08",
+        "7875a08348adf2d567120e7e7f3d803b101aa45a0",
+        "7875A08348ADF2D567120E7E7F3D803B101AA45A",
+      ].map(async (expectedSourceSha) =>
+        expect(
+          operations.plan({
+            operation: "release",
+            target: "production",
+            surface: "app",
+            deploymentId: "dpl_current",
+            expectedSourceSha,
+          })
+        ).rejects.toMatchObject({ code: "PLAN_INVALID" })
+      )
+    );
+
+    expect(await readdir(receiptDirectory)).toEqual([]);
+    expect(reader).not.toHaveBeenCalled();
+    expect(owner.observeGitRelease).not.toHaveBeenCalled();
+    expect(owner.rollback).not.toHaveBeenCalled();
+  });
+
+  it("accepts a full SHA-256 Git object ID for a release plan", async () => {
+    const reader = vi.fn<Reader>(async () => targetRead());
+    const owner = ownerStub();
+    const operations = await fixture({ reader, owner });
+
+    const plan = await operations.plan({
+      operation: "release",
+      target: "production",
+      surface: "app",
+      deploymentId: "dpl_current",
+      expectedSourceSha: "a".repeat(64),
+    });
+
+    expect(plan.expectedSourceSha).toBe("a".repeat(64));
+    expect(owner.observeGitRelease).not.toHaveBeenCalled();
   });
 
   it("reports an unmapped marketing surface without reading or writing app metadata", async () => {
