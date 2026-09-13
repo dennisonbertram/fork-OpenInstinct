@@ -26,13 +26,11 @@ setup(
     await composer.fill("say Sandbox warmed.");
     await composer.press("Enter");
 
-    // Assert the fixture `say` text, not the attached-file suffix. That suffix
-    // only appears once staging has injected the workspace path into
-    // lastUserMessage; the template build is triggered by the upload+send,
-    // which already happened. Requiring the suffix made this setup fail on
-    // main after #242 while chromium tests were already running.
+    // Match either the bare `say` text or the attached-file suffix staging
+    // injects into lastUserMessage. exact:true failed when the suffix was
+    // present; the #242 regex failed when it was not.
     await expect(
-      page.locator(".is-assistant").getByText("Sandbox warmed.", { exact: true })
+      page.locator(".is-assistant").getByText("Sandbox warmed.")
     ).toBeVisible({ timeout: 90_000 });
   }
 );
