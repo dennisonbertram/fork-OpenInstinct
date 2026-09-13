@@ -90,7 +90,17 @@ async function checkBrowserReadiness(context: {
     };
   }
 
-  if (scope && isWorkspaceScopeEnforcementEnabled()) {
+  if (isWorkspaceScopeEnforcementEnabled()) {
+    if (!scope) {
+      return {
+        objectiveRevision,
+        observedAt,
+        reason: "An authenticated workspace user is required.",
+        route,
+        status: "needs_authorization",
+      };
+    }
+
     try {
       await checkBudget(scope, "browser_session");
     } catch (error) {
@@ -125,11 +135,25 @@ async function checkSquareReadiness(context: {
 }): Promise<CapabilityReadinessResult> {
   const { objectiveRevision, observedAt, route, scope } = context;
 
+  const sandboxToken = env.SQUARE_SANDBOX_ACCESS_TOKEN?.trim();
   if (
     env.SQUARE_ENVIRONMENT === "sandbox" &&
     env.VERCEL_ENV !== "production" &&
-    env.SQUARE_SANDBOX_ACCESS_TOKEN
+    sandboxToken &&
+    sandboxToken.length > 0
   ) {
+    if (isWorkspaceScopeEnforcementEnabled() && !scope) {
+      return {
+        objectiveRevision,
+        observedAt,
+        reason: "An authenticated workspace user is required.",
+        route,
+        status: "needs_authorization",
+      };
+    }
+
+    // Square API calls are not subject to workspace usage budgets (which track
+    // browser_session, model_tokens, provider_message, and storage_bytes).
     return {
       objectiveRevision,
       observedAt,

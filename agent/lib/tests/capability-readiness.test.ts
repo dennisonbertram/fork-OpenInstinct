@@ -132,6 +132,18 @@ describe("checkCapabilityReadiness", () => {
       expect(result.legalNextAction).toBeUndefined();
     });
 
+    it("reports needs_authorization when scope is missing and scope enforcement is enabled", async () => {
+      const result = await checkCapabilityReadiness({
+        route: "browser",
+      });
+
+      expect(result).toMatchObject({
+        reason: "An authenticated workspace user is required.",
+        route: "browser",
+        status: "needs_authorization",
+      });
+    });
+
     it("never includes API key or token in browser readiness reason", async () => {
       mocks.env.KERNEL_API_KEY = "super-secret-key-12345";
 
@@ -177,6 +189,41 @@ describe("checkCapabilityReadiness", () => {
         status: "ready",
       });
       expect(JSON.stringify(result)).not.toContain("sandbox-token-xyz");
+    });
+
+    it("requires scope in sandbox when scope enforcement is enabled", async () => {
+      mocks.env.SQUARE_ENVIRONMENT = "sandbox";
+      mocks.env.VERCEL_ENV = "preview";
+      mocks.env.SQUARE_SANDBOX_ACCESS_TOKEN = "sandbox-token-xyz";
+
+      const result = await checkCapabilityReadiness({
+        route: "square",
+      });
+
+      expect(result).toMatchObject({
+        reason: "An authenticated workspace user is required.",
+        route: "square",
+        status: "needs_authorization",
+      });
+    });
+
+    it("does not treat whitespace-only sandbox token as ready", async () => {
+      mocks.env.SQUARE_ENVIRONMENT = "sandbox";
+      mocks.env.VERCEL_ENV = "preview";
+      mocks.env.SQUARE_SANDBOX_ACCESS_TOKEN = "    ";
+      mocks.env.SQUARE_CONNECTOR_UID = "";
+
+      const result = await checkCapabilityReadiness({
+        route: "square",
+        scope: aliceScope,
+      });
+
+      expect(result).toMatchObject({
+        reason:
+          "Square is not configured: set SQUARE_CONNECTOR_UID to enable it.",
+        route: "square",
+        status: "unavailable",
+      });
     });
 
     it("reports needs_authorization when no installation exists", async () => {
