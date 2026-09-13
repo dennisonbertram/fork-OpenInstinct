@@ -58,6 +58,7 @@ import {
   taskRecords,
   type BoundedFact,
 } from "@/agent/lib/completion-obligations";
+import { recoveryProgress } from "@/agent/lib/recovery-progress";
 
 beforeEach(() => {
   for (const reset of state.resets) reset();
@@ -486,7 +487,7 @@ describe("recordTerminal", () => {
     );
   });
 
-  it("a terminal for a delivered cohort updates the task record but never downgrades the phase", () => {
+  it("a terminal for a delivered cohort records nothing and never downgrades the phase", () => {
     admit({
       taskId: "task_1",
       parentTurnId: "turn_1",
@@ -506,6 +507,9 @@ describe("recordTerminal", () => {
     settleCohortReport("turn_1", true);
     expect(cohortFor("turn_1")?.phase).toBe("delivered");
 
+    // Eve's transition table cannot produce a second, different terminal for
+    // a task that already settled, so this replay is not a correction: the
+    // first terminal is preserved exactly as recorded.
     const outcome = recordTerminal(
       terminal({
         taskId: "task_1",
@@ -519,8 +523,7 @@ describe("recordTerminal", () => {
     expect(cohortFor("turn_1")?.phase).toBe("delivered");
     expect(
       taskRecords("turn_1").find((task) => task.taskId === "task_1")?.terminal
-        ?.status
-    ).toBe("failed");
+    ).toEqual({ status: "completed", facts: [fact({ claim: "first" })] });
   });
 });
 
@@ -1519,5 +1522,269 @@ describe("reconcileBackgroundTasks (the root registration)", () => {
     expect(reportableCohorts().map((cohort) => cohort.cohortId)).toEqual([
       "turn_1",
     ]);
+  });
+});
+
+describe("a terminal materializes exactly once (issue #217)", () => {
+  it("CO-14: evidence recorded between reconciliations survives the next reconciliation", async () => {
+    // Reconciliation runs every root step, so this is the production window:
+    // a caller records the terminal directly mid-turn, before the projection
+    // has exposed it to reconciliation.
+    state.projections.members = [
+      member("task_a", "turn_1", true),
+      member("task_b", "turn_1", true),
+    ];
+    state.projections.terminals = [];
+    await reconcileBackgroundTasks();
+    const richer = recordTerminal(
+      terminal({
+        taskId: "task_a",
+        parentTurnId: "turn_1",
+        childSessionId: "task_a_session",
+        childTurnId: "task_a_turn",
+      }),
+      [
+        fact({
+          evidence: "executor_receipt",
+          claim: "the executor accepted the dispatch",
+        }),
+      ]
+    );
+    expect(richer.matched).toBe(true);
+
+    // Later root steps replay the same tasks, now with the worker's own
+    // narrative in the projection. That replay must not replace the
+    // corroborated fact recorded in between.
+    state.projections.terminals = [
+      projected("task_a", "turn_1", {
+        status: "success",
+        message: "first done",
+      }),
+      projected("task_b", "turn_1", {
+        status: "success",
+        message: "second done",
+      }),
+    ];
+    await reconcileBackgroundTasks();
+    await reconcileBackgroundTasks();
+
+    const facts =
+      taskRecords("turn_1").find((task) => task.taskId === "task_a")?.terminal
+        ?.facts ?? [];
+    expect(facts).toEqual([
+      {
+        claim: "the executor accepted the dispatch",
+        evidence: "executor_receipt",
+      },
+    ]);
+  });
+
+  it("CO-15: a task's first terminal is ingested normally and records the worker identity", async () => {
+    state.projections.members = [member("task_a", "turn_1", true)];
+    state.projections.terminals = [
+      projected("task_a", "turn_1", { status: "success", message: "done" }),
+    ];
+
+    await reconcileBackgroundTasks();
+
+    const task = taskRecords("turn_1").find(
+      (candidate) => candidate.taskId === "task_a"
+    );
+    expect(task?.workerSessionId).toBe("task_a_session");
+    expect(task?.workerTurnId).toBe("task_a_turn");
+    expect(task?.terminal?.status).toBe("completed");
+    expect(task?.terminal?.facts).toEqual([
+      { claim: "done", evidence: "worker_assertion" },
+    ]);
+  });
+
+  it("CO-16: the cohort announces its report exactly once, on the terminal that completes the set", () => {
+    admit({ taskId: "task_a", parentTurnId: "turn_1", workerSessionId: "s_1" });
+    admit({ taskId: "task_b", parentTurnId: "turn_1", workerSessionId: "s_2" });
+
+    const first = recordTerminal(
+      terminal({
+        taskId: "task_a",
+        parentTurnId: "turn_1",
+        childSessionId: "s_1",
+      }),
+      [fact({ claim: "a done" })]
+    );
+    expect(first).toEqual({ matched: true, cohortBecameReportable: false });
+
+    const completing = recordTerminal(
+      terminal({
+        taskId: "task_b",
+        parentTurnId: "turn_1",
+        childSessionId: "s_2",
+      }),
+      [fact({ claim: "b done" })]
+    );
+    expect(completing).toEqual({ matched: true, cohortBecameReportable: true });
+    expect(cohortFor("turn_1")?.phase).toBe("must_report");
+
+    // The completing terminal replayed must not announce the obligation again.
+    const replay = recordTerminal(
+      terminal({
+        taskId: "task_b",
+        parentTurnId: "turn_1",
+        childSessionId: "s_2",
+      }),
+      [fact({ claim: "b done" })]
+    );
+    expect(replay).toEqual({ matched: true, cohortBecameReportable: false });
+    expect(reportableCohorts().map((cohort) => cohort.cohortId)).toEqual([
+      "turn_1",
+    ]);
+  });
+
+  it("CO-17: a sibling settling later is still ingested and completes its cohort", async () => {
+    // task_a settles through a direct call first; task_b only appears in the
+    // projection afterwards. The guard on task_a must not block task_b.
+    state.projections.members = [
+      member("task_a", "turn_1", true),
+      member("task_b", "turn_1", true),
+    ];
+    state.projections.terminals = [];
+    await reconcileBackgroundTasks();
+    recordTerminal(
+      terminal({
+        taskId: "task_a",
+        parentTurnId: "turn_1",
+        childSessionId: "task_a_session",
+        childTurnId: "task_a_turn",
+      }),
+      [fact({ evidence: "executor_receipt", claim: "receipt for a" })]
+    );
+
+    state.projections.terminals = [
+      projected("task_a", "turn_1", {
+        status: "success",
+        message: "first done",
+      }),
+      projected("task_b", "turn_1", { status: "success", message: "b done" }),
+    ];
+    await reconcileBackgroundTasks();
+
+    expect(cohortFor("turn_1")?.phase).toBe("must_report");
+    const taskB = taskRecords("turn_1").find(
+      (candidate) => candidate.taskId === "task_b"
+    );
+    expect(taskB?.workerSessionId).toBe("task_b_session");
+    expect(taskB?.workerTurnId).toBe("task_b_turn");
+    expect(taskB?.terminal?.status).toBe("completed");
+    const factsA =
+      taskRecords("turn_1").find((task) => task.taskId === "task_a")?.terminal
+        ?.facts ?? [];
+    expect(factsA).toEqual([
+      { claim: "receipt for a", evidence: "executor_receipt" },
+    ]);
+  });
+
+  it("CO-18: a terminal whose parentTurnId disagrees with the task is still rejected after it holds a terminal", () => {
+    admit({ taskId: "task_a", parentTurnId: "turn_1", workerSessionId: "s_1" });
+    recordTerminal(
+      terminal({
+        taskId: "task_a",
+        parentTurnId: "turn_1",
+        childSessionId: "s_1",
+      }),
+      [fact({ claim: "settled once" })]
+    );
+    const beforeTasks = taskRecords("turn_1");
+    const beforeCohort = cohortFor("turn_1");
+
+    const outcome = recordTerminal(
+      terminal({
+        taskId: "task_a",
+        parentTurnId: "wrong_turn",
+        childSessionId: "s_1",
+      }),
+      [fact({ claim: "impostor" })]
+    );
+
+    expect(outcome).toEqual({ matched: false, cohortBecameReportable: false });
+    expect(taskRecords("turn_1")).toEqual(beforeTasks);
+    expect(cohortFor("turn_1")).toEqual(beforeCohort);
+  });
+
+  it("CO-19: a terminal naming a task this session does not hold is still rejected", async () => {
+    state.projections.members = [member("task_a", "turn_1", true)];
+    state.projections.terminals = [
+      projected("task_a", "turn_1", { status: "success", message: "done" }),
+    ];
+    await reconcileBackgroundTasks();
+    const beforeTasks = taskRecords("turn_1");
+    const beforeCohort = cohortFor("turn_1");
+
+    const outcome = recordTerminal(
+      terminal({
+        taskId: "never_admitted",
+        parentTurnId: "turn_1",
+        childSessionId: "s_stranger",
+      }),
+      [fact({ claim: "stranger" })]
+    );
+
+    expect(outcome).toEqual({ matched: false, cohortBecameReportable: false });
+    expect(taskRecords("turn_1")).toEqual(beforeTasks);
+    expect(cohortFor("turn_1")).toEqual(beforeCohort);
+  });
+
+  it("CO-20: a failed task holding an executor_receipt still reads as uncertain_effect after repeated reconciliation", async () => {
+    admit({ taskId: "task_a", parentTurnId: "turn_1", workerSessionId: "s_1" });
+    admit({ taskId: "task_b", parentTurnId: "turn_1", workerSessionId: "s_2" });
+    // The first terminal for task_a carries a dispatch receipt, and the task
+    // failed: repeating that dispatch is exactly what must stay forbidden.
+    recordTerminal(
+      terminal({
+        taskId: "task_a",
+        parentTurnId: "turn_1",
+        childSessionId: "s_1",
+        status: "failed",
+      }),
+      [
+        fact({
+          evidence: "executor_receipt",
+          claim: "dispatched, never confirmed",
+        }),
+      ]
+    );
+    recordTerminal(
+      terminal({
+        taskId: "task_b",
+        parentTurnId: "turn_1",
+        childSessionId: "s_2",
+      }),
+      [fact({ claim: "b done" })]
+    );
+    expect(cohortFor("turn_1")?.phase).toBe("must_report");
+
+    // The projection replays the same failed task on every root step, with the
+    // worker's own assertion in place of the receipt. It must not displace the
+    // receipt, or the disposition silently becomes stopped_incomplete and the
+    // prohibition on repeating the dispatch disappears. The framework status
+    // stays failed throughout so only the evidence is at stake.
+    state.projections.members = [
+      member("task_a", "turn_1", true),
+      member("task_b", "turn_1", true),
+    ];
+    state.projections.terminals = [
+      {
+        ...projected("task_a", "turn_1", {
+          status: "failure",
+          message: "worker says fine",
+        }),
+        childSessionId: "s_1",
+        status: "failed" as const,
+      },
+      projected("task_b", "turn_1", { status: "success", message: "b done" }),
+    ];
+    await reconcileBackgroundTasks();
+    await reconcileBackgroundTasks();
+
+    const progress = recoveryProgress({ turnId: "turn_1" });
+    expect(progress.disposition).toBe("uncertain_effect");
+    expect(progress.nextStep).toBe("report_uncertain");
   });
 });
