@@ -1,8 +1,17 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, open, readFile, writeFile } from "node:fs/promises";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import { startDemoMcp } from "../evals/contract/fixtures/demo-mcp/server.ts";
 import { startContractDeliveryProvider } from "../evals/contract/fixtures/delivery-provider/server.ts";
 import { startFakeSquare } from "../evals/square/fake/server.ts";
@@ -13,6 +22,9 @@ const demoExtensionRoot = fileURLToPath(
 );
 const mountHarnessRoot = fileURLToPath(
   new URL("../evals/contract/mount-harness", import.meta.url)
+);
+const migrationsJournalPath = fileURLToPath(
+  new URL("../db/migrations/meta/_journal.json", import.meta.url)
 );
 const contractMcpToken = "contract-mcp-credential";
 const composeProject = `open-instinct-contract-${createHash("sha256")
@@ -25,9 +37,12 @@ const composeArguments = (...args: string[]) => [
   composeProject,
   ...args,
 ];
-
-// oxlint-disable-next-line eslint/no-restricted-properties -- the supervisor forwards ordinary process configuration after explicitly removing model credentials
+// oxlint-disable-next-line eslint/no-restricted-properties -- The supervisor forwards its existing invocation environment after explicitly removing model credentials.
 const inheritedEnvironment = { ...process.env };
+const verificationEvidencePath = configuredEvidencePath(
+  inheritedEnvironment.VERIFY_EVIDENCE_PATH,
+  "contract-supervisor.json"
+);
 const deliverySnapshotPath =
   inheritedEnvironment.CONTRACT_DELIVERY_PROVIDER_SNAPSHOT_PATH ??
   join(
@@ -49,6 +64,7 @@ let activeDeliveryProvider:
 let activeFake: Awaited<ReturnType<typeof startFakeSquare>> | undefined;
 let composeAttempted = false;
 let interrupted = false;
+let cleanupStatus: "passed" | "failed" | "not-attempted" = "not-attempted";
 
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.once(signal, () => {
@@ -172,6 +188,7 @@ async function runContractEvals() {
     );
     process.exitCode = process.exitCode ?? mountExitCode ?? 1;
   } finally {
+    let cleanupFailed = false;
     if (activeDeliveryProvider) {
       try {
         await mkdir(dirname(deliverySnapshotPath), { recursive: true });
@@ -180,32 +197,123 @@ async function runContractEvals() {
           `${JSON.stringify(activeDeliveryProvider.snapshot(), null, 2)}\n`
         );
       } catch {
+        cleanupFailed = true;
         console.error(
           "Could not write the contract delivery provider snapshot."
         );
         process.exitCode = 1;
       }
     }
-    await activeDeliveryProvider?.close();
+    try {
+      await activeDeliveryProvider?.close();
+    } catch {
+      cleanupFailed = true;
+      process.exitCode = 1;
+      console.error("Contract delivery fixture cleanup failed.");
+    }
     activeDeliveryProvider = undefined;
-    await activeDemo?.close();
+    try {
+      await activeDemo?.close();
+    } catch {
+      cleanupFailed = true;
+      process.exitCode = 1;
+      console.error("Contract MCP fixture cleanup failed.");
+    }
     activeDemo = undefined;
-    await activeFake?.close();
+    try {
+      await activeFake?.close();
+    } catch {
+      cleanupFailed = true;
+      process.exitCode = 1;
+      console.error("Fake Square fixture cleanup failed.");
+    }
     activeFake = undefined;
     if (composeAttempted) {
-      const exitCode = await run(
-        "docker",
-        composeArguments("down", "--volumes"),
-        inheritedEnvironment
-      );
-      if (exitCode !== 0) {
+      try {
+        const exitCode = await run(
+          "docker",
+          composeArguments("down", "--volumes"),
+          inheritedEnvironment
+        );
+        if (exitCode !== 0) {
+          cleanupFailed = true;
+          console.error("Owned contract Compose teardown failed.");
+          process.exitCode = 1;
+        }
+      } catch {
+        cleanupFailed = true;
+        console.error("Owned contract Compose teardown failed.");
+        process.exitCode = 1;
+      }
+      cleanupStatus = cleanupFailed ? "failed" : "passed";
+    }
+    if (verificationEvidencePath !== undefined) {
+      try {
+        const journalText = await readFile(migrationsJournalPath, "utf8");
+        const journalInput: unknown = JSON.parse(journalText);
+        const journal = z
+          .object({ entries: z.array(z.object({ tag: z.string() })) })
+          .parse(journalInput);
+        const migrationRevision = journal.entries.at(-1)?.tag;
+        if (migrationRevision === undefined) {
+          console.error("Migration revision is unavailable.");
+          process.exitCode = 1;
+        } else {
+          const evidence = {
+            schemaVersion: 1,
+            lane: "contract-evals",
+            composeProject,
+            database: "contract fixture database",
+            migration: {
+              sourceRevision: migrationRevision,
+              evidence:
+                "The owned db:migrate command succeeded before contract execution.",
+            },
+            cleanup: cleanupStatus,
+          };
+          const handle = await open(verificationEvidencePath, "wx", 0o600);
+          try {
+            await handle.writeFile(
+              `${JSON.stringify(evidence, null, 2)}\n`,
+              "utf8"
+            );
+          } finally {
+            await handle.close();
+          }
+        }
+      } catch {
         console.error(
-          `docker compose teardown exited with ${String(exitCode)}`
+          "Could not write the bounded verification evidence file."
         );
         process.exitCode = 1;
       }
     }
   }
+}
+
+function configuredEvidencePath(
+  value: string | undefined,
+  expectedName: string
+) {
+  if (value === undefined) return undefined;
+  const resolvedPath = isAbsolute(value)
+    ? resolve(value)
+    : resolve(repositoryRoot, value);
+  const verifyRoot = resolve(repositoryRoot, ".eve", "verify");
+  const relativePath = relative(verifyRoot, resolvedPath);
+  const parts = relativePath.split(sep);
+  if (
+    relativePath.startsWith(`..${sep}`) ||
+    isAbsolute(relativePath) ||
+    parts.length !== 2 ||
+    !/^[0-9a-f-]{36}$/u.test(parts[0] ?? "") ||
+    basename(resolvedPath) !== expectedName
+  ) {
+    throw new Error(
+      "Verification evidence paths must stay inside their run directory."
+    );
+  }
+  return resolvedPath;
 }
 
 function validateEvalArguments(args: string[]) {
@@ -293,11 +401,11 @@ function run(
     stdio: "inherit",
   });
   activeChild = child;
-  return new Promise<number | null>((resolve, reject) => {
+  return new Promise<number | null>((settle, reject) => {
     child.once("error", reject);
     child.once("exit", (code) => {
       if (activeChild === child) activeChild = undefined;
-      resolve(code);
+      settle(code);
     });
   });
 }
@@ -315,9 +423,9 @@ async function output(command: string, args: string[]) {
   child.stdout.on("data", (chunk: string) => {
     value += chunk;
   });
-  const exitCode = await new Promise<number | null>((resolve, reject) => {
+  const exitCode = await new Promise<number | null>((settle, reject) => {
     child.once("error", reject);
-    child.once("exit", resolve);
+    child.once("exit", settle);
   });
   if (activeChild === child) activeChild = undefined;
   if (exitCode !== 0) {

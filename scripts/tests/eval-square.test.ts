@@ -1,10 +1,23 @@
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 const run = promisify(execFile);
 
 describe("eval-square wrapper", () => {
+  it("uses a run-specific disposable Compose project for database-backed evals", async () => {
+    const source = await readFile(
+      new URL("../eval-square.ts", import.meta.url),
+      "utf8"
+    );
+
+    expect(source).toContain("open-instinct-square-");
+    expect(source).toContain('randomBytes(6).toString("hex")');
+    expect(source).toContain('composeArguments("down", "--volumes")');
+    expect(source).not.toContain("open-instinct-${createHash");
+  });
+
   it("keeps the full Square gate when --case is omitted", async () => {
     const { stdout } = await run(
       process.execPath,

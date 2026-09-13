@@ -1,7 +1,16 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir } from "node:fs/promises";
+import { mkdir, open, readFile } from "node:fs/promises";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 
 // CI/test-only supervisor, not an alternative application startup path.
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -12,9 +21,10 @@ const compose = (...args: string[]) => [
   project,
   ...args,
 ];
+// oxlint-disable-next-line eslint/no-restricted-properties -- The supervisor preserves its existing invocation environment, then applies the owned database settings below.
+const inheritedEnvironment: NodeJS.ProcessEnv = { ...process.env };
 const environment: NodeJS.ProcessEnv = {
-  // oxlint-disable-next-line eslint/no-restricted-properties -- test supervisor sanitizes inherited model credentials and owns the database overrides.
-  ...process.env,
+  ...inheritedEnvironment,
   REAL_PG: "1",
   REAL_PG_COMPOSE_PROJECT: project,
 };
@@ -25,6 +35,7 @@ let activeChild: ChildProcess | undefined;
 let interrupted = false;
 let cleaningUp = false;
 let stopping: ReturnType<typeof setTimeout> | undefined;
+let cleanupStatus: "passed" | "failed" | "not-attempted" = "not-attempted";
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.on(signal, () => {
     if (interrupted) return;
@@ -51,7 +62,19 @@ async function runRequiredTests() {
       throw new Error(
         "This required lane does not accept test filters or skip options."
       );
-    await mkdir(new URL("../.eve/ci/", import.meta.url), { recursive: true });
+    const junitPath = configuredEvidencePath(
+      environment.VERIFY_REAL_PG_JUNIT_PATH,
+      "real-postgres.xml"
+    );
+    await mkdir(
+      dirname(
+        junitPath ??
+          fileURLToPath(
+            new URL("../.eve/ci/real-postgres.xml", import.meta.url)
+          )
+      ),
+      { recursive: true }
+    );
     if (!interrupted) {
       composeAttempted = true;
       const startupCode = await run(
@@ -65,7 +88,7 @@ async function runRequiredTests() {
           "tests/integration/real-postgres.test.ts",
           "--reporter=default",
           "--reporter=junit",
-          "--outputFile=.eve/ci/real-postgres.xml",
+          `--outputFile=${junitPath ?? ".eve/ci/real-postgres.xml"}`,
         ]);
         process.exitCode ??= testCode ?? 1;
       } else {
@@ -84,10 +107,14 @@ async function runRequiredTests() {
       try {
         const code = await run("docker", compose("down", "--volumes"));
         if (code !== 0) {
+          cleanupStatus = "failed";
           console.error("Owned Compose teardown failed.");
           process.exitCode = 1;
+        } else {
+          cleanupStatus = "passed";
         }
       } catch (error) {
+        cleanupStatus = "failed";
         console.error(
           error instanceof Error
             ? error.message
@@ -96,7 +123,83 @@ async function runRequiredTests() {
         process.exitCode = 1;
       }
     }
+    const evidencePath = configuredEvidencePath(
+      environment.VERIFY_EVIDENCE_PATH,
+      "real-postgres-supervisor.json"
+    );
+    if (evidencePath !== undefined) {
+      try {
+        const journalText = await readFile(
+          fileURLToPath(
+            new URL("../db/migrations/meta/_journal.json", import.meta.url)
+          ),
+          "utf8"
+        );
+        const journalInput: unknown = JSON.parse(journalText);
+        const journal = z
+          .object({ entries: z.array(z.object({ tag: z.string() })) })
+          .parse(journalInput);
+        const migrationRevision = journal.entries.at(-1)?.tag;
+        if (migrationRevision === undefined) {
+          console.error("Migration revision is unavailable.");
+          process.exitCode = 1;
+        } else {
+          const evidence = {
+            schemaVersion: 1,
+            lane: "real-postgres",
+            composeProject: project,
+            database:
+              "temporary test databases owned by the integration harness",
+            migration: {
+              sourceRevision: migrationRevision,
+              evidence:
+                "The real-Postgres harness applies the source migrations before the required tests.",
+            },
+            cleanup: cleanupStatus,
+          };
+          const handle = await open(evidencePath, "wx", 0o600);
+          try {
+            await handle.writeFile(
+              `${JSON.stringify(evidence, null, 2)}\n`,
+              "utf8"
+            );
+          } finally {
+            await handle.close();
+          }
+        }
+      } catch {
+        console.error(
+          "Could not write the bounded verification evidence file."
+        );
+        process.exitCode = 1;
+      }
+    }
   }
+}
+
+function configuredEvidencePath(
+  value: string | undefined,
+  expectedName: string
+) {
+  if (value === undefined) return undefined;
+  const resolved = isAbsolute(value)
+    ? resolve(value)
+    : resolve(repositoryRoot, value);
+  const verifyRoot = resolve(repositoryRoot, ".eve", "verify");
+  const relativePath = relative(verifyRoot, resolved);
+  const parts = relativePath.split(sep);
+  if (
+    relativePath.startsWith(`..${sep}`) ||
+    isAbsolute(relativePath) ||
+    parts.length !== 2 ||
+    !/^[0-9a-f-]{36}$/u.test(parts[0] ?? "") ||
+    basename(resolved) !== expectedName
+  ) {
+    throw new Error(
+      "Verification evidence paths must stay inside their run directory."
+    );
+  }
+  return resolved;
 }
 
 function run(command: string, args: string[]) {
@@ -114,7 +217,7 @@ function run(command: string, args: string[]) {
     cleaningUp ? 30_000 : 600_000
   );
   timeout.unref();
-  return new Promise<number | null>((resolve, reject) => {
+  return new Promise<number | null>((settle, reject) => {
     child.once("error", (error) => {
       clearTimeout(timeout);
       reject(error);
@@ -123,7 +226,7 @@ function run(command: string, args: string[]) {
       clearTimeout(timeout);
       if (activeChild === child) activeChild = undefined;
       clearTimeout(stopping);
-      resolve(code);
+      settle(code);
     });
   });
 }

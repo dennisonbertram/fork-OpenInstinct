@@ -117,6 +117,11 @@ conditional to the loop.
 
 ## Proposed operating-model addendum (2026-09-11)
 
+The [agent development system](AGENT_DEVELOPMENT.md) is the companion
+developer/operator design. It binds repository work to revision, target,
+evidence, proof, authorization, and reviewed learning without adding product
+authority or a second runtime.
+
 The [Jory agent operating model](JORY_AGENT_OPERATING_MODEL.md) proposes a
 typed projection over these existing owners. The projection must identify
 source, scope, revision, observed time, freshness, and evidence level. It must

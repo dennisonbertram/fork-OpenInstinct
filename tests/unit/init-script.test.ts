@@ -5,6 +5,7 @@ import {
   readFile,
   readdir,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -54,7 +55,8 @@ describe("init.sh", () => {
     expect(await readFile(join(directory, "commands.log"), "utf8")).toBe(
       [
         "pnpm install --frozen-lockfile",
-        "pnpm exec eve link --non-interactive --project jory --team dennisons-projects",
+        "pnpm exec vercel api /v9/projects/prj_GIIYS7WKKuY0400OCVVFntPw1H0r --method GET --non-interactive --scope team_cwyLpng8LCwWgINdiQ27hHYa",
+        "pnpm exec eve link --non-interactive --project jory --team team_cwyLpng8LCwWgINdiQ27hHYa",
         "",
       ].join("\n")
     );
@@ -76,6 +78,71 @@ describe("init.sh", () => {
     expect(result.stderr).toContain("KERNEL_API_KEY");
     expect(result.stderr).toContain("AI_GATEWAY_API_KEY");
     expect(result.stdout).not.toContain("KERNEL_API_KEY=");
+  });
+
+  it("refuses a stale or inaccessible canonical Vercel target before Eve can link", async () => {
+    const directory = await fixture({ vercelTargetExitCode: 1 });
+    const result = await runInit(directory, ["--setup-only", "--skip-install"]);
+    const template = await readFile(join(directory, ".env.example"), "utf8");
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("existing Vercel target");
+    expect(await readFile(join(directory, ".env.local"), "utf8")).toBe(
+      template
+    );
+    expect(await readFile(join(directory, "commands.log"), "utf8")).toContain(
+      "pnpm exec vercel api /v9/projects/prj_GIIYS7WKKuY0400OCVVFntPw1H0r --method GET --non-interactive --scope team_cwyLpng8LCwWgINdiQ27hHYa"
+    );
+    expect(
+      await readFile(join(directory, "commands.log"), "utf8")
+    ).not.toContain("eve link");
+  });
+
+  it("refuses a renamed canonical target before Eve can link", async () => {
+    const directory = await fixture({
+      vercelTargetResponse: JSON.stringify({
+        id: "prj_GIIYS7WKKuY0400OCVVFntPw1H0r",
+        name: "renamed-project",
+        accountId: "team_cwyLpng8LCwWgINdiQ27hHYa",
+      }),
+    });
+    const result = await runInit(directory, ["--setup-only", "--skip-install"]);
+    const template = await readFile(join(directory, ".env.example"), "utf8");
+
+    expect(result.code).toBe(1);
+    expect(await readFile(join(directory, ".env.local"), "utf8")).toBe(
+      template
+    );
+    expect(
+      await readFile(join(directory, "commands.log"), "utf8")
+    ).not.toContain("eve link");
+  });
+
+  it("validates an explicit alternate project exists before Eve links it", async () => {
+    const directory = await fixture({
+      vercelTargetResponse: JSON.stringify({
+        id: "prj_alternate",
+        name: "alternate-project",
+        accountId: "team_alternate",
+      }),
+    });
+    const result = await runInit(
+      directory,
+      ["--setup-only", "--skip-install"],
+      {
+        OPENINSTINCT_VERCEL_PROJECT: "alternate-project",
+        OPENINSTINCT_VERCEL_TEAM: "team_alternate",
+      }
+    );
+
+    expect(result.code).toBe(0);
+    expect(await readFile(join(directory, "commands.log"), "utf8")).toBe(
+      [
+        "pnpm exec vercel api /v9/projects/alternate-project --method GET --non-interactive --scope team_alternate",
+        "pnpm exec eve link --non-interactive --project alternate-project --team team_alternate",
+        "",
+      ].join("\n")
+    );
   });
 
   it("preserves an existing env and installs during setup-only", async () => {
@@ -124,7 +191,11 @@ describe("init.sh", () => {
     expect(result.code).toBe(0);
     expect(result.stdout).not.toContain("KERNEL_API_KEY=");
     expect(await readFile(join(directory, "commands.log"), "utf8")).toBe(
-      "pnpm exec eve link --non-interactive --project jory --team dennisons-projects\n"
+      [
+        "pnpm exec vercel api /v9/projects/prj_GIIYS7WKKuY0400OCVVFntPw1H0r --method GET --non-interactive --scope team_cwyLpng8LCwWgINdiQ27hHYa",
+        "pnpm exec eve link --non-interactive --project jory --team team_cwyLpng8LCwWgINdiQ27hHYa",
+        "",
+      ].join("\n")
     );
   });
 
@@ -145,22 +216,19 @@ describe("init.sh", () => {
     expect(await readFile(join(directory, "commands.log"), "utf8")).toBe("");
   });
 
-  it("starts Agentation and delegates the app lifecycle to pnpm dev", async () => {
+  it("delegates the complete lifecycle to the one supervisor", async () => {
     const directory = await fixture({ readyEnvironment: true });
 
     const result = await runInit(directory, ["--skip-install"]);
 
     expect(result.code).toBe(0);
     expect(await readFile(join(directory, "commands.log"), "utf8")).toBe(
-      "pnpm dev:agentation\npnpm dev\n"
+      "pnpm dev\n"
     );
     expect(await readdir(directory)).not.toContain("agentation-ready");
-    expect(await readFile(join(directory, "agentation-stopped"), "utf8")).toBe(
-      "stopped\n"
-    );
   });
 
-  it("reuses an already healthy Agentation server", async () => {
+  it("leaves Agentation ownership to the supervisor", async () => {
     const directory = await fixture({
       agentationHealthy: true,
       readyEnvironment: true,
@@ -169,13 +237,13 @@ describe("init.sh", () => {
     const result = await runInit(directory, ["--skip-install"]);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain("Agentation is already running");
+    expect(result.stdout).toContain("Starting the complete connected stack");
     expect(await readFile(join(directory, "commands.log"), "utf8")).toBe(
       "pnpm dev\n"
     );
   });
 
-  it("stops before the app when Agentation fails to start", async () => {
+  it("does not start a second Agentation owner in bootstrap", async () => {
     const directory = await fixture({
       agentationStartExitCode: 1,
       readyEnvironment: true,
@@ -183,11 +251,40 @@ describe("init.sh", () => {
 
     const result = await runInit(directory, ["--skip-install"]);
 
-    expect(result.code).toBe(1);
-    expect(result.stderr).toContain("Agentation did not become healthy");
+    expect(result.code).toBe(0);
     expect(await readFile(join(directory, "commands.log"), "utf8")).toBe(
-      "pnpm dev:agentation\n"
+      "pnpm dev\n"
     );
+  });
+
+  it("accepts the fixture profile and delegates its explicit selection", async () => {
+    const directory = await fixture();
+
+    const result = await runInit(directory, [
+      "--profile",
+      "fixture",
+      "--skip-install",
+    ]);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("isolated fixture run");
+    expect(result.stdout).toContain("complete fixture stack");
+  });
+
+  it("keeps status read-only and rejects ambiguous profile combinations", async () => {
+    const directory = await fixture();
+
+    const status = await runInit(directory, ["--status"]);
+    const ambiguous = await runInit(directory, [
+      "--profile",
+      "fixture",
+      "--check",
+    ]);
+
+    expect(status.code).toBe(0);
+    expect(await readFile(join(directory, "commands.log"), "utf8")).toBe("");
+    expect(ambiguous.code).toBe(2);
+    expect(ambiguous.stderr).toContain("Fixture startup cannot be combined");
   });
 
   it("reports missing and incompatible prerequisites", async () => {
@@ -232,12 +329,24 @@ async function fixture(
     readonly nodeVersion?: string;
     readonly omit?: "pnpm";
     readonly readyEnvironment?: boolean;
+    readonly vercelTargetExitCode?: number;
+    readonly vercelTargetResponse?: string;
   } = {}
 ) {
   const directory = await mkdtemp(join(tmpdir(), "open-instinct-init-"));
   temporaryDirectories.push(directory);
   const bin = join(directory, "bin");
   await (await import("node:fs/promises")).mkdir(bin);
+  await (await import("node:fs/promises")).mkdir(join(directory, "config"));
+  await (
+    await import("node:fs/promises")
+  ).mkdir(join(directory, "scripts", "local"), {
+    recursive: true,
+  });
+  await symlink(
+    join(process.cwd(), "node_modules"),
+    join(directory, "node_modules")
+  );
   const agentationMarker = join(directory, "agentation-ready");
   const linkedEnvironment = join(directory, "linked.env");
   await writeFile(
@@ -253,6 +362,19 @@ async function fixture(
     join(directory, "agentation-exit-code"),
     String(options.agentationStartExitCode ?? 0)
   );
+  await writeFile(
+    join(directory, "vercel-target-exit-code"),
+    String(options.vercelTargetExitCode ?? 0)
+  );
+  await writeFile(
+    join(directory, "vercel-target.json"),
+    options.vercelTargetResponse ??
+      JSON.stringify({
+        id: "prj_GIIYS7WKKuY0400OCVVFntPw1H0r",
+        name: "jory",
+        accountId: "team_cwyLpng8LCwWgINdiQ27hHYa",
+      })
+  );
   if (options.agentationHealthy) {
     await writeFile(agentationMarker, "ready\n");
   }
@@ -266,9 +388,21 @@ async function fixture(
       join(directory, ".env.example"),
       await readFile(new URL("../../.env.example", import.meta.url))
     ),
+    writeFile(
+      join(directory, "config", "production-targets.json"),
+      await readFile(
+        new URL("../../config/production-targets.json", import.meta.url)
+      )
+    ),
+    writeFile(
+      join(directory, "scripts", "local", "verify-vercel-target.ts"),
+      await readFile(
+        new URL("../../scripts/local/verify-vercel-target.ts", import.meta.url)
+      )
+    ),
     writeExecutable(
       join(bin, "node"),
-      `#!/bin/sh\nif [ "$1" = "--version" ]; then\n  printf '%s\\n' "${options.nodeVersion ?? "v24.15.0"}"\n  exit 0\nfi\nif [ "$1" = "-e" ]; then\n  test -f "$INIT_AGENTATION_MARKER"\n  exit $?\nfi\nexit 0\n`
+      `#!/bin/sh\nif [ "$1" = "--version" ]; then\n  printf '%s\\n' "${options.nodeVersion ?? "v24.15.0"}"\n  exit 0\nfi\nif [ "$1" = "scripts/local/verify-vercel-target.ts" ]; then\n  exec "$INIT_REAL_NODE" "$@"\nfi\nif [ "$1" = "-e" ]; then\n  test -f "$INIT_AGENTATION_MARKER"\n  exit $?\nfi\nexit 0\n`
     ),
     writeExecutable(
       join(bin, "docker"),
@@ -279,7 +413,7 @@ async function fixture(
   if (options.omit !== "pnpm") {
     await writeExecutable(
       join(bin, "pnpm"),
-      `#!/bin/sh\nprintf 'pnpm %s\\n' "$*" >> "$INIT_LOG"\ncase "$*" in\n  "exec eve link "*)\n    if [ "$INIT_LINK_EXIT" -ne 0 ]; then\n      printf 'PARTIAL_ENV=must-not-survive\\n' > .env.local\n      exit "$INIT_LINK_EXIT"\n    fi\n    cat "$INIT_LINK_ENV" >> .env.local\n    ;;\n  "dev:agentation")\n    if [ "$INIT_AGENTATION_EXIT" -ne 0 ]; then exit "$INIT_AGENTATION_EXIT"; fi\n    # A healthy server stays alive until init.sh tears it down.\n    trap 'rm -f "$INIT_AGENTATION_MARKER"; printf "stopped\\n" > "$INIT_AGENTATION_STOPPED"; exit 0' TERM INT\n    : > "$INIT_AGENTATION_MARKER"\n    while :; do sleep 0.1; done\n    ;;\nesac\n`
+      `#!/bin/sh\nprintf 'pnpm %s\\n' "$*" >> "$INIT_LOG"\ncase "$*" in\n  "exec vercel api "*)\n    if [ "$INIT_VERCEL_TARGET_EXIT" -ne 0 ]; then exit "$INIT_VERCEL_TARGET_EXIT"; fi\n    cat "$INIT_VERCEL_TARGET_JSON"\n    ;;\n  "exec eve link "*)\n    if [ "$INIT_LINK_EXIT" -ne 0 ]; then\n      printf 'PARTIAL_ENV=must-not-survive\\n' > .env.local\n      exit "$INIT_LINK_EXIT"\n    fi\n    cat "$INIT_LINK_ENV" >> .env.local\n    ;;\n  "dev:agentation")\n    if [ "$INIT_AGENTATION_EXIT" -ne 0 ]; then exit "$INIT_AGENTATION_EXIT"; fi\n    # A healthy server stays alive until init.sh tears it down.\n    trap 'rm -f "$INIT_AGENTATION_MARKER"; printf "stopped\\n" > "$INIT_AGENTATION_STOPPED"; exit 0' TERM INT\n    : > "$INIT_AGENTATION_MARKER"\n    while :; do sleep 0.1; done\n    ;;\nesac\n`
     );
   }
   if (options.readyEnvironment) {
@@ -297,7 +431,11 @@ async function writeExecutable(path: string, contents: string) {
   await chmod(path, 0o755);
 }
 
-async function runInit(directory: string, args: readonly string[] = []) {
+async function runInit(
+  directory: string,
+  args: readonly string[] = [],
+  environment: Readonly<Record<string, string>> = {}
+) {
   const bin = join(directory, "bin");
   const linkExitCode = await readFile(
     join(directory, "link-exit-code"),
@@ -316,8 +454,15 @@ async function runInit(directory: string, args: readonly string[] = []) {
       INIT_AGENTATION_EXIT: agentationExitCode,
       INIT_LINK_ENV: join(directory, "linked.env"),
       INIT_LINK_EXIT: linkExitCode,
+      INIT_VERCEL_TARGET_EXIT: await readFile(
+        join(directory, "vercel-target-exit-code"),
+        "utf8"
+      ),
+      INIT_VERCEL_TARGET_JSON: join(directory, "vercel-target.json"),
+      INIT_REAL_NODE: process.execPath,
       NODE_ENV: "test",
       PATH: `${bin}:/usr/bin:/bin`,
+      ...environment,
     },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],

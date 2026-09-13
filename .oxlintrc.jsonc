@@ -405,6 +405,31 @@
       }
     },
     {
+      // This is a standalone Node process-group wrapper. Its `ChildProcess`
+      // streams and signal overloads are intentionally untyped JavaScript
+      // boundaries; the lifecycle tests exercise their actual process behavior.
+      "files": ["scripts/local/service-supervisor.mjs"],
+      "rules": {
+        "typescript/no-confusing-void-expression": "off",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/restrict-plus-operands": "off"
+      }
+    },
+    {
+      // The local lifecycle supervisor must construct distinct connected and
+      // fixture child environments. These are process-launch inputs, not
+      // application runtime settings; validation happens at its profile and
+      // child-environment boundaries.
+      "files": ["scripts/dev.ts"],
+      "rules": {
+        "eslint/no-restricted-properties": "off",
+        "turbo/no-undeclared-env-vars": "off"
+      }
+    },
+    {
       // Playwright's documented test discovery convention is *.spec.ts.
       "files": ["tests/e2e/**/*.spec.ts"],
       "rules": {

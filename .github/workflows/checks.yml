@@ -34,7 +34,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run checks
-        run: pnpm check
+        run: pnpm verify --lane checks
+
+      - name: Upload verification run evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: checks-verification-run
+          path: .eve/verify/
+          include-hidden-files: true
+          if-no-files-found: error
 
   contract-evals:
     name: Contract evals
@@ -59,7 +68,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run model-free contract evals
-        run: pnpm eval:contract -- --junit .eve/contract-junit.xml
+        run: pnpm verify --lane contract-evals
 
       - name: Upload contract eval artifacts
         if: always()
@@ -67,12 +76,22 @@ jobs:
         with:
           name: contract-eval-artifacts
           path: |
+            .eve/verify/
             .eve/evals/
             .eve/contract*.xml
             evals/contract/mount-harness/.eve/evals/
             evals/contract/mount-harness/.eve/contract*.xml
           include-hidden-files: true
           if-no-files-found: ignore
+
+      - name: Upload contract verification receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: contract-verification-receipt
+          path: .eve/verify/**/receipt.json
+          include-hidden-files: true
+          if-no-files-found: error
 
   e2e:
     name: E2E
@@ -99,15 +118,28 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run E2E tests
-        run: pnpm test:e2e
+        run: pnpm verify --lane e2e
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            .eve/verify/
+            playwright-report/
+            test-results/
+          include-hidden-files: true
           if-no-files-found: ignore
+
+      - name: Upload E2E verification receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-verification-receipt
+          path: .eve/verify/**/receipt.json
+          include-hidden-files: true
+          if-no-files-found: error
 
   build:
     name: Build
@@ -130,7 +162,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Production build with synthetic configuration
-        run: pnpm build
+        run: pnpm verify --lane build
+
+      - name: Upload verification run evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-verification-run
+          path: .eve/verify/
+          include-hidden-files: true
+          if-no-files-found: error
 
   real-postgres:
     name: Real Postgres
@@ -147,12 +188,23 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Required isolated Postgres tests and teardown
-        run: node scripts/test-real-postgres.ts
+        run: pnpm verify --lane real-postgres
       - name: Upload real Postgres results
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: real-postgres-results
-          path: .eve/ci/real-postgres.xml
+          path: |
+            .eve/verify/
+            .eve/ci/real-postgres.xml
           include-hidden-files: true
           if-no-files-found: ignore
+
+      - name: Upload real Postgres verification receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: real-postgres-verification-receipt
+          path: .eve/verify/**/receipt.json
+          include-hidden-files: true
+          if-no-files-found: error

@@ -62,6 +62,11 @@ import { googleWorkspaceScopes } from "@/lib/google-workspace";
 import { squareScopes, squareSubject, squareTokenParams } from "@/lib/square";
 import { userProfileSchema } from "@/lib/user-profile";
 import { vaultCreateItemSchema, vaultImportItemsSchema } from "@/lib/vault";
+import { readOperationsIdentity } from "@/lib/operations/identity";
+import {
+  operationsJourneyInputSchema,
+  readOperationsJourney,
+} from "@/lib/operations/journey";
 import { adminProcedure, createTRPCRouter, protectedProcedure } from "./init";
 
 const auditCursorSchema = z.object({ createdAt: z.string(), id: z.string() });
@@ -91,6 +96,9 @@ function groupedCounts(rows: readonly { key: string; count: number }[]) {
 
 export const appRouter = createTRPCRouter({
   admin: {
+    operationsIdentity: adminProcedure.query(
+      async () => await readOperationsIdentity()
+    ),
     overview: adminProcedure.query(async () => {
       const since = startOfCurrentUtcMonth();
       const [
@@ -398,6 +406,13 @@ export const appRouter = createTRPCRouter({
           input.workspaceId,
           input.to
         )
+      ),
+  },
+  operations: {
+    journey: protectedProcedure
+      .input(operationsJourneyInputSchema)
+      .query(
+        async ({ ctx, input }) => await readOperationsJourney(ctx.scope, input)
       ),
   },
   apiCredentials: {

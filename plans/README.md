@@ -24,12 +24,19 @@ the index update to the reviewer who dispatched the work.
 | 014  | [Bounded recovery and progress](014-bounded-recovery-progress.md)                                           | P1       | M      | 005–006, 011 | TODO              |
 | 015  | [Reviewed procedure improvement](015-reviewed-procedure-improvement.md)                                     | P2       | S–M    | —            | TODO              |
 | 016  | [Matched whole-task efficiency](016-matched-task-efficiency.md)                                             | P2       | M      | —            | TODO              |
+| 021  | [Complete local lifecycle](021-local-lifecycle.md)                                                          | P1       | M      | —            | IN PROGRESS       |
+| 022  | [Diagnostic evidence](022-diagnostic-evidence.md)                                                           | P1       | M      | 021          | IN PROGRESS       |
+| 023  | [Local verification gate](023-local-verification-gate.md)                                                   | P1       | M      | 021–022      | IN PROGRESS       |
+| 024  | [Production operations](024-production-operations.md)                                                       | P1       | M      | 021–023      | IN PROGRESS       |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
 ## GitHub execution map
 
-The two epics have six native subissues each. GitHub blocking dependencies match the plan dependencies above. All implementation issues remain open.
+The two epics have six native subissues each. The issue map below was recorded
+when this index was generated and is historical; it is not a current remote
+issue-state assertion. Revalidate issue state, dependencies, and current-head
+drift before starting Plans 003–016.
 
 | Plan | Issue                                                                   |
 | ---- | ----------------------------------------------------------------------- |
@@ -72,6 +79,13 @@ drift checks, and acceptance gates are complete. An index row does not mean
 the slice is implemented or ready to run. Plan 002 is retained as a historical
 DONE record from the existing plan set; this update does not reverify its
 claims.
+
+Plans 017–020 own the implemented development tooling and its acceptance:
+complete local lifecycle, bounded diagnostics, deterministic local verification,
+and managed production operations. Their status remains IN PROGRESS until the
+required integrated and live checks are recorded. Fixture and Square databases
+now have distinct Compose identities; development and verification still must
+not race generated output in one worktree. Use the owning runbooks for commands.
 
 The [overnight handoff](JORY_OVERNIGHT_HANDOFF.md) is an execution prompt and
 gate checklist. It authorizes scoped implementation and normal PR delivery;

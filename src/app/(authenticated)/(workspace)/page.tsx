@@ -67,6 +67,8 @@ export default async function Page({ searchParams }: PageProps<"/">) {
         browserReady={browserReady}
         linqConfigured={env.LINQ_CONNECTOR !== undefined}
         linqPhoneNumber={env.LINQ_PHONE_NUMBER}
+        sendblueConversationsEnabled={env.SENDBLUE_CONVERSATIONS === "on"}
+        sendblueFromNumber={env.SENDBLUE_FROM_NUMBER}
       />
       <ConnectionsSection google={googleWorkspace} square={squareConnection} />
 

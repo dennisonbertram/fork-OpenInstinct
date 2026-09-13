@@ -14,6 +14,7 @@ being considered. Documents use three labels deliberately:
 | --------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | Operator              | [`operations/VERCEL.md`](operations/VERCEL.md)                     | Zero-to-running local and Vercel setup, Linq, verification, rollback, and incidents                                    |
 | Coding agent          | [`AGENT_GUIDE.md`](AGENT_GUIDE.md)                                 | Repository topology, ownership boundaries, change recipes, and gates                                                   |
+| Developer/operator    | [`AGENT_DEVELOPMENT.md`](AGENT_DEVELOPMENT.md)                     | Developer lifecycle, verification, diagnostics, deployment identity, and acceptance evidence                           |
 | Architect             | [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md)                 | Current system, trust boundaries, findings, and portability limits                                                     |
 | Architect/contributor | [`PLATFORM_ARCHITECTURE.md`](PLATFORM_ARCHITECTURE.md)             | Core/Eve/extension/MCP boundaries, credential pattern, provider contract, and gym ladder                               |
 | Architect/contributor | [`JORY_AGENT_OPERATING_MODEL.md`](JORY_AGENT_OPERATING_MODEL.md)   | Proposed source-of-truth/projection, completion, evidence, and operating model                                         |
@@ -66,3 +67,8 @@ When behavior changes, update the nearest owning document in the same change.
 Do not turn a proposed schema, API, provider capability, or launch gate into an
 implemented claim. Re-run the applicable verification and replace dated
 deployment evidence rather than silently carrying it forward.
+
+Use the operating runbooks for current commands and
+[`AGENT_DEVELOPMENT.md`](AGENT_DEVELOPMENT.md) for their shared contracts.
+The linked plans record implementation and acceptance separately; historical
+evidence does not become current merely because a command exists.

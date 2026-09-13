@@ -2,6 +2,35 @@ import { randomBytes } from "node:crypto";
 import { defineConfig } from "@playwright/test";
 import { baseURL, port } from "./playwright.config";
 
+const runnerEnvironment = Object.assign(
+  {
+    BETTER_AUTH_SECRET: "e2e-better-auth-secret-for-playwright-sendblue-tests",
+    BETTER_AUTH_URL: baseURL,
+    KERNEL_API_KEY: "e2e-kernel-key",
+    PORT: port,
+    MARKETING_PORT: readRunnerEnvironment("MARKETING_PORT") ?? "3210",
+    SECRET_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
+    WORKSPACE_SCOPE_ENFORCEMENT: "enforce",
+    DEV_PROFILE: "fixture",
+    DEV_FIXTURE_SCENARIO: "sendblue-ui",
+    DEV_RUN_ID:
+      readRunnerEnvironment("DEV_RUN_ID") ??
+      `playwright-sendblue-${randomBytes(8).toString("hex")}`,
+  },
+  optionalRunnerEnvironment("DEV_VERIFY_LEASE_NONCE"),
+  optionalRunnerEnvironment("DEV_VERIFY_EVIDENCE_PATH")
+);
+
+function readRunnerEnvironment(name: string) {
+  // oxlint-disable-next-line eslint/no-restricted-properties -- Playwright runner configuration reads only the explicit CI-owned names passed to the fixture supervisor.
+  return process.env[name];
+}
+
+function optionalRunnerEnvironment(name: string) {
+  const value = readRunnerEnvironment(name);
+  return value === undefined ? {} : { [name]: value };
+}
+
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: "**/sendblue-otp.spec.ts",
@@ -17,20 +46,9 @@ export default defineConfig({
   ],
   webServer: {
     command: "node scripts/dev.ts",
-    env: {
-      BETTER_AUTH_SECRET:
-        "e2e-better-auth-secret-for-playwright-sendblue-tests",
-      BETTER_AUTH_URL: baseURL,
-      KERNEL_API_KEY: "e2e-kernel-key",
-      PORT: port,
-      PHONE_OTP_PROVIDER: "sendblue",
-      SENDBLUE_API_KEY_ID: "e2e-sendblue-key-id",
-      SENDBLUE_API_SECRET_KEY: "e2e-sendblue-secret-key",
-      SENDBLUE_FROM_NUMBER: "+12025550199",
-      SECRET_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
-      VERCEL_ENV: "preview",
-      WORKSPACE_SCOPE_ENFORCEMENT: "enforce",
-    },
+    env: runnerEnvironment,
+    stdout: "pipe",
+    stderr: "pipe",
     gracefulShutdown: { signal: "SIGTERM", timeout: 30_000 },
     reuseExistingServer: false,
     timeout: 300_000,

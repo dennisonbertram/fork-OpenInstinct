@@ -82,9 +82,11 @@
     "test:app": {
       "cache": false,
       "env": ["REAL_PG", "REAL_PG_COMPOSE_PROJECT"],
+      "passThroughEnv": ["NODE_OPTIONS", "VERIFY_REPO_ROOT", "VERIFY_RUN_ID"],
       "outputs": []
     },
     "types:generate": {
+      "passThroughEnv": ["NODE_OPTIONS", "VERIFY_REPO_ROOT", "VERIFY_RUN_ID"],
       "outputs": [".next/types/**", "next-env.d.ts"]
     },
     "types:check:app": {

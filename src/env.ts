@@ -39,6 +39,10 @@ const requiredValue = z
   .string()
   .refine((value) => value.trim().length > 0, "Required");
 
+const buildSha256Schema = z.string().regex(/^[a-f0-9]{64}$/i);
+const buildVersionSchema = z.string().regex(/^\d+\.\d+\.\d+$/);
+const buildEvePatchDeclarationSchema = z.string().regex(/^eve@\d+\.\d+\.\d+$/);
+
 const betterAuthUrlSchema = requiredValue.refine(
   (value) => URL.canParse(value),
   "BETTER_AUTH_URL must be an absolute URL"
@@ -72,6 +76,10 @@ export const env = createEnv({
   server: {
     // Required
     DATABASE_URL: databaseUrlSchema,
+    // Direct migration/proof endpoint. Request paths continue using the
+    // pooled DATABASE_URL; this optional value is read only by the bounded
+    // identity probe.
+    DATABASE_URL_UNPOOLED: databaseUrlSchema.optional(),
     KERNEL_API_KEY: requiredValue,
 
     // Optional overrides with local defaults. Vercel deployments provision
@@ -128,10 +136,19 @@ export const env = createEnv({
       .enum(["development", "production", "test"])
       .default("production"),
     VERCEL_BRANCH_URL: requiredValue.optional(),
+    VERCEL_DEPLOYMENT_ID: requiredValue.optional(),
     VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
+    VERCEL_GIT_COMMIT_SHA: requiredValue.optional(),
     VERCEL_PROJECT_ID: requiredValue.optional(),
     VERCEL_PROJECT_PRODUCTION_URL: requiredValue.optional(),
     VERCEL_URL: requiredValue.optional(),
+    // Set by next.config.ts from non-secret build inputs. These fingerprints
+    // describe the source build; they do not attest to a runtime package patch.
+    OPENINSTINCT_BUILD_EVE_PATCH_DECLARATION:
+      buildEvePatchDeclarationSchema.optional(),
+    OPENINSTINCT_BUILD_EVE_PATCH_SHA256: buildSha256Schema.optional(),
+    OPENINSTINCT_BUILD_EVE_VERSION: buildVersionSchema.optional(),
+    OPENINSTINCT_BUILD_LOCK_SHA256: buildSha256Schema.optional(),
   },
   createFinalSchema: (serverFields) =>
     z

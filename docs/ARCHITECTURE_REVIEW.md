@@ -1,8 +1,11 @@
-# OpenInstinct architecture review
+# OpenInstinct architecture review (historical source review)
 
 Review base: `480045dbc63008e7f99313d1683858cd8657b35a` (2026-08-29).
 
-This is a source review of the repository's current behavior. It covers the
+This is a historical source review of the repository's behavior at the named
+base. It is not a fresh audit of the current head, issue state, deployment, or
+runtime. For the current/proposed development and operations coordination
+design, read [`AGENT_DEVELOPMENT.md`](AGENT_DEVELOPMENT.md). This review covers the
 Next.js host, Eve runtime, authentication, workspace scoping, persistence,
 browser worker, integrations, local development, and deployment assumptions.
 It does not claim that the warning in `README.md` has been lifted.
@@ -255,3 +258,8 @@ model text into policy. Eve event IDs are not replay-stable action idempotency
 keys, and an event stream may contain abandoned attempts. The proposed design
 therefore requires owner-scoped action keys and explicit evidence before any
 future lifecycle API is approved.
+
+The [agent development system](AGENT_DEVELOPMENT.md) describes the
+developer/operator coordination path: immutable revision and target, existing
+owner operations, correlated evidence, proof gates, authorized delivery, and
+reviewed learning. It does not re-audit or close any historical finding here.
