@@ -230,8 +230,24 @@ export interface TerminalOutcome {
 /**
  * Promotes one Plan 004 typed terminal onto the task it identifies.
  *
- * Identity must match on task, worker session, and parent turn. Facts carry
- * their own provenance; this function never upgrades a worker's claim.
+ * Identity must match on task and parent turn; the worker session is learned
+ * from the terminal rather than checked, because it does not exist until the
+ * task settles. Facts carry their own provenance; this function never
+ * upgrades a worker's claim.
+ *
+ * A terminal materializes exactly once: once the task holds one, a later
+ * terminal for it records nothing. Eve's transition table rejects every
+ * command against an already-terminal task except `settle-executor`, which
+ * touches only executor lifecycle and usage — never status or output — so a
+ * repeat terminal is a replay, never a correction, and re-recording it would
+ * replace whatever evidence arrived in between with the worker's narrative.
+ * Consequence: a caller that could classify evidence more strongly than the
+ * first recorder (for example one supplying `ownedArtifactIds` so worker
+ * images become `observed` rather than `worker_assertion`) can no longer
+ * upgrade a task after its first terminal. There is no such production caller
+ * today — reconciliation is the only one and it supplies no artifact ids.
+ * Enrichment would need an explicit correction contract; the guard is
+ * deliberate, not an oversight.
  */
 export function recordTerminal(
   terminal: BackgroundTaskTerminalRecord,
@@ -263,6 +279,14 @@ export function recordTerminal(
       return current;
     }
 
+    // The task already settled. The identity check above still ran, so this
+    // is a tracked task replaying its own terminal: matched, but nothing to
+    // record, and the cohort's phase guard already made its one announcement.
+    if (task.terminal !== undefined) {
+      outcome = { matched: true, cohortBecameReportable: false };
+      return current;
+    }
+
     const settled = {
       ...task,
       workerSessionId: terminal.childSessionId,
@@ -272,9 +296,10 @@ export function recordTerminal(
     const tasks = current.tasks.map((candidate) =>
       candidate.taskId === task.taskId ? settled : candidate
     );
-    // The phase guard is what makes this once-only: the cohort leaves
-    // `awaiting_terminal` on the terminal that completes the set, so a replayed
-    // or late terminal can never announce the obligation a second time.
+    // The phase guard is what makes the announcement once-only: the cohort
+    // leaves `awaiting_terminal` on the terminal that completes the set, so a
+    // replayed or late terminal can never announce the obligation a second
+    // time.
     const becameReportable =
       cohort.phase === "awaiting_terminal" &&
       cohort.taskIds.every((taskId) =>
@@ -719,9 +744,12 @@ export function factsFromWorkerCompletion(
  * Brings this session's obligation records in line with what the framework
  * says about its background tasks.
  *
- * Called once per root step. Admission and terminal promotion are both
- * idempotent, so repeating this is free and a replayed step cannot double
- * count.
+ * Called once per root step. A terminal materializes exactly once (see
+ * `recordTerminal`), so replaying an unchanged projection records nothing and
+ * a replayed step cannot double count. What this repeat does NOT do is merge:
+ * evidence recorded between two reconciliations is preserved, not reconciled
+ * against the worker's narrative, and later evidence about an already-settled
+ * task would need its own correction contract.
  *
  * Facts are deliberately conservative here: no artifact ownership is supplied,
  * so a worker's images stay `worker_assertion` rather than being promoted to
