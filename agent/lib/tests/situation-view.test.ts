@@ -46,7 +46,11 @@ function settle(
   taskId: string,
   turnId: string,
   objectiveRevision: string,
-  facts: { claim: string; evidence: "observed" | "worker_assertion" }[]
+  facts: {
+    claim: string;
+    evidence: "observed" | "worker_assertion";
+    reference?: string;
+  }[]
 ) {
   admitTask({ objectiveRevision, parentTurnId: turnId, taskId });
   recordTerminal(
@@ -186,20 +190,21 @@ describe("situationView", () => {
     expect(view.evidence.map((item) => item.cohortId)).toEqual(["turn_1"]);
   });
 
-  it("SV-08: an unbounded claim is truncated rather than carried whole", () => {
+  it("SV-08: an unbounded claim is omitted rather than carried shortened", () => {
     settle("task_a", "turn_1", "obj_1", [
       { claim: "x".repeat(5_000), evidence: "worker_assertion" },
     ]);
 
-    const claim = situationView({
+    const view = situationView({
       turnId: "turn_1",
       objectiveRevision: "obj_1",
-    }).evidence[0]?.claim;
+    });
 
-    // Bounded, not redacted: this keeps a page-sized worker message out of a
-    // projection meant to be short. It makes no promise about what the text is.
-    expect(claim?.length).toBeLessThan(500);
-    expect(claim?.endsWith("…")).toBe(true);
+    // Bounded, not redacted: a page-sized worker message is kept out of a
+    // projection meant to be short by leaving it out and saying so, never by
+    // cutting it. It makes no promise about what the text is.
+    expect(view.evidence).toEqual([]);
+    expect(view.omissions).toEqual({ claims: 1, constraints: 0 });
   });
 
   it("SV-06: claim text cannot become an approval or a constraint", () => {
@@ -262,6 +267,317 @@ describe("situationView", () => {
     });
 
     expect(view.objectiveRevision).toBe("obj_1");
+  });
+});
+
+// Builds the first `headLength` characters of an over-long claim: a complete
+// sentence asserting the charge stands. The recorded claim continues past it
+// to revoke that, so a cut at exactly the length bound reverses the record.
+function chargeStandsHead(headLength: number) {
+  const lead = "Reconciliation note for the September ledger: ";
+  const assertion =
+    "the charge of $84.75 was authorized by the cardholder and must stand.";
+  const room = headLength - lead.length - assertion.length;
+  const unit = "every entry was checked again and ";
+  return (
+    lead +
+    unit.repeat(Math.floor(room / unit.length)).padEnd(room, " ") +
+    assertion
+  );
+}
+
+// Eight facts per task is the records' own retention cap, so a cohort with
+// one settled task offers exactly eight claims.
+const eight = (label: string) =>
+  Array.from({ length: 8 }, (_, index) => ({
+    claim: `${label} fact ${String(index + 1)}`,
+    evidence: "observed" as const,
+  }));
+const short = (label: string, count: number) =>
+  Array.from({ length: count }, (_, index) => ({
+    claim: `${label} short ${String(index + 1)}`,
+    evidence: "observed" as const,
+  }));
+
+describe("bounding text", () => {
+  const revocation =
+    " Correction: the authorization was later revoked in writing, so the " +
+    "charge was not authorized and must be reversed.";
+
+  it("SV-15: an over-long claim is omitted whole — cutting it would reverse it", () => {
+    const claim = chargeStandsHead(400) + revocation;
+    settle("task_rev", "turn_1", "obj_1", [{ claim, evidence: "observed" }]);
+
+    const view = situationView({
+      turnId: "turn_1",
+      objectiveRevision: "obj_1",
+    });
+    const claims = view.evidence.map((item) => item.claim);
+
+    // Cutting this claim at 400 characters yields "… the charge of $84.75 was
+    // authorized by the cardholder and must stand.…" — a complete sentence
+    // asserting the opposite of what was recorded. Whole or none.
+    expect(claims).toEqual([]);
+    expect(claims.join(" ")).not.toContain("must stand");
+    expect(JSON.stringify(view)).not.toContain("must stand");
+  });
+
+  it("SV-16: the omission of a claim is visible and counted", () => {
+    settle("task_a", "turn_1", "obj_1", [
+      { claim: "x".repeat(401), evidence: "worker_assertion" },
+    ]);
+
+    const view = situationView({
+      turnId: "turn_1",
+      objectiveRevision: "obj_1",
+    });
+
+    // A silently shorter list reads as "nothing else happened"; the count is
+    // how a caller learns a fact was dropped.
+    expect(view.omissions).toEqual({ claims: 1, constraints: 0 });
+  });
+
+  it("SV-17: a claim exactly at the bound is kept whole", () => {
+    const atBound = chargeStandsHead(400);
+    expect(atBound).toHaveLength(400);
+    settle("task_a", "turn_1", "obj_1", [
+      { claim: atBound, evidence: "observed" },
+    ]);
+
+    const view = situationView({
+      turnId: "turn_1",
+      objectiveRevision: "obj_1",
+    });
+
+    expect(view.evidence.map((item) => item.claim)).toEqual([atBound]);
+    expect(view.omissions).toEqual({ claims: 0, constraints: 0 });
+  });
+
+  it("SV-18: a claim one character over the bound is omitted, not trimmed to fit", () => {
+    const oneOver = `${chargeStandsHead(400)}.`;
+    expect(oneOver).toHaveLength(401);
+    settle("task_a", "turn_1", "obj_1", [
+      { claim: oneOver, evidence: "observed" },
+    ]);
+
+    const view = situationView({
+      turnId: "turn_1",
+      objectiveRevision: "obj_1",
+    });
+
+    expect(view.evidence).toEqual([]);
+    expect(view.omissions).toEqual({ claims: 1, constraints: 0 });
+    // Not trimmed: no 400-character prefix of the claim may appear anywhere.
+    expect(JSON.stringify(view)).not.toContain(oneOver.slice(0, 400));
+  });
+
+  it("SV-19: an over-long constraint is omitted whole, with the same visibility", () => {
+    settle("task_a", "turn_1", "obj_1", [
+      { claim: "Checked the invoice", evidence: "observed" },
+    ]);
+
+    const view = situationView({
+      constraints: [
+        { source: "user", text: "Spend no more than $50" },
+        { source: "policy", text: "x".repeat(401) },
+        { source: "user", text: "y".repeat(400) },
+      ],
+      turnId: "turn_1",
+      objectiveRevision: "obj_1",
+    });
+
+    // A constraint is not evidence, but cutting it mid-sentence can invert it
+    // exactly as cutting a claim can ("do not…" losing its "not"). A
+    // constraint exactly at the bound is kept whole, like a claim.
+    expect(view.constraints).toEqual([
+      { source: "user", text: "Spend no more than $50" },
+      { source: "user", text: "y".repeat(400) },
+    ]);
+    expect(view.omissions).toEqual({ claims: 0, constraints: 1 });
+    expect(JSON.stringify(view)).not.toContain("xxx");
+  });
+
+  it("SV-20: many short claims are bounded by the projection-wide ceiling", () => {
+    // The prior cohorts settle FIRST so that current-objective priority is
+    // something this test can see: a projection that simply took the first
+    // 16 claims in global creation order would keep "second" and "third" and
+    // starve "current".
+    settle("task_2", "turn_2", "obj_2", eight("second"));
+    settle("task_3", "turn_3", "obj_3", eight("third"));
+    settle("task_1", "turn_1", "obj_1", eight("current"));
+
+    const view = situationView({
+      turnId: "turn_1",
+      objectiveRevision: "obj_1",
+    });
+
+    // The current objective's evidence is carried first, then prior evidence
+    // in creation order; claims past the ceiling drop from the end.
+    expect(view.evidence.map((item) => item.claim)).toEqual(
+      eight("current").map((fact) => fact.claim)
+    );
+    expect(view.priorEvidence.map((item) => item.claim)).toEqual(
+      eight("second").map((fact) => fact.claim)
+    );
+    expect(view.omissions).toEqual({ claims: 8, constraints: 0 });
+    expect(JSON.stringify(view)).not.toContain("third fact");
+  });
+
+  it("SV-21: input that needs no bounding leaves every field unchanged", () => {
+    settle("task_a", "turn_1", "obj_1", [
+      { claim: "Checked the invoice", evidence: "observed" },
+      {
+        claim: "Receipt on file",
+        evidence: "observed",
+        reference: "artifact_1",
+      },
+    ]);
+    settle("task_b", "turn_2", "obj_2", [
+      { claim: "Booked the slot", evidence: "worker_assertion" },
+    ]);
+
+    const view = situationView({
+      constraints: [{ source: "user", text: "Spend no more than $50" }],
+      turnId: "turn_1",
+      objectiveRevision: "obj_1",
+    });
+
+    expect(view.objectiveRevision).toBe("obj_1");
+    expect(view.cohort).toEqual({
+      cohortId: "turn_1",
+      objectiveRevision: "obj_1",
+      taskIds: ["task_a"],
+      phase: "must_report",
+      reportRevision: 0,
+    });
+    expect(view.constraints).toEqual([
+      { source: "user", text: "Spend no more than $50" },
+    ]);
+    expect(view.evidence).toEqual([
+      {
+        claim: "Checked the invoice",
+        cohortId: "turn_1",
+        evidence: "observed",
+        taskId: "task_a",
+      },
+      {
+        claim: "Receipt on file",
+        cohortId: "turn_1",
+        evidence: "observed",
+        reference: "artifact_1",
+        taskId: "task_a",
+      },
+    ]);
+    expect(view.priorEvidence).toEqual([
+      {
+        claim: "Booked the slot",
+        cohortId: "turn_2",
+        evidence: "worker_assertion",
+        taskId: "task_b",
+      },
+    ]);
+    expect(view.reportOwedFor).toEqual(["turn_1", "turn_2"]);
+    expect(view.pendingInput).toEqual([]);
+    expect(view.omissions).toEqual({ claims: 0, constraints: 0 });
+  });
+
+  it("SV-22: the constraint count is bounded by the same ceiling", () => {
+    const constraints = Array.from({ length: 17 }, (_, index) => ({
+      source: "user" as const,
+      text: `Constraint ${String(index + 1)}`,
+    }));
+    settle("task_a", "turn_1", "obj_1", [
+      { claim: "Checked the invoice", evidence: "observed" },
+    ]);
+
+    const view = situationView({
+      constraints,
+      turnId: "turn_1",
+      objectiveRevision: "obj_1",
+    });
+
+    expect(view.constraints).toEqual(constraints.slice(0, 16));
+    expect(view.omissions).toEqual({ claims: 0, constraints: 1 });
+  });
+
+  it("SV-23: the current objective's claims win the ceiling before prior evidence", () => {
+    // Prior work settles first; the current cohort then offers more claims
+    // than the ceiling holds on its own (three tasks, within the per-cohort
+    // cap), so prior evidence is starved entirely rather than the current
+    // objective's own record being cut short.
+    settle("task_2", "turn_2", "obj_2", eight("earlier"));
+    settle("task_c1", "turn_1", "obj_1", eight("current-first"));
+    settle("task_c2", "turn_1", "obj_1", eight("current-second"));
+    settle("task_c3", "turn_1", "obj_1", eight("current-third"));
+
+    const view = situationView({
+      turnId: "turn_1",
+      objectiveRevision: "obj_1",
+    });
+
+    expect(view.evidence.map((item) => item.claim)).toEqual([
+      ...eight("current-first").map((fact) => fact.claim),
+      ...eight("current-second").map((fact) => fact.claim),
+    ]);
+    expect(view.priorEvidence).toEqual([]);
+    // Eight of the current cohort's own claims past the ceiling, plus the
+    // eight prior claims the ceiling had no room left for.
+    expect(view.omissions).toEqual({ claims: 16, constraints: 0 });
+    expect(JSON.stringify(view)).not.toContain("current-third fact");
+    expect(JSON.stringify(view)).not.toContain("earlier fact");
+  });
+
+  it("SV-24: an over-long claim never consumes a ceiling slot", () => {
+    settle("task_prior", "turn_2", "obj_2", [
+      { claim: "prior short 1", evidence: "observed" },
+    ]);
+    // Two over-long claims are interleaved with fourteen short ones, and a
+    // third task supplies the two that only fit because the over-long claims
+    // were passed over rather than charged against the ceiling.
+    settle("task_a", "turn_1", "obj_1", [
+      ...short("alpha", 7),
+      { claim: "x".repeat(401), evidence: "observed" },
+    ]);
+    settle("task_b", "turn_1", "obj_1", [
+      ...short("beta", 7),
+      { claim: "x".repeat(401), evidence: "observed" },
+    ]);
+    settle("task_c", "turn_1", "obj_1", short("gamma", 2));
+
+    const view = situationView({
+      turnId: "turn_1",
+      objectiveRevision: "obj_1",
+    });
+
+    expect(view.evidence.map((item) => item.claim)).toEqual([
+      ...short("alpha", 7).map((fact) => fact.claim),
+      ...short("beta", 7).map((fact) => fact.claim),
+      ...short("gamma", 2).map((fact) => fact.claim),
+    ]);
+    expect(view.priorEvidence).toEqual([]);
+    // Two over-long plus one prior claim starved by the ceiling.
+    expect(view.omissions).toEqual({ claims: 3, constraints: 0 });
+    expect(JSON.stringify(view)).not.toContain("prior short");
+    expect(JSON.stringify(view)).not.toContain("xxx");
+  });
+
+  it("SV-25: with no cohort for this turn, prior evidence alone is still ceilinged", () => {
+    settle("task_1", "turn_1", "obj_1", eight("first"));
+    settle("task_2", "turn_2", "obj_2", eight("second"));
+    settle("task_3", "turn_3", "obj_3", eight("third"));
+
+    const view = situationView({
+      turnId: "turn_quiet",
+      objectiveRevision: "obj_quiet",
+    });
+
+    expect(view.cohort).toBeUndefined();
+    expect(view.evidence).toEqual([]);
+    expect(view.priorEvidence.map((item) => item.claim)).toEqual([
+      ...eight("first").map((fact) => fact.claim),
+      ...eight("second").map((fact) => fact.claim),
+    ]);
+    expect(view.omissions).toEqual({ claims: 8, constraints: 0 });
   });
 });
 
