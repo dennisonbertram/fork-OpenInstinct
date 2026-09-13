@@ -50,6 +50,16 @@ path. Track a release that changes this path; the removal gate remains
 `tests/unit/eve-dynamic-rebind.test.ts` against a fresh unpatched install. No
 upstream contact or fix is claimed.
 
+Unpatched `eve@0.54.3` probe, 2026-09-13 (scratch install at `86bc6e0`; see
+`docs/investigations/eve-upgrade-probe.md`): route auth still required on
+0.54.3; Linq/Chat compiled export redirects still required on 0.54.3;
+Workflow framed-stream cancellation gate passes unpatched on 0.54.3; dynamic
+callback rebind still required on 0.54.3; final-delivery completion request
+still required on 0.54.3; typed background-task terminal projection still
+required on 0.54.3; typed `turn.origin` still required on 0.54.3; unknown
+durable-context preservation (`setOpaque`) still required on 0.54.3. Target
+for Slice 1 is `0.54.3`.
+
 ## Removed on 2026-09-04
 
 An unpatched-install probe plus targeted channel and tool-boundary tests showed
