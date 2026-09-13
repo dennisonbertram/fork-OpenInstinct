@@ -51,11 +51,24 @@ export default defineConfig({
   projects: [
     {
       name: "setup",
-      testMatch: /.*\.setup\.ts/,
+      testMatch: /auth\.setup\.ts/,
+    },
+    {
+      // Own project so an idle worker cannot start chromium while the
+      // sandbox template is still building. Putting this file in `setup`
+      // next to auth.setup.ts did that on main after #242: 2 workers, auth
+      // finished, chromium started, and the warmup assertion raced the suite.
+      name: "sandbox-warm",
+      testMatch: /sandbox-warm\.setup\.ts/,
+      dependencies: ["setup"],
+      use: {
+        browserName: "chromium",
+        storageState,
+      },
     },
     {
       name: "chromium",
-      dependencies: ["setup"],
+      dependencies: ["sandbox-warm"],
       testIgnore: [/.*\.setup\.ts/, "**/sendblue-otp.spec.ts"],
       use: {
         browserName: "chromium",

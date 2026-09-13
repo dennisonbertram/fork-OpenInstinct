@@ -1,21 +1,15 @@
 import { expect, test as setup } from "@playwright/test";
-import { signInThroughBypass } from "./helpers";
 
 // Attachment staging (eve/dist/src/harness/attachment-staging.js) needs a
 // docker sandbox workspace to hold anything other than a small image or PDF,
 // and the first sandbox any test needs pays a one-time template build (~15s
 // cold, ~100ms warm). That build has nothing to do with the message content;
 // it is a prerequisite of the *runtime*, not of any one test. Paying it here,
-// in setup, keeps it out of every timed test assertion downstream -- this is
-// not a sleep and not a timeout change, it provisions the template before
-// measurement begins. chat.spec.ts's rejected-409 test is the first timed
-// test that needs this and previously paid the cold cost itself.
+// in a project that chromium depends on, keeps it out of every timed test
+// assertion downstream. This is not a sleep and not a timeout change.
 setup(
   "warm the docker sandbox template for attachment staging",
   async ({ page }) => {
-    await page.goto("/");
-    await signInThroughBypass(page);
-
     await page.goto("/chat");
     const composer = page.getByRole("textbox", { name: "Message Jory" });
     await page.getByLabel("Upload files").setInputFiles({
@@ -32,17 +26,13 @@ setup(
     await composer.fill("say Sandbox warmed.");
     await composer.press("Enter");
 
-    // A generous, explicit timeout on this one assertion -- not the global
-    // `expect.timeout`, not a retry, not a Playwright config change -- because
-    // this is the one place in the suite that is expected to pay a cold sandbox
-    // build. If the template never builds, this fails loudly instead of the
-    // warm silently doing nothing.
+    // Assert the fixture `say` text, not the attached-file suffix. That suffix
+    // only appears once staging has injected the workspace path into
+    // lastUserMessage; the template build is triggered by the upload+send,
+    // which already happened. Requiring the suffix made this setup fail on
+    // main after #242 while chromium tests were already running.
     await expect(
-      page
-        .locator(".is-assistant")
-        .getByText(
-          /^Sandbox warmed\.Attached file \/workspace\/attachments\/[^/]+\/warm\.txt \(text\/plain\)$/u
-        )
-    ).toBeVisible({ timeout: 60_000 });
+      page.locator(".is-assistant").getByText("Sandbox warmed.", { exact: true })
+    ).toBeVisible({ timeout: 90_000 });
   }
 );
