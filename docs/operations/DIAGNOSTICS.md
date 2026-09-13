@@ -72,6 +72,17 @@ pnpm diagnose --target local|preview|production --surface app|marketing --sessio
   --since <UTC> --until <UTC>
 ```
 
+For strict read-only, machine-readable output, invoke the same command through
+pnpm without its pre-script dependency check or script header:
+
+```text
+pnpm --silent --config.verify-deps-before-run=false diagnose --target <target> --surface <surface> --status
+```
+
+This applies only to that invocation. Plain `pnpm diagnose` remains registered
+but pnpm may otherwise install stale dependencies before this repository's
+script begins.
+
 `--status` is target status and needs no journey selector: it can establish
 deployment identity before an incident yields a session. Journey diagnosis
 requires exactly one known selector and UTC bounds. Restricted alternative forms
