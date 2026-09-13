@@ -206,3 +206,59 @@ against the target.
 | Typed background-task terminal projection          | still required on 0.54.3        |
 | Typed `turn.origin`                                | still required on 0.54.3        |
 | Unknown durable-context preservation (`setOpaque`) | still required on 0.54.3        |
+
+## Slice 3 addendum — bounded completion compatibility (2026-09-13)
+
+Plan 025 Slice 3 / GitHub #252. Assessment against the Eve 0.54.3 bump in
+#258 (`76aa71a`). No `agent/lib` code change. Application cohorts stay keyed
+by originating parent turn (`admitTask` in `completion-obligations.ts`).
+
+### Report policy and delivery guard
+
+`reportPolicyForTurn` still returns `must_report` only when forcing is
+active and `reportableCohorts()` is non-empty. A `user_request` intent
+keeps only the cohort whose id equals the current turn, so an older owed
+summary does not capture a new user message. `turnRequestIntentFromOrigin`
+still maps `background_task` → `report_only` and `channel_input` →
+`user_request`.
+
+The interactive delivery guard is unchanged and still passes DG-01/02/03:
+
+- owed report + pending user request → `{ type: "required" }` (does not
+  force `send_message`)
+- owed report + no pending user request → `{ type: "tool", toolName:
+"send_message" }`
+- no owed report → `{ type: "required" }`
+
+Those tests ran green on the bump (`pnpm check` at `76aa71a`, 1961 passed).
+No new RED appeared on merged Slice 1 code for a two-reply or refusal-loop
+defect.
+
+### Framework settled-task instruction
+
+Installed `eve@0.54.3` has **zero** hits for
+`TASK_DELIVERY_SETTLED_INSTRUCTION` and
+`TASK_DELIVERY_PENDING_INSTRUCTION`. Package docs still describe
+`<eve-empty-delivery/>` as intentional silence
+(`eve/docs/concepts/sessions-runs-and-streaming.md`). The 0.52.5 probe
+note that pending-silence was removed remains true; this slice could not
+re-read a live settled-task prompt string from minified `dist/`.
+
+### Two replies / refusal loop
+
+**Not observed.** This assessment did not run a live parent wake on
+deployed 0.54.3 (that is Slice 2 / #251). Unit tests do not simulate two
+model replies. Source says the guard still blocks an owed report from
+monopolizing a new user request, and still forces `send_message` on a
+wake with nothing else to do. That is compatible with “one user-facing
+response that combines useful results” if the framework still asks for
+that; it is not proof that production never double-sends.
+
+No `admitTask` refusal counters were added: no RED test on the bump
+showed those discards. Observation-only counters remain available if a
+later run proves they are still dropped.
+
+### STOP checks
+
+No new Eve patch hunk. Application cohort identity is unchanged. #246
+stays out of this slice.
