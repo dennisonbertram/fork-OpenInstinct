@@ -262,3 +262,42 @@ later run proves they are still dropped.
 
 No new Eve patch hunk. Application cohort identity is unchanged. #246
 stays out of this slice.
+
+## Slice 2 addendum — production measurement blocker (2026-09-13)
+
+Plan 025 Slice 2 / GitHub #251. **No production runs.** This issue stays
+open. Do not read a green count, or this note, as a fix for #214.
+
+### Why measurement did not run
+
+Slice 1 merged to `main` as `3f375e5` (#258) at 2026-09-13T19:24:42Z.
+This session cannot prove that production (or any Git-connected Vercel
+deployment) is already serving that revision. The STOP for this slice is
+explicit: do not measure on a different Eve version.
+
+Even on a target revision, this environment cannot read the parent task
+index or wake logs:
+
+- `db/services/sessions.ts` stores `sessionId`, `workspaceId`,
+  `createdByUserId`, `createdAt`. It does not expose `eve.tasks`.
+- Parent receipt for Slice 2 must cite a task-correlated log line or
+  index query. Workflow durable state and `execution.tasks.run` logs are
+  not reachable from this checkout (no Workflow world credentials, no
+  production run-id list).
+- Provider-handle readers in `docs/operations/DIAGNOSTICS.md` remain
+  unimplemented.
+
+So the four outcomes (child completion, parent receipt, report attempt,
+accepted delivery) would all be `unknown` if we invented local sessions
+and called them production. They are not recorded.
+
+### What would unblock
+
+1. Production (or the measured channel's deployment) running Eve 0.54.3
+   at `3f375e5` or a later `main` SHA, confirmed by deployment id and
+   `runtime.version`.
+2. Access to Workflow/`execution.tasks.run` logs, or another reader that
+   can show parent receipt of a task view independently of the next root
+   step.
+3. Then M ≥ 5 **fresh** sessions per measured channel, no message text,
+   with missing evidence recorded as `unknown`.
