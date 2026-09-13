@@ -3,7 +3,7 @@ import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 
 const bundleUrl = new URL(
-  "../../node_modules/eve/dist/src/compiled/_chunks/workflow/wait-until-BtySPYD0.js",
+  "../../node_modules/eve/dist/src/compiled/_chunks/workflow/attribute-changes-C6H-fRVP.js",
   import.meta.url
 );
 
@@ -11,8 +11,8 @@ const bundleUrl = new URL(
 // The assertions exercise cancellation/reconnection, not generated source text.
 async function fixture({ delayOpen = false } = {}) {
   const source = await readFile(bundleUrl, "utf8");
-  const start = source.indexOf("function mc(");
-  const end = source.indexOf("const hc=", start);
+  const start = source.indexOf("function Lc(");
+  const end = source.indexOf("const Rc=", start);
   expect(start).toBeGreaterThan(-1);
   expect(end).toBeGreaterThan(start);
   const opening = Promise.withResolvers<undefined>();
@@ -38,17 +38,20 @@ async function fixture({ delayOpen = false } = {}) {
   };
   // SAFETY: This is the pinned installed dependency, with synthetic World data.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- VM exports the installed reader with its normal stream signature.
-  const makeStream = runInNewContext(`${source.slice(start, end)}; mc`, {
+  const makeStream = runInNewContext(`${source.slice(start, end)}; Lc`, {
     ReadableStream,
     Uint8Array,
     DataView,
-    P: async () => world,
-    fc: () => 50,
-    pc: () => 1000,
-    c: { is: () => false },
-    uc: () => undefined,
-    lc: () => undefined,
+    Date,
     console,
+    er: async () => world,
+    Mc: () => undefined,
+    Fc: () => 50,
+    Ic: () => 1000,
+    Nc: () => undefined,
+    jc: () => undefined,
+    v: class StreamReconnectError extends Error {},
+    h: { is: () => false },
   }) as (
     runId: string,
     streamName: string,

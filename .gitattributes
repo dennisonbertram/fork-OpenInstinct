@@ -1,0 +1,4 @@
+# Vendor patches preserve upstream whitespace, including empty unified-diff
+# context lines (a single space). `git diff --check` would otherwise fail
+# when the patch is in the index.
+patches/*.patch -whitespace

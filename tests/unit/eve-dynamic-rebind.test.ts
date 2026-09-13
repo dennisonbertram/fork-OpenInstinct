@@ -6,7 +6,10 @@ import {
   contextStorage,
 } from "../../node_modules/eve/dist/src/context/container.js";
 import type { CurrentDynamicToolMetadata } from "../../node_modules/eve/dist/src/context/dynamic-tool-metadata.js";
-import { TurnDynamicToolMetadataKey } from "../../node_modules/eve/dist/src/context/keys.js";
+import {
+  SessionIdKey,
+  TurnDynamicToolMetadataKey,
+} from "../../node_modules/eve/dist/src/context/keys.js";
 import {
   dispatchDynamicToolEvent,
   rebindMissingCompiledDynamicToolCallbacks,
@@ -73,9 +76,24 @@ function turnStarted() {
   return createTurnStartedEvent({ sequence: 1, turnId: "turn-next" });
 }
 
+function callbackOwner(name: string, resolverSlug: string) {
+  return {
+    entryKey: name,
+    name,
+    resolverSlug,
+    scope: "turn" as const,
+    sessionId: "synthetic-session",
+  };
+}
+
+function withSession(ctx: ContextContainer) {
+  ctx.set(SessionIdKey, "synthetic-session");
+  return ctx;
+}
+
 describe("installed Eve dynamic callback rebind", () => {
   it("does not reject a new turn for ordinary callbacks that its normal boundary will register", async () => {
-    const ctx = new ContextContainer();
+    const ctx = withSession(new ContextContainer());
     const memoryName = "synthetic_memory_rebind";
     const ordinaryName = "synthetic_ordinary_turn_tool";
     ctx.set(TurnDynamicToolMetadataKey, [
@@ -102,13 +120,16 @@ describe("installed Eve dynamic callback rebind", () => {
       messages: [],
       resolvers,
     });
-    expect(lookupDurableDynamicCallback(ordinaryName, "execute")).toEqual(
-      expect.any(Function)
-    );
+    expect(
+      lookupDurableDynamicCallback(
+        callbackOwner(ordinaryName, "ordinary"),
+        "execute"
+      )
+    ).toEqual(expect.any(Function));
   });
 
   it("still fails closed when an opted-in resolver cannot restore its callback", async () => {
-    const ctx = new ContextContainer();
+    const ctx = withSession(new ContextContainer());
     const memoryName = "synthetic_missing_memory_rebind";
     ctx.set(TurnDynamicToolMetadataKey, [
       persistedMetadata(memoryName, "memory"),
@@ -129,7 +150,7 @@ describe("installed Eve dynamic callback rebind", () => {
   });
 
   it("replaces legacy turn-scoped metadata before registering the current step-scoped tool", async () => {
-    const ctx = new ContextContainer();
+    const ctx = withSession(new ContextContainer());
     const messagingName = "synthetic_legacy_messaging_tool";
     ctx.set(TurnDynamicToolMetadataKey, [
       persistedMetadata(messagingName, "messaging"),
@@ -167,8 +188,14 @@ describe("installed Eve dynamic callback rebind", () => {
       messages: [],
       resolvers: [messaging],
     });
-    expect(lookupDurableDynamicCallback(messagingName, "execute")).toEqual(
-      expect.any(Function)
-    );
+    expect(
+      lookupDurableDynamicCallback(
+        {
+          ...callbackOwner(messagingName, "messaging"),
+          scope: "step",
+        },
+        "execute"
+      )
+    ).toEqual(expect.any(Function));
   });
 });

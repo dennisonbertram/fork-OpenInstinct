@@ -31,7 +31,7 @@ export function browserBenchmarkActivity(
 ) {
   for (const event of events.toReversed()) {
     if (event.type === "message.appended") {
-      const message = activityLine(event.data.messageSoFar);
+      const message = activityLine(event.data.messageDelta);
       if (message) return message;
     }
     if (event.type === "message.completed") {
