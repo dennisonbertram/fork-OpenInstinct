@@ -705,6 +705,46 @@ describe("SendBlue channel", () => {
     });
   });
 
+  it("reports a lost conversation lock after an image-only fallback posts", async () => {
+    vi.useFakeTimers();
+    try {
+      capture.fetch.mockRejectedValue(new Error("synthetic media unavailable"));
+      capture.extendLock.mockResolvedValue(false);
+      capture.post.mockImplementationOnce(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+        return { id: "posted" };
+      });
+
+      await expect(
+        dispatchSendblueMessage(
+          thread,
+          inbound({
+            attachments: [
+              {
+                mimeType: "application/octet-stream",
+                name: "attachment.heic",
+                type: "file",
+                url: "https://media.example.test/download?id=unavailable",
+              },
+            ],
+            text: "",
+          })
+        )
+      ).rejects.toThrow(
+        "Lost the SendBlue conversation lock after attachment fallback."
+      );
+
+      expect(capture.post).toHaveBeenCalledExactlyOnceWith({
+        raw: expect.stringContaining("Please resend photos as JPEG or PNG"),
+      });
+      expect(capture.releaseLock).toHaveBeenCalledWith(
+        expect.objectContaining({ token: "lock-1" })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("allows bridge.send to await input.requested while dispatch holds the inbound lease", async () => {
     let held = false;
     capture.acquireLock.mockImplementation(async () => {

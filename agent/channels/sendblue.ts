@@ -608,7 +608,7 @@ export async function dispatchSendblueMessage(
       (Array.isArray(content) && content.length === 0) ||
       (!Array.isArray(content) && content.trim().length === 0)
     ) {
-      if (withheldCount > 0)
+      if (withheldCount > 0) {
         await postSendblueReply(
           thread,
           {
@@ -616,6 +616,11 @@ export async function dispatchSendblueMessage(
           },
           scopeFromPrincipal(result.auth)
         );
+        if (lockRenewal?.lost())
+          throw new Error(
+            "Lost the SendBlue conversation lock after attachment fallback."
+          );
+      }
       return;
     }
     await bridge.send(content, {
