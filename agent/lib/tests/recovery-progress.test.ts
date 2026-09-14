@@ -23,6 +23,10 @@ vi.mock("eve/context", () => ({
 }));
 
 import {
+  materialTermsFingerprint,
+  parkApproval,
+} from "@/agent/lib/approval-identity";
+import {
   admitTask,
   cancelCohort,
   recordTerminal,
@@ -381,5 +385,26 @@ describe("a cancelled objective, as Plan 008 step 3 requires it to read", () => 
     expect(recoveryProgress({ turnId: "turn_1" }).disposition).toBe(
       "verified_success"
     );
+  });
+
+  it("RP-14: a task waiting on user approval reports blocked_approval disposition", () => {
+    admit("task_a", "turn_1");
+    parkApproval({
+      cohortId: "turn_1",
+      fingerprint: materialTermsFingerprint({
+        action: "submit_order",
+        origin: "https://example.com",
+        target_ref: "form-1",
+        terms: { amount: 50 },
+      }),
+      objectiveRevision: "obj_1",
+      requestId: "request_1",
+      taskId: "task_a",
+    });
+
+    const progress = recoveryProgress({ turnId: "turn_1" });
+    expect(progress.disposition).toBe("blocked_approval");
+    expect(progress.nextStep).toBe("ask_user");
+    expect(progress.unknownRemainder[0]).toContain("waiting for user approval");
   });
 });

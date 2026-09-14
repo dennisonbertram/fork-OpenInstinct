@@ -1,3 +1,4 @@
+import { parkedApprovals } from "@/agent/lib/approval-identity";
 import {
   taskRecords,
   type BoundedFact,
@@ -40,6 +41,8 @@ type RecoveryDisposition =
    * proof of non-dispatch, and other members may have completed.
    */
   | "stopped_incomplete"
+  /** An action is parked waiting for user approval. */
+  | "blocked_approval"
   /** Still running; there is nothing to recover yet. */
   | "awaiting";
 
@@ -72,6 +75,7 @@ function corroborated(fact: BoundedFact) {
 /** The step each disposition permits, and nothing wider. */
 const nextStepFor: Readonly<Record<RecoveryDisposition, RecoveryNextStep>> = {
   awaiting: "wait",
+  blocked_approval: "ask_user",
   settled_unverified: "report",
   settled_without_evidence: "report",
   stopped_incomplete: "ask_user",
@@ -99,10 +103,16 @@ export function recoveryProgress(input: {
     .map((fact) => fact.claim);
 
   const disposition = ((): RecoveryDisposition => {
-    // Nothing to recover until every member has reported. Deciding earlier is
-    // how a premature account of a half-finished objective gets written.
-    if (tasks.length === 0 || settled.length !== tasks.length)
+    // Nothing to recover until every member has reported, unless an approval is
+    // parked waiting for user response.
+    if (tasks.length === 0 || settled.length !== tasks.length) {
+      if (
+        parkedApprovals().some((approval) => approval.cohortId === input.turnId)
+      ) {
+        return "blocked_approval";
+      }
       return "awaiting";
+    }
 
     // Judged per task, then aggregated. Comparing a receipt against the whole
     // cohort's status let one task's failure relabel another task's completed,
@@ -148,6 +158,10 @@ export function recoveryProgress(input: {
       case "stopped_incomplete":
         return [
           "Part of this objective stopped before finishing. No stopped part left a dispatch unconfirmed, but that is not the same as proof that nothing was dispatched, and any part that did finish is recorded separately above.",
+        ];
+      case "blocked_approval":
+        return [
+          "An action is parked waiting for user approval before it can proceed.",
         ];
       default:
         return [];
