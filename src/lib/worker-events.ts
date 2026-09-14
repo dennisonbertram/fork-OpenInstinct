@@ -83,6 +83,104 @@ export function measureWorkerTask(
   };
 }
 
+export interface MatchedTaskEfficiencyRecord {
+  readonly taskId: string;
+  readonly caseId: string | null;
+  readonly goalResult: "completed" | "failed" | "cancelled" | "unknown";
+  readonly verificationState: "verified" | "unverified" | "failed" | "unknown";
+  readonly finalDeliveryState: "delivered" | "unconfirmed" | "owed" | "unknown";
+  readonly constraintCount: number;
+  readonly recoveryAttempts: number;
+  readonly duplicateCount: number;
+  readonly modelSteps: number;
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+  readonly costUsd: number | null;
+  readonly costComplete: boolean;
+  readonly durationMs: number;
+}
+
+export function measureMatchedTask(
+  taskId: string,
+  events: readonly MessageStreamEvent[],
+  options?: {
+    readonly caseId?: string | null;
+    readonly constraintCount?: number;
+    readonly duplicateCount?: number;
+    readonly fallbackDurationMs?: number;
+    readonly finalDeliveryState?:
+      | "delivered"
+      | "unconfirmed"
+      | "owed"
+      | "unknown";
+    readonly recoveryAttempts?: number;
+    readonly verificationState?:
+      | "verified"
+      | "unverified"
+      | "failed"
+      | "unknown";
+  }
+): MatchedTaskEfficiencyRecord {
+  const measurement = measureWorkerTask(
+    events,
+    options?.fallbackDurationMs ?? 0
+  );
+
+  const goalResult = ((): "completed" | "failed" | "cancelled" | "unknown" => {
+    const completion = readTaskCompletion(events);
+    if (completion?.status === "success") return "completed";
+    if (completion?.status === "failure") return "failed";
+
+    const backgroundTasks = readBackgroundWorkerTasks(events);
+    if (backgroundTasks.some((task) => task.status === "cancelled")) {
+      return "cancelled";
+    }
+    if (backgroundTasks.some((task) => task.status === "failed")) {
+      return "failed";
+    }
+    if (
+      backgroundTasks.length > 0 &&
+      backgroundTasks.every((task) => task.status === "completed")
+    ) {
+      return "completed";
+    }
+
+    const terminalEvent = events.findLast(
+      (event) =>
+        event.type === "turn.failed" ||
+        event.type === "session.failed" ||
+        event.type === "turn.cancelled"
+    );
+
+    if (terminalEvent?.type === "turn.cancelled") return "cancelled";
+    if (
+      terminalEvent?.type === "turn.failed" ||
+      terminalEvent?.type === "session.failed"
+    ) {
+      return "failed";
+    }
+
+    return "unknown";
+  })();
+
+  return {
+    caseId: options?.caseId ?? null,
+    constraintCount: options?.constraintCount ?? 0,
+    costComplete: measurement.costComplete,
+    costUsd: measurement.costUsd,
+    duplicateCount: options?.duplicateCount ?? 0,
+    durationMs: measurement.durationMs,
+    finalDeliveryState: options?.finalDeliveryState ?? "unknown",
+    goalResult,
+    inputTokens: measurement.inputTokens,
+    modelSteps: measurement.modelSteps,
+    outputTokens: measurement.outputTokens,
+    recoveryAttempts: options?.recoveryAttempts ?? 0,
+    taskId,
+    verificationState: options?.verificationState ?? "unknown",
+  };
+}
+
 export function didCompleteWorker(events: readonly MessageStreamEvent[]) {
   return readTaskCompletion(events)?.status === "success";
 }
@@ -216,9 +314,11 @@ function readBackgroundWorkerTasks(events: readonly MessageStreamEvent[]) {
   for (const event of events) {
     const receiptTaskId = readBackgroundWorkerReceiptTaskId(event);
     if (receiptTaskId) {
-      tasks.set(receiptTaskId, {
-        taskId: receiptTaskId,
-      });
+      if (!tasks.has(receiptTaskId)) {
+        tasks.set(receiptTaskId, {
+          taskId: receiptTaskId,
+        });
+      }
       continue;
     }
 
