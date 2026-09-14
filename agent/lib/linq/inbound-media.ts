@@ -23,7 +23,10 @@ function mediaTypeRoot(mimeType: string | undefined): string | undefined {
 
 function isUnsupportedImageMediaType(mimeType: string | undefined): boolean {
   const root = mediaTypeRoot(mimeType);
-  if (root === undefined) return false;
+  // Fail closed on unlabeled parts: Eve's staging re-resolves the true media
+  // type when it fetches the bytes, so an unlabeled part carrying HEIC bytes
+  // would still be inlined as image/heic and rejected by the gateway.
+  if (root === undefined || root === "application/octet-stream") return true;
   return modelUnsupportedImageMediaTypes.some(
     (unsupported) => unsupported === root
   );
@@ -44,9 +47,11 @@ export interface StrippedModelContent<Part extends ModelContentPart> {
  * Removes file parts in a model-rejected image format from model-bound
  * content.
  *
- * Narrow by design: only HEIC/HEIF stills are withheld. Live Photo
- * `video/quicktime` companions, PDFs, text parts, and every other part keep
- * their existing behavior.
+ * Narrow by design: HEIC/HEIF stills plus unlabeled and generic
+ * octet-stream parts are withheld, since Eve re-resolves the true type at
+ * fetch time and an unlabeled HEIC would still be rejected. Live Photo
+ * `video/quicktime` companions, PDFs, text parts, and every other labeled
+ * part keep their existing behavior.
  */
 export function stripModelUnsupportedFileParts<Part extends ModelContentPart>(
   parts: readonly Part[]
