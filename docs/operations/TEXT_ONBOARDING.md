@@ -7,8 +7,12 @@ PR 271 is not merged. A metadata-only operational audit found that preview and
 production currently share a database and observed migration journal revisions
 0028–0031 in production; the journal does not identify the actor or deployment.
 Further deployments are held pending an owner decision on preview isolation and
-a backup/restore rehearsal. Rollout limits, candidate-line card capability, and
-two fresh-phone acceptance remain pending.
+the remaining rollout gates. The owner waived the restore rehearsal for this
+unused development database; a fresh production-main snapshot was recorded.
+The owner requested 100 assistant turns per day; whether that limit is per-user
+or account-wide remains unconfirmed. One test phone is designated; a second
+tester and live acceptance remain pending. The outbound cap and candidate-line
+card capability remain unapproved.
 
 ## Current path
 
@@ -123,7 +127,11 @@ The later Square evaluation passed 12 cases with one scored soft-judge case
 and 114 gates (13 total; artifact:
 `.eve/square-evals/2026-09-14T22-25-58.040Z.json`). This is
 synthetic local evidence, not a deployment or live-provider claim. No operator
-has approved the budget values, card capability for the candidate line, or the
-two fresh test phones. Enrollment remains off by default while PR 271 awaits
-review and merge, and further deployments remain held pending the
-preview-isolation and backup/restore decisions.
+has approved the outbound cap or card capability for the candidate line. The
+owner requested 100 assistant turns per day; whether that limit is per-user or
+account-wide remains unconfirmed. One test phone is designated; a second tester
+and live acceptance remain pending. Enrollment remains off by default while PR
+271 awaits review and merge, and further deployments remain held pending the
+preview-isolation decision and the remaining rollout gates. The owner waived the
+restore rehearsal for this unused development database; a fresh
+production-main snapshot was recorded.

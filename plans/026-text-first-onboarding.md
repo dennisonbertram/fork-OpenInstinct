@@ -31,8 +31,11 @@ PR 271 is not merged. A metadata-only operational audit found that preview and
 production currently share a database and observed migration journal revisions
 0028–0031 in production; the journal does not identify the actor or deployment.
 Further deployments are held pending an owner decision on preview isolation and
-a backup/restore rehearsal. Rollout limits, candidate-line card capability, and
-two fresh-phone acceptance also remain pending; activation stays off by default.
+the remaining rollout gates. The owner waived the restore rehearsal for this
+unused development database; a fresh production-main snapshot was recorded in
+`docs/operations/text-onboarding-restore-2026-09-14.md`. Rollout limits,
+candidate-line card capability, and two fresh-phone acceptance also remain
+pending; activation stays off by default.
 Planned on 2026-09-14 against OpenInstinct `3df3051e21ed722f783a2e615f2c7b629d32b65c`.
 Priority: P1. Effort: M–L. Risk: high at the identity boundary.
 Execution ownership: Terra for identity, concurrency, and channel changes; Luna for copy and bounded tests; lead for decisions, integration, and review.
@@ -152,7 +155,7 @@ Verified official documentation on 2026-09-14:
 
 Do not disable contact restrictions, change account plans, purchase a line, or alter webhooks without explicit operational authorization. If provider policy blocks first contact, application code alone cannot deliver this journey.
 
-For v1, set configurable per-sender enrollment limits and account-wide model-turn and outbound-message admission caps before activation. These are not dollar, token, per-tool, or per-turn ceilings; operator launch risk remains explicit. No operator has yet approved the launch values. The welcome builder requires an explicit card mode: disabled produces four text operations, carousel produces four texts plus one three-image operation, and single_media produces four texts plus three single-image operations. In all modes beta/STOP is last; cards are optional work and can be cancelled. The candidate line's card capability is not yet approved. No unsolicited follow-up campaign. Unknown senders cannot start expensive tools before enrollment is ready.
+For v1, set configurable per-sender enrollment limits and account-wide model-turn and outbound-message admission caps before activation. These are not dollar, token, per-tool, or per-turn ceilings; operator launch risk remains explicit. The owner requested 100 assistant turns per day, but whether that limit is per-user or account-wide remains unconfirmed. The outbound cap is not yet approved. The welcome builder requires an explicit card mode: disabled produces four text operations, carousel produces four texts plus one three-image operation, and single_media produces four texts plus three single-image operations. In all modes beta/STOP is last; cards are optional work and can be cancelled. The candidate line's card capability is not yet approved. No unsolicited follow-up campaign. Unknown senders cannot start expensive tools before enrollment is ready.
 
 Failure behavior:
 
@@ -182,11 +185,13 @@ Do not start implementation merely because this plan exists. After owner approva
 
 Local implementation has now completed the queue/schedule and real-Postgres
 pool-reconnect evidence described above. It remains off by default. Further
-deployments are held pending an owner decision on preview isolation and a
-backup/restore rehearsal. Before a rollout decision, obtain operator approval
-for budgets and candidate-line card capability, and complete two fresh-phone
-acceptance on the exact candidate deployment. Do not treat this update as
-live-provider, deployed, or operating-system crash evidence.
+deployments are held pending an owner decision on preview isolation and the
+remaining rollout gates. The owner waived the restore rehearsal for this unused
+development database; a fresh production-main snapshot was recorded.
+Before a rollout decision, obtain operator approval for budgets and
+candidate-line card capability, and complete two fresh-phone acceptance on the
+exact candidate deployment. Do not treat this update as live-provider,
+deployed, or operating-system crash evidence.
 
 Before editing, run `git diff --stat 3df3051e21ed722f783a2e615f2c7b629d32b65c..HEAD -- agent/channels/sendblue.ts agent/lib/sendblue db/services db/schema src/auth src/env.ts` and compare the current-state statements above. Read current AGENTS/CONTEXT, installed Eve docs routed from `eve/docs/README.md`, Better Auth 1.7.2 contracts, and provider docs. Context7 was not available during planning; the executor must use it if available and otherwise inspect installed/official sources.
 
