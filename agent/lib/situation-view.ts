@@ -61,6 +61,13 @@ export interface SituationView {
    * record to defer to.
    */
   readonly objectiveRevision: string;
+  /**
+   * An advisory, bounded summary of the objective for the current turn when
+   * supplied by the caller. Omitted whole if over the length bound.
+   */
+  readonly objectiveSummary?: string;
+  /** The route selected for this turn's work when one was chosen. */
+  readonly selectedRoute?: string;
   /** The cohort for that objective, absent when this turn started no work. */
   readonly cohort?: CohortRecord;
   readonly constraints: readonly SituationConstraint[];
@@ -101,6 +108,8 @@ interface SituationOmissions {
   readonly claims: number;
   /** Constraints omitted whole: over the per-item length bound, or past the count ceiling. */
   readonly constraints: number;
+  /** Objective summary omitted whole when over the per-item length bound. */
+  readonly objectiveSummary?: number;
 }
 
 /** One outstanding native question, named but not described. */
@@ -153,6 +162,25 @@ function evidenceFrom(cohortId: string) {
   };
 }
 
+interface MutableSituationOmissions {
+  claims: number;
+  constraints: number;
+  objectiveSummary?: number;
+}
+
+interface MutableSituationView {
+  cohort?: CohortRecord;
+  constraints: readonly SituationConstraint[];
+  evidence: readonly SituationEvidence[];
+  objectiveRevision: string;
+  objectiveSummary?: string;
+  omissions: SituationOmissions;
+  pendingInput: readonly PendingInputReference[];
+  priorEvidence: readonly SituationEvidence[];
+  reportOwedFor: readonly string[];
+  selectedRoute?: string;
+}
+
 /**
  * Projects the situation for one objective revision.
  *
@@ -164,6 +192,8 @@ function evidenceFrom(cohortId: string) {
 export function situationView(input: {
   readonly turnId: string;
   readonly objectiveRevision: string;
+  readonly objectiveSummary?: string;
+  readonly selectedRoute?: string;
   readonly constraints?: readonly SituationConstraint[];
 }): SituationView {
   const cohort = cohortFor(input.turnId);
@@ -187,7 +217,28 @@ export function situationView(input: {
   const constraints = (input.constraints ?? []).filter(
     (constraint) => constraint.text.length <= maximumItemLength
   );
-  const current = {
+  const summaryOmitted =
+    input.objectiveSummary !== undefined &&
+    input.objectiveSummary.length > maximumItemLength;
+  const objectiveSummary =
+    input.objectiveSummary !== undefined && !summaryOmitted
+      ? input.objectiveSummary
+      : undefined;
+
+  const omissions: MutableSituationOmissions = {
+    claims:
+      currentEvidence.omitted +
+      prior.reduce((total, part) => total + part.omitted, 0) +
+      (carried.length - shown.length),
+    constraints:
+      (input.constraints?.length ?? 0) -
+      Math.min(constraints.length, maximumConstraints),
+  };
+  if (summaryOmitted) {
+    omissions.objectiveSummary = 1;
+  }
+
+  const current: MutableSituationView = {
     constraints: constraints.slice(0, maximumConstraints),
     // Current evidence is exactly the cohort this turn owns. A record from
     // another turn cannot reach this list, however recently it arrived.
@@ -196,15 +247,7 @@ export function situationView(input: {
     // used only when this turn started no work and there is no record.
     objectiveRevision: cohort?.objectiveRevision ?? input.objectiveRevision,
     // Counted, never silent: what bounding here left out.
-    omissions: {
-      claims:
-        currentEvidence.omitted +
-        prior.reduce((total, part) => total + part.omitted, 0) +
-        (carried.length - shown.length),
-      constraints:
-        (input.constraints?.length ?? 0) -
-        Math.min(constraints.length, maximumConstraints),
-    },
+    omissions,
     // Everything else, kept so a later question can still be answered, and kept
     // separate so it can never be mistaken for this objective's outcome.
     priorEvidence: shown.slice(currentEvidence.evidence.length),
@@ -218,5 +261,16 @@ export function situationView(input: {
       })),
     reportOwedFor: owed.map((candidate) => candidate.cohortId),
   };
-  return cohort === undefined ? current : { ...current, cohort };
+
+  if (objectiveSummary !== undefined) {
+    current.objectiveSummary = objectiveSummary;
+  }
+  if (input.selectedRoute !== undefined) {
+    current.selectedRoute = input.selectedRoute;
+  }
+  if (cohort !== undefined) {
+    current.cohort = cohort;
+  }
+
+  return current;
 }
