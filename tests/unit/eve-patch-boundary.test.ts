@@ -50,12 +50,12 @@ describe("Eve patch boundary", () => {
         "dist/src/execution/tasks/parent/hitl-proxy-steps.js",
       ],
       [
-        "dist/src/execution/workflow-steps.js",
-        "dist/src/execution/workflow-steps.js",
+        "dist/src/execution/wire/session-inbox-wire.v4.migration.js",
+        "dist/src/execution/wire/session-inbox-wire.v4.migration.js",
       ],
       [
-        "dist/src/execution/wire/session-inbox-wire.v4.migration.js",
-        "dist/src/execution/wire/session-inbox-wire.v4.migration.js",
+        "dist/src/execution/workflow-steps.js",
+        "dist/src/execution/workflow-steps.js",
       ],
       ["dist/src/harness/tool-loop.js", "dist/src/harness/tool-loop.js"],
       [
@@ -65,6 +65,10 @@ describe("Eve patch boundary", () => {
       ["dist/src/public/context/index.js", "dist/src/public/context/index.js"],
       ["dist/src/public/index.d.ts", "dist/src/public/index.d.ts"],
       ["dist/src/public/tools/index.d.ts", "dist/src/public/tools/index.d.ts"],
+      [
+        "dist/src/subagents/handles/store.js",
+        "dist/src/subagents/handles/store.js",
+      ],
       ["dist/src/tasks/session-index.js", "dist/src/tasks/session-index.js"],
       [
         "dist/src/tasks/session-task-cohorts.js",
@@ -95,6 +99,7 @@ describe("Eve patch boundary", () => {
     expect(patch).toContain("readBackgroundTaskTerminals");
     expect(patch).toContain("readBackgroundTaskMembers");
     expect(patch).toContain("setSessionTaskTerminals(i,r.state)");
+    expect(patch).toContain("normalizeAgentHandleStore");
     expect(patch).toContain("isCompatibleTaskIndexVersion");
     expect(patch).toContain("n.childSessionId=t.childSessionId");
     expect(patch).toContain("DynamicTurnOrigin");
