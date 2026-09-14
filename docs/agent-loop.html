@@ -541,25 +541,28 @@
     </div>
     <figcaption>
       One turn end to end. All three channels resolve to the same principal and
-      verified workspace scope before eve sees the message; Linq and SendBlue
-      resolve an owned conversation binding and atomically claim each inbound
-      provider message ID. Its Chat SDK locks and pending input IDs live in
-      Postgres, so an exact text reply resumes the parked Eve request rather
-      than starting a new model turn. The session, vault, Square grant, and
-      usage ledger all key on that scope. Patched Eve forwards a context entry
-      an older bundle cannot read without interpreting or deleting it; a
-      compatible bundle can hydrate it later. This does not retroactively repair
-      a root that an earlier deployed revision already drove. If completion
-      state is absent, recovery compares typed task terminals with durable
-      report parts. Only known, latest, complete accepted coverage is delivered;
-      partial or ambiguous history is unconfirmed and is never automatically
-      resent. A fresh request with no current report obligation can therefore
-      send its own text without old task content. A report-only wake binds every
-      currently owed cohort. Before a physical report reaches the provider, its
-      whole roster is claimed and marked attempted together; acceptance is then
-      recorded for that roster. An exact SendBlue callback replay after
-      completed or unconfirmed final delivery is skipped. Provider acceptance is
-      not evidence that the recipient received or read a message.
+      verified workspace scope before eve sees the message. After authentication
+      and before dispatch, Linq and SendBlue fetch candidate images, inspect
+      their bytes, convert HEIC to JPEG, and withhold images they cannot
+      prepare. Linq and SendBlue resolve an owned conversation binding and
+      atomically claim each inbound provider message ID. Its Chat SDK locks and
+      pending input IDs live in Postgres, so an exact text reply resumes the
+      parked Eve request rather than starting a new model turn. The session,
+      vault, Square grant, and usage ledger all key on that scope. Patched Eve
+      forwards a context entry an older bundle cannot read without interpreting
+      or deleting it; a compatible bundle can hydrate it later. This does not
+      retroactively repair a root that an earlier deployed revision already
+      drove. If completion state is absent, recovery compares typed task
+      terminals with durable report parts. Only known, latest, complete accepted
+      coverage is delivered; partial or ambiguous history is unconfirmed and is
+      never automatically resent. A fresh request with no current report
+      obligation can therefore send its own text without old task content. A
+      report-only wake binds every currently owed cohort. Before a physical
+      report reaches the provider, its whole roster is claimed and marked
+      attempted together; acceptance is then recorded for that roster. An exact
+      SendBlue callback replay after completed or unconfirmed final delivery is
+      skipped. Provider acceptance is not evidence that the recipient received
+      or read a message.
     </figcaption>
   </figure>
 

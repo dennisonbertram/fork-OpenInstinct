@@ -1,5 +1,7 @@
+import { createRequire } from "node:module";
 import type { Thread } from "chat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { sendMessageOutputSchema } from "@/agent/lib/send-message";
 import {
   beginFinalDelivery,
@@ -35,6 +37,7 @@ const capture = vi.hoisted(() => ({
     >(),
   post: vi.fn(),
   checkBudget: vi.fn(),
+  convertHeicToJpeg: vi.fn<(bytes: Uint8Array) => Promise<Uint8Array | null>>(),
   recordUsageEvent: vi.fn(),
   prepareBrowserImageArtifactDelivery: vi.fn(),
   requestTurnCompletion: vi.fn(),
@@ -117,7 +120,8 @@ vi.mock("chat-adapter-sendblue", () => ({
     markRead: capture.markRead,
   }),
 }));
-vi.mock("eve/channels/chat-sdk", () => ({
+vi.mock("eve/channels/chat-sdk", async (importOriginal) => ({
+  ...(await importOriginal()),
   chatSdkChannel: (config: unknown) => {
     capture.events = config;
     return {
@@ -126,7 +130,9 @@ vi.mock("eve/channels/chat-sdk", () => ({
       send: capture.send,
     };
   },
-  messageToUserContent: (message: { readonly text: string }) => message.text,
+}));
+vi.mock("@/agent/lib/linq/heic-to-jpeg", () => ({
+  convertHeicToJpeg: capture.convertHeicToJpeg,
 }));
 vi.mock("@/auth", () => ({
   getAuth: async () => ({
@@ -552,6 +558,7 @@ beforeEach(() => {
     fromNumber: "+12025550123",
   });
   capture.post.mockResolvedValue({ id: "posted" });
+  capture.convertHeicToJpeg.mockResolvedValue(onePixelJpeg());
   capture.send.mockResolvedValue(undefined);
   capture.stateConnect.mockResolvedValue(undefined);
   capture.claim.mockResolvedValue(true);
@@ -585,6 +592,157 @@ describe("SendBlue channel", () => {
       "hello",
       expect.objectContaining({ thread })
     );
+  });
+
+  it.each([
+    {
+      mimeType: "application/octet-stream",
+      name: "attachment.heic",
+      type: "file",
+      variant: "a signed opaque HEIC URL",
+    },
+    {
+      mimeType: "image/heic",
+      name: "IMG_0001.HEIC",
+      type: "image",
+      variant: "a natively labeled HEIC image",
+    },
+  ])(
+    "converts $variant before Eve receives the SendBlue turn",
+    async (input) => {
+      const mediaUrl =
+        "https://media.example.test/download?id=opaque-signature";
+      capture.fetch.mockResolvedValue(
+        new Response(Uint8Array.from(heicBytes()), {
+          headers: { "content-type": "application/octet-stream" },
+        })
+      );
+
+      await dispatchSendblueMessage(
+        thread,
+        inbound({
+          attachments: [
+            {
+              fetchData: vi.fn(async () => Buffer.from([0x00])),
+              mimeType: input.mimeType,
+              name: input.name,
+              type: input.type,
+              url: mediaUrl,
+            },
+          ],
+        })
+      );
+
+      const sent: unknown = capture.send.mock.calls[0]?.[0];
+      expect(sent).toEqual([
+        { text: "hello", type: "text" },
+        expect.objectContaining({
+          filename: input.name.replace(/\.heic$/iu, ".jpg"),
+          mediaType: "image/jpeg",
+          type: "file",
+        }),
+      ]);
+      const file = eveFilePartSchema.parse(
+        Array.isArray(sent) ? sent[1] : undefined
+      );
+      expect(file.data.protocol).toBe("data:");
+      const jpeg = Buffer.from(
+        file.data.pathname.split(",")[1] ?? "",
+        "base64"
+      );
+      expect(decodeJpeg(jpeg)).toMatchObject({ height: 1, width: 1 });
+      expect(capture.fetch).toHaveBeenCalledWith(
+        new URL(mediaUrl),
+        expect.objectContaining({ redirect: "error" })
+      );
+      expect(capture.convertHeicToJpeg.mock.calls[0]?.[0]).toEqual(
+        new Uint8Array(heicBytes())
+      );
+    }
+  );
+
+  it("keeps the text request when an opaque attachment cannot be fetched", async () => {
+    capture.fetch.mockRejectedValue(new Error("synthetic media unavailable"));
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({
+        attachments: [
+          {
+            mimeType: "application/octet-stream",
+            name: "attachment.heic",
+            type: "file",
+            url: "https://media.example.test/download?id=unavailable",
+          },
+        ],
+      })
+    );
+
+    expect(capture.send).toHaveBeenCalledWith("hello", expect.any(Object));
+  });
+
+  it("replies once instead of sending an empty image-only request when fetching fails", async () => {
+    capture.fetch.mockRejectedValue(new Error("synthetic media unavailable"));
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({
+        attachments: [
+          {
+            mimeType: "application/octet-stream",
+            name: "attachment.heic",
+            type: "file",
+            url: "https://media.example.test/download?id=unavailable",
+          },
+        ],
+        text: "",
+      })
+    );
+
+    expect(capture.send).not.toHaveBeenCalled();
+    expect(capture.post).toHaveBeenCalledExactlyOnceWith({
+      raw: expect.stringContaining("Please resend photos as JPEG or PNG"),
+    });
+  });
+
+  it("reports a lost conversation lock after an image-only fallback posts", async () => {
+    vi.useFakeTimers();
+    try {
+      capture.fetch.mockRejectedValue(new Error("synthetic media unavailable"));
+      capture.extendLock.mockResolvedValue(false);
+      capture.post.mockImplementationOnce(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+        return { id: "posted" };
+      });
+
+      await expect(
+        dispatchSendblueMessage(
+          thread,
+          inbound({
+            attachments: [
+              {
+                mimeType: "application/octet-stream",
+                name: "attachment.heic",
+                type: "file",
+                url: "https://media.example.test/download?id=unavailable",
+              },
+            ],
+            text: "",
+          })
+        )
+      ).rejects.toThrow(
+        "Lost the SendBlue conversation lock after attachment fallback."
+      );
+
+      expect(capture.post).toHaveBeenCalledExactlyOnceWith({
+        raw: expect.stringContaining("Please resend photos as JPEG or PNG"),
+      });
+      expect(capture.releaseLock).toHaveBeenCalledWith(
+        expect.objectContaining({ token: "lock-1" })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("allows bridge.send to await input.requested while dispatch holds the inbound lease", async () => {
@@ -2177,9 +2335,13 @@ describe("SendBlue channel", () => {
 });
 
 function inbound(
-  overrides: Partial<{ readonly text: string }> = {}
+  overrides: Partial<{
+    readonly attachments: readonly unknown[];
+    readonly text: string;
+  }> = {}
 ): Parameters<typeof dispatchSendblueMessage>[1] {
   return {
+    attachments: [],
     author: { isBot: false, userName: "+12025550199" },
     id: "message-1",
     raw: {
@@ -2198,6 +2360,34 @@ function inbound(
     text: "hello",
     ...overrides,
   } as unknown as Parameters<typeof dispatchSendblueMessage>[1];
+}
+
+function heicBytes(): Buffer {
+  return Buffer.from([
+    0x00, 0x00, 0x00, 0x24, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63,
+  ]);
+}
+
+function onePixelJpeg(): Buffer {
+  return Buffer.from(
+    "/9j/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAABgj/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABykX//Z",
+    "base64"
+  );
+}
+
+const eveFilePartSchema = z.object({
+  data: z.instanceof(URL),
+  filename: z.string(),
+  mediaType: z.string(),
+  type: z.literal("file"),
+});
+
+function decodeJpeg(bytes: Uint8Array): { height: number; width: number } {
+  const requireFromHeicConvert = createRequire(require.resolve("heic-convert"));
+  const jpeg = requireFromHeicConvert("jpeg-js") as {
+    decode(input: Uint8Array): { height: number; width: number };
+  };
+  return jpeg.decode(bytes);
 }
 
 function pending() {

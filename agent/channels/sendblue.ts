@@ -52,6 +52,10 @@ import {
   extractImageArtifactMarkdownReferences,
   stripImageArtifactMarkdownReferences,
 } from "@/agent/lib/browser-image-artifact/markdown";
+import {
+  partitionDirectPromptAttachments,
+  prepareModelImageAttachments,
+} from "@/agent/lib/linq/inbound-media";
 
 const verifiedPhoneUserSchema = z.object({
   id: z.string().min(1),
@@ -593,7 +597,33 @@ export async function dispatchSendblueMessage(
         );
       return;
     }
-    await bridge.send(messageToUserContent(message), {
+    const prepared = await prepareModelImageAttachments(message.attachments);
+    const partitioned = partitionDirectPromptAttachments(prepared.kept);
+    const withheldCount = prepared.withheldCount + partitioned.droppedCount;
+    message.attachments.length = 0;
+    message.attachments.push(...partitioned.kept);
+
+    const content = messageToUserContent(message);
+    if (
+      (Array.isArray(content) && content.length === 0) ||
+      (!Array.isArray(content) && content.trim().length === 0)
+    ) {
+      if (withheldCount > 0) {
+        await postSendblueReply(
+          thread,
+          {
+            raw: "I received your attachment, but I can't open that format. Please resend photos as JPEG or PNG and I'll take a look.",
+          },
+          scopeFromPrincipal(result.auth)
+        );
+        if (lockRenewal?.lost())
+          throw new Error(
+            "Lost the SendBlue conversation lock after attachment fallback."
+          );
+      }
+      return;
+    }
+    await bridge.send(content, {
       auth: result.auth,
       thread,
     });
