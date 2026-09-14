@@ -27,7 +27,10 @@ import { createHash } from "node:crypto";
 import { normalizeAuthPhoneNumber } from "@/auth/phone-number";
 import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
 import { accessScopeForUser, type AccessScope } from "@/lib/access-scope";
-import { partitionDirectPromptAttachments } from "@/agent/lib/linq/inbound-media";
+import {
+  partitionDirectPromptAttachments,
+  prepareModelImageAttachments,
+} from "@/agent/lib/linq/inbound-media";
 import { prepareLinqImageArtifactDelivery } from "../lib/linq-image-artifact/delivery";
 import {
   extractImageArtifactMarkdownReferences,
@@ -781,6 +784,22 @@ async function dispatchLinqMessage(
     return;
   }
 
+  // Declared image labels cannot be trusted: HEIC bytes can arrive labeled
+  // as a supported type. Verify surviving images against their bytes —
+  // correcting mislabels and converting HEIC stills to JPEG — so the model
+  // only ever receives openable image data.
+  const prepared = await prepareModelImageAttachments(message.attachments);
+  const verifiedWithheldCount = withheldCount + prepared.withheldCount;
+  if (prepared.withheldCount > 0) {
+    console.warn("[linq] withheld unverifiable image attachments", {
+      dropped: prepared.withheldCount,
+    });
+  }
+  // Always apply the resolved list: conversions and MIME corrections change
+  // entries even when nothing was withheld.
+  message.attachments.length = 0;
+  message.attachments.push(...prepared.kept);
+
   const content = messageToUserContent(message);
   if (!Array.isArray(content)) {
     if (content.trim().length === 0) return;
@@ -791,7 +810,7 @@ async function dispatchLinqMessage(
     return;
   }
   if (content.length === 0) {
-    if (withheldCount === 0) return;
+    if (verifiedWithheldCount === 0) return;
     await thread.post({
       raw: "I received your attachment, but I can't open that format. Please resend photos as JPEG or PNG and I'll take a look.",
     });

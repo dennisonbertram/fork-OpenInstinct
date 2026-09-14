@@ -1,4 +1,6 @@
 import type { Attachment } from "chat";
+import { convertHeicToJpeg } from "@/agent/lib/linq/heic-to-jpeg";
+import { sniffImageMediaType } from "@/agent/lib/linq/media-sniff";
 
 /**
  * MIME types Eve may forward to the model as direct prompt content.
@@ -62,4 +64,153 @@ export function partitionDirectPromptAttachments(
     }
   }
   return { dropped, droppedCount: dropped.length, kept };
+}
+
+/** Caps inbound image verification: bounds memory, latency, and model payload. */
+const MAX_INBOUND_IMAGE_BYTES = 12 * 1024 * 1024;
+const INBOUND_IMAGE_FETCH_TIMEOUT_MS = 15_000;
+
+export interface ResolvedModelImageAttachments {
+  readonly kept: Attachment[];
+  readonly withheldCount: number;
+}
+
+async function readCappedBytes(response: Response): Promise<Uint8Array | null> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_INBOUND_IMAGE_BYTES) {
+    return null;
+  }
+  const body = response.body;
+  if (!body) return null;
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    /* oxlint-disable eslint/no-await-in-loop -- Sequential bounded reads keep memory capped; parallel reads would unbound it. */
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_INBOUND_IMAGE_BYTES) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+    /* oxlint-enable eslint/no-await-in-loop */
+  } catch {
+    return null;
+  }
+  const out = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
+function fetchDataWithTimeout(
+  fetchData: () => Promise<Buffer>
+): Promise<Buffer> {
+  const pending = fetchData();
+  void pending.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error("Inbound image fetch timed out."));
+    }, INBOUND_IMAGE_FETCH_TIMEOUT_MS);
+  });
+  return Promise.race([pending, timeout]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
+async function readAttachmentBytes(
+  attachment: Attachment
+): Promise<Uint8Array | null> {
+  const fetchData = attachment.fetchData;
+  if (fetchData !== undefined) {
+    try {
+      const data = await fetchDataWithTimeout(fetchData);
+      return data.byteLength > MAX_INBOUND_IMAGE_BYTES ? null : data;
+    } catch {
+      return null;
+    }
+  }
+  if (!attachment.url) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(attachment.url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:") return null;
+  try {
+    const response = await fetch(parsed, {
+      signal: AbortSignal.timeout(INBOUND_IMAGE_FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    return await readCappedBytes(response);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Verifies one declared image against its actual bytes.
+ * Returns a model-safe attachment, or null to withhold it.
+ */
+async function resolveImageAttachment(
+  attachment: Attachment
+): Promise<Attachment | null> {
+  const bytes = await readAttachmentBytes(attachment);
+  if (!bytes) return null;
+  const sniffed = sniffImageMediaType(bytes);
+  if (sniffed === null) return null;
+  if (sniffed === "image/heic") {
+    const jpeg = await convertHeicToJpeg(bytes);
+    if (!jpeg) return null;
+    const base64 = Buffer.from(jpeg).toString("base64");
+    const rawStem = attachment.name?.split(".").slice(0, -1).join(".");
+    const stem = rawStem && rawStem.length > 0 ? rawStem : "photo";
+    return {
+      ...attachment,
+      mimeType: "image/jpeg",
+      name: `${stem}.jpg`,
+      url: `data:image/jpeg;base64,${base64}`,
+    };
+  }
+  if (sniffed !== mediaTypeRoot(attachment.mimeType)) {
+    return { ...attachment, mimeType: sniffed };
+  }
+  return attachment;
+}
+
+/**
+ * Verifies every declared image attachment against its bytes: corrects
+ * mislabeled formats, converts HEIC stills to JPEG, and withholds anything
+ * unverifiable. Non-image attachments pass through untouched (no fetch).
+ * Order is preserved; failures never throw — they withhold.
+ */
+export async function prepareModelImageAttachments(
+  attachments: readonly Attachment[]
+): Promise<ResolvedModelImageAttachments> {
+  const kept: Attachment[] = [];
+  let withheldCount = 0;
+  for (const attachment of attachments) {
+    const root = mediaTypeRoot(attachment.mimeType);
+    if (!root || !root.startsWith("image/")) {
+      kept.push(attachment);
+      continue;
+    }
+    // oxlint-disable-next-line eslint/no-await-in-loop -- Ordered, bounded image verification; photo messages carry few parts.
+    const resolved = await resolveImageAttachment(attachment);
+    if (resolved) {
+      kept.push(resolved);
+    } else {
+      withheldCount += 1;
+    }
+  }
+  return { kept, withheldCount };
 }
