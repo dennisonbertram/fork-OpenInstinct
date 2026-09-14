@@ -27,6 +27,7 @@ import { createHash } from "node:crypto";
 import { normalizeAuthPhoneNumber } from "@/auth/phone-number";
 import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
 import { accessScopeForUser, type AccessScope } from "@/lib/access-scope";
+import { stripModelUnsupportedFileParts } from "@/agent/lib/linq/inbound-media";
 import { prepareLinqImageArtifactDelivery } from "../lib/linq-image-artifact/delivery";
 import {
   extractImageArtifactMarkdownReferences,
@@ -766,11 +767,34 @@ async function dispatchLinqMessage(
   }
 
   const content = messageToUserContent(message);
-  if (Array.isArray(content)) {
-    if (content.length === 0) return;
-  } else if (content.trim().length === 0) return;
+  if (!Array.isArray(content)) {
+    if (content.trim().length === 0) return;
+    await bridge.send(
+      { context: [...(result.context ?? [])], message: content },
+      { auth, thread, title: result.title }
+    );
+    return;
+  }
+  // iPhone photos arrive as HEIC/HEIF, which the model gateway rejects as
+  // vision input ("does not represent a valid image") and fails the whole
+  // turn. Withhold those file parts from model-bound content; everything else
+  // passes through untouched. HEIC-to-JPEG conversion is follow-up work; this
+  // containment keeps the turn alive instead of crashing it.
+  const stripped = stripModelUnsupportedFileParts(content);
+  if (stripped.droppedCount > 0) {
+    console.warn("[linq] withheld HEIC/HEIF attachments from model input", {
+      dropped: stripped.droppedCount,
+    });
+  }
+  if (stripped.kept.length === 0) {
+    if (stripped.droppedCount === 0) return;
+    await thread.post({
+      raw: "I received your photo, but I can't open this image format (HEIC). Please resend it as a JPEG or PNG and I'll take a look.",
+    });
+    return;
+  }
   await bridge.send(
-    { context: [...(result.context ?? [])], message: content },
+    { context: [...(result.context ?? [])], message: stripped.kept },
     { auth, thread, title: result.title }
   );
 }
