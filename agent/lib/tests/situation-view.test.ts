@@ -668,3 +668,46 @@ describe("what the current turn is waiting on", () => {
     ).toEqual([]);
   });
 });
+
+describe("objective summary and selected route projection", () => {
+  it("SV-26: renders caller objective summary within length bounds", () => {
+    const view = situationView({
+      objectiveRevision: "obj_1",
+      objectiveSummary: "Check Square balance for October",
+      turnId: "turn_1",
+    });
+    expect(view.objectiveSummary).toBe("Check Square balance for October");
+    expect(view.omissions.objectiveSummary).toBeUndefined();
+  });
+
+  it("SV-27: omits whole objective summary if over length bound and counts in omissions", () => {
+    const longSummary = "x".repeat(401);
+    const view = situationView({
+      objectiveRevision: "obj_1",
+      objectiveSummary: longSummary,
+      turnId: "turn_1",
+    });
+    expect(view.objectiveSummary).toBeUndefined();
+    expect(view.omissions.objectiveSummary).toBe(1);
+    expect(JSON.stringify(view)).not.toContain("xxxx");
+  });
+
+  it("SV-28: renders selected route when provided", () => {
+    const view = situationView({
+      objectiveRevision: "obj_1",
+      selectedRoute: "browser",
+      turnId: "turn_1",
+    });
+    expect(view.selectedRoute).toBe("browser");
+  });
+
+  it("SV-29: leaves objective summary and selected route undefined when omitted", () => {
+    const view = situationView({
+      objectiveRevision: "obj_1",
+      turnId: "turn_1",
+    });
+    expect(view.objectiveSummary).toBeUndefined();
+    expect(view.selectedRoute).toBeUndefined();
+    expect(view.omissions.objectiveSummary).toBeUndefined();
+  });
+});
