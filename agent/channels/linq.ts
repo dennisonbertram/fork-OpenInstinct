@@ -27,7 +27,7 @@ import { createHash } from "node:crypto";
 import { normalizeAuthPhoneNumber } from "@/auth/phone-number";
 import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
 import { accessScopeForUser, type AccessScope } from "@/lib/access-scope";
-import { stripModelUnsupportedFileParts } from "@/agent/lib/linq/inbound-media";
+import { partitionDirectPromptAttachments } from "@/agent/lib/linq/inbound-media";
 import { prepareLinqImageArtifactDelivery } from "../lib/linq-image-artifact/delivery";
 import {
   extractImageArtifactMarkdownReferences,
@@ -727,6 +727,21 @@ async function dispatchLinqMessage(
   thread: Parameters<LinqOnMessage>[0]["thread"],
   message: LinqInboundMessage
 ) {
+  // AI Gateway model turns only accept images and documents (pdf, text).
+  // Raw HEIC/HEIF, video, audio, or unlabeled attachments make the gateway
+  // reject the turn with a 400 error. Filter message.attachments in place so
+  // Eve only forwards model-supported attachments in UserContent — including
+  // any copy of this message Eve retains in thread history.
+  const partitioned = partitionDirectPromptAttachments(message.attachments);
+  const withheldCount = partitioned.droppedCount;
+  if (withheldCount > 0) {
+    console.warn("[linq] withheld model-unsupported attachments", {
+      dropped: withheldCount,
+    });
+    message.attachments.length = 0;
+    message.attachments.push(...partitioned.kept);
+  }
+
   const result = await linqChannelConfig.onMessage({ thread }, message);
   if (!result) return;
 
@@ -775,26 +790,15 @@ async function dispatchLinqMessage(
     );
     return;
   }
-  // iPhone photos arrive as HEIC/HEIF, which the model gateway rejects as
-  // vision input ("does not represent a valid image") and fails the whole
-  // turn. Withhold those file parts from model-bound content; everything else
-  // passes through untouched. HEIC-to-JPEG conversion is follow-up work; this
-  // containment keeps the turn alive instead of crashing it.
-  const stripped = stripModelUnsupportedFileParts(content);
-  if (stripped.droppedCount > 0) {
-    console.warn("[linq] withheld HEIC/HEIF attachments from model input", {
-      dropped: stripped.droppedCount,
-    });
-  }
-  if (stripped.kept.length === 0) {
-    if (stripped.droppedCount === 0) return;
+  if (content.length === 0) {
+    if (withheldCount === 0) return;
     await thread.post({
-      raw: "I received your photo, but I can't open this image format (HEIC). Please resend it as a JPEG or PNG and I'll take a look.",
+      raw: "I received your attachment, but I can't open that format. Please resend photos as JPEG or PNG and I'll take a look.",
     });
     return;
   }
   await bridge.send(
-    { context: [...(result.context ?? [])], message: stripped.kept },
+    { context: [...(result.context ?? [])], message: content },
     { auth, thread, title: result.title }
   );
 }
