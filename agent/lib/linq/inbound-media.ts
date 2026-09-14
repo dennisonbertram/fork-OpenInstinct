@@ -1,17 +1,21 @@
+import type { Attachment } from "chat";
+
 /**
- * Image formats the model gateway rejects as vision input.
+ * MIME types Eve may forward to the model as direct prompt content.
  *
- * iPhones send still photos as HEIC/HEIF (and Live Photo sequence variants).
- * The AI Gateway answers those model calls with "The image data you provided
- * does not represent a valid image", which fails the whole turn. Parts in one
- * of these formats are withheld from model-bound content; every other part
- * passes through untouched.
+ * The AI Gateway only accepts images and documents here; raw HEIC/HEIF,
+ * video, audio, or unlabeled attachments make it reject the turn with a 400
+ * error ("does not represent a valid image"). This mirrors the proven
+ * Partyline-v2 inbound filter: allowlist, fail closed on anything else.
  */
-const modelUnsupportedImageMediaTypes = [
-  "image/heic",
-  "image/heic-sequence",
-  "image/heif",
-  "image/heif-sequence",
+const directPromptSupportedMimeTypes = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+  "text/plain",
+  "text/markdown",
 ] as const;
 
 /** Lowercases a MIME type and strips any `;` parameters. */
@@ -21,49 +25,41 @@ function mediaTypeRoot(mimeType: string | undefined): string | undefined {
   return root && root.length > 0 ? root : undefined;
 }
 
-function isUnsupportedImageMediaType(mimeType: string | undefined): boolean {
+/** Whether a declared MIME type may reach the model as prompt content. */
+export function isDirectPromptSupportedMime(
+  mimeType: string | undefined
+): boolean {
   const root = mediaTypeRoot(mimeType);
-  // Fail closed on unlabeled parts: Eve's staging re-resolves the true media
-  // type when it fetches the bytes, so an unlabeled part carrying HEIC bytes
-  // would still be inlined as image/heic and rejected by the gateway.
-  if (root === undefined || root === "application/octet-stream") return true;
-  return modelUnsupportedImageMediaTypes.some(
-    (unsupported) => unsupported === root
-  );
+  if (root === undefined) return false;
+  return directPromptSupportedMimeTypes.some((supported) => supported === root);
 }
 
-/** The structural shape Eve's `messageToUserContent` file parts carry. */
-export interface ModelContentPart {
-  readonly mediaType?: string;
-  readonly type: string;
-}
-
-export interface StrippedModelContent<Part extends ModelContentPart> {
+export interface PartitionedDirectPromptAttachments {
+  readonly dropped: readonly Attachment[];
   readonly droppedCount: number;
-  readonly kept: Part[];
+  readonly kept: Attachment[];
 }
 
 /**
- * Removes file parts in a model-rejected image format from model-bound
- * content.
+ * Splits attachments into model-safe and withheld sets.
  *
- * Narrow by design: HEIC/HEIF stills plus unlabeled and generic
- * octet-stream parts are withheld, since Eve re-resolves the true type at
- * fetch time and an unlabeled HEIC would still be rejected. Live Photo
- * `video/quicktime` companions, PDFs, text parts, and every other labeled
- * part keep their existing behavior.
+ * Withhold everything outside the allowlist: HEIC/HEIF stills, Live Photo
+ * video companions, audio, octet-stream, and unlabeled parts. Eve
+ * re-resolves the true media type when it fetches attachment bytes, so an
+ * unlabeled part carrying HEIC bytes would still be rejected — failing
+ * closed here is what keeps the turn alive.
  */
-export function stripModelUnsupportedFileParts<Part extends ModelContentPart>(
-  parts: readonly Part[]
-): StrippedModelContent<Part> {
-  const kept: Part[] = [];
-  let droppedCount = 0;
-  for (const part of parts) {
-    if (part.type === "file" && isUnsupportedImageMediaType(part.mediaType)) {
-      droppedCount += 1;
-      continue;
+export function partitionDirectPromptAttachments(
+  attachments: readonly Attachment[] | undefined
+): PartitionedDirectPromptAttachments {
+  const kept: Attachment[] = [];
+  const dropped: Attachment[] = [];
+  for (const attachment of attachments ?? []) {
+    if (isDirectPromptSupportedMime(attachment.mimeType)) {
+      kept.push(attachment);
+    } else {
+      dropped.push(attachment);
     }
-    kept.push(part);
   }
-  return { droppedCount, kept };
+  return { dropped, droppedCount: dropped.length, kept };
 }

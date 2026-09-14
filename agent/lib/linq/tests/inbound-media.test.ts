@@ -1,93 +1,106 @@
+import type { Attachment } from "chat";
 import { describe, expect, it } from "vitest";
-import { stripModelUnsupportedFileParts } from "@/agent/lib/linq/inbound-media";
+import {
+  isDirectPromptSupportedMime,
+  partitionDirectPromptAttachments,
+} from "@/agent/lib/linq/inbound-media";
 
-describe("stripModelUnsupportedFileParts", () => {
-  it("withholds iPhone HEIC and HEIF stills from model-bound content", () => {
-    const stripped = stripModelUnsupportedFileParts([
-      { text: "What is this?", type: "text" },
-      {
-        data: new URL("https://cdn.linqapp.com/IMG_0001.HEIC"),
-        filename: "IMG_0001.HEIC",
-        mediaType: "image/heic",
-        type: "file",
-      },
-      {
-        data: new URL("https://cdn.linqapp.com/IMG_0002.HEIF"),
-        filename: "IMG_0002.HEIF",
-        mediaType: "image/heif",
-        type: "file",
-      },
-    ]);
+function attachment(
+  overrides: Partial<Attachment> & { readonly type: Attachment["type"] }
+): Attachment {
+  return {
+    mimeType: "image/jpeg",
+    name: "photo.jpg",
+    url: "https://cdn.linqapp.com/photo.jpg",
+    ...overrides,
+  };
+}
 
-    expect(stripped.droppedCount).toBe(2);
-    expect(stripped.kept).toEqual([{ text: "What is this?", type: "text" }]);
+describe("isDirectPromptSupportedMime", () => {
+  it("accepts the model-supported image, pdf, and text formats", () => {
+    for (const mimeType of [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+      "application/pdf",
+      "text/plain",
+      "text/markdown",
+    ]) {
+      expect(isDirectPromptSupportedMime(mimeType)).toBe(true);
+    }
   });
 
-  it("matches sequence variants case-insensitively and ignores parameters", () => {
-    const stripped = stripModelUnsupportedFileParts([
-      {
-        data: new URL("https://cdn.linqapp.com/photo.HEIC"),
-        mediaType: "IMAGE/HEIC-SEQUENCE",
-        type: "file",
-      },
-      {
-        data: new URL("https://cdn.linqapp.com/photo2.heif"),
-        mediaType: "image/heif-sequence; codecs=hevc",
-        type: "file",
-      },
-    ]);
-
-    expect(stripped.droppedCount).toBe(2);
-    expect(stripped.kept).toEqual([]);
+  it("matches case-insensitively and ignores parameters", () => {
+    expect(isDirectPromptSupportedMime("IMAGE/JPEG")).toBe(true);
+    expect(isDirectPromptSupportedMime("text/plain; charset=utf-8")).toBe(true);
   });
 
-  it("keeps model-supported images and non-image attachments untouched", () => {
-    const parts = [
-      {
-        data: new URL("https://cdn.linqapp.com/photo.jpg"),
-        mediaType: "image/jpeg",
-        type: "file",
-      },
-      {
-        data: new URL("https://cdn.linqapp.com/photo.png"),
-        mediaType: "image/png",
-        type: "file",
-      },
-      {
-        data: new URL("https://cdn.linqapp.com/IMG_0001.MOV"),
-        filename: "IMG_0001.MOV",
-        mediaType: "video/quicktime",
-        type: "file",
-      },
-      {
-        data: new URL("https://cdn.linqapp.com/receipt.pdf"),
-        filename: "receipt.pdf",
-        mediaType: "application/pdf",
-        type: "file",
-      },
-      { text: "Here is the receipt", type: "text" },
-    ];
-
-    const stripped = stripModelUnsupportedFileParts(parts);
-
-    expect(stripped.droppedCount).toBe(0);
-    expect(stripped.kept).toEqual(parts);
+  it("rejects HEIC/HEIF stills, video, audio, and unknown types", () => {
+    for (const mimeType of [
+      "image/heic",
+      "image/heif",
+      "image/heic-sequence",
+      "image/heif-sequence",
+      "video/quicktime",
+      "video/mp4",
+      "audio/mpeg",
+      "application/octet-stream",
+      "application/zip",
+    ]) {
+      expect(isDirectPromptSupportedMime(mimeType)).toBe(false);
+    }
   });
 
-  it("withholds file parts with no declared media type", () => {
-    const stripped = stripModelUnsupportedFileParts([
-      {
-        data: new URL("https://cdn.linqapp.com/blob"),
-        type: "file",
-      },
-      {
-        data: new URL("https://cdn.linqapp.com/photo"),
-        mediaType: "application/octet-stream",
-        type: "file",
-      },
-    ]);
+  it("rejects missing, blank, and malformed MIME types", () => {
+    expect(isDirectPromptSupportedMime(undefined)).toBe(false);
+    expect(isDirectPromptSupportedMime("")).toBe(false);
+    expect(isDirectPromptSupportedMime("   ")).toBe(false);
+    expect(isDirectPromptSupportedMime("not-a-mime")).toBe(false);
+  });
+});
 
-    expect(stripped.droppedCount).toBe(2);
-    expect(stripped.kept).toEqual([]);
+describe("partitionDirectPromptAttachments", () => {
+  it("withholds an iPhone Live Photo pair while keeping a JPEG", () => {
+    const jpeg = attachment({ mimeType: "image/jpeg", type: "image" });
+    const heic = attachment({
+      mimeType: "image/heic",
+      name: "IMG_0001.HEIC",
+      type: "image",
+    });
+    const mov = attachment({
+      mimeType: "video/quicktime",
+      name: "IMG_0001.MOV",
+      type: "video",
+    });
+
+    const partitioned = partitionDirectPromptAttachments([jpeg, heic, mov]);
+
+    expect(partitioned.kept).toEqual([jpeg]);
+    expect(partitioned.dropped).toEqual([heic, mov]);
+    expect(partitioned.droppedCount).toBe(2);
+  });
+
+  it("keeps every attachment when all formats are model-supported", () => {
+    const jpeg = attachment({ mimeType: "image/jpeg", type: "image" });
+    const pdf = attachment({
+      mimeType: "application/pdf",
+      name: "receipt.pdf",
+      type: "file",
+    });
+
+    const partitioned = partitionDirectPromptAttachments([jpeg, pdf]);
+
+    expect(partitioned.kept).toEqual([jpeg, pdf]);
+    expect(partitioned.dropped).toEqual([]);
+    expect(partitioned.droppedCount).toBe(0);
+  });
+
+  it("treats a missing attachment list as nothing to withhold", () => {
+    const partitioned = partitionDirectPromptAttachments(undefined);
+
+    expect(partitioned.kept).toEqual([]);
+    expect(partitioned.dropped).toEqual([]);
+    expect(partitioned.droppedCount).toBe(0);
   });
 });
