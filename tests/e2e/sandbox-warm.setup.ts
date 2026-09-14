@@ -12,7 +12,10 @@ setup(
   async ({ page }) => {
     await page.goto("/chat");
     const composer = page.getByRole("textbox", { name: "Message Jory" });
-    await page.getByLabel("Upload files").setInputFiles({
+    const fileChooserPromise = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Attach files" }).click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles({
       buffer: Buffer.from("sandbox warm-up attachment"),
       mimeType: "text/plain",
       name: "warm.txt",
