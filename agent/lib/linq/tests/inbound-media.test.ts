@@ -74,15 +74,20 @@ describe("stripModelUnsupportedFileParts", () => {
     expect(stripped.kept).toEqual(parts);
   });
 
-  it("keeps file parts with no declared media type", () => {
+  it("withholds file parts with no declared media type", () => {
     const stripped = stripModelUnsupportedFileParts([
       {
         data: new URL("https://cdn.linqapp.com/blob"),
         type: "file",
       },
+      {
+        data: new URL("https://cdn.linqapp.com/photo"),
+        mediaType: "application/octet-stream",
+        type: "file",
+      },
     ]);
 
-    expect(stripped.droppedCount).toBe(0);
-    expect(stripped.kept).toHaveLength(1);
+    expect(stripped.droppedCount).toBe(2);
+    expect(stripped.kept).toEqual([]);
   });
 });
