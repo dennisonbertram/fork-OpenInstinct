@@ -9,6 +9,13 @@ For lifecycle, verification, diagnostics, managed production, and reusable
 engineering-learning work, read [docs/AGENT_DEVELOPMENT.md](docs/AGENT_DEVELOPMENT.md).
 Use its owning runbooks for command syntax and current acceptance evidence.
 
+As of 2026-09-14, Jory’s observed working production iMessage channel is
+SendBlue at `/eve/v1/sendblue`. Both Linq and SendBlue are implemented, but
+Linq’s production configuration has not been verified. Verify the current
+deployment before diagnosing a channel issue; never infer the active path from
+the default README. Tests and documentation describe implementation results,
+not a live onboarding claim.
+
 ## Work and delivery
 
 - Work only on `dennisonbertram/fork-OpenInstinct`. Upstream

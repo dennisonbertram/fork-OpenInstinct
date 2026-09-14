@@ -5,7 +5,7 @@ import {
   randomBytes,
   randomUUID,
 } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { normalizeAuthPhoneNumber } from "@/auth/phone-number";
 import { db, phoneIdentities } from "@/db";
@@ -23,19 +23,22 @@ export async function recordVerifiedPhoneIdentity({
   readonly phoneNumber: string;
   readonly userId: string;
 }) {
-  const { secretEncryptionKey } = await getInstallationSecrets();
-  const normalizedPhoneNumber = requireNormalizedPhoneNumber(phoneNumber);
-  const phoneLookupHash = lookupHash(
-    normalizedPhoneNumber,
-    secretEncryptionKey
-  );
+  const material = await phoneIdentityMaterial(phoneNumber);
 
   return recordVerifiedPhoneIdentityWithRetry({
-    normalizedPhoneNumber,
-    phoneLookupHash,
-    secretEncryptionKey,
+    ...material,
     userId,
   });
+}
+
+export async function phoneIdentityMaterial(phoneNumber: string) {
+  const { secretEncryptionKey } = await getInstallationSecrets();
+  const normalizedPhoneNumber = requireNormalizedPhoneNumber(phoneNumber);
+  return {
+    normalizedPhoneNumber,
+    phoneLookupHash: lookupHash(normalizedPhoneNumber, secretEncryptionKey),
+    secretEncryptionKey,
+  };
 }
 
 async function recordVerifiedPhoneIdentityWithRetry({
@@ -83,12 +86,16 @@ async function recordVerifiedPhoneIdentityTransaction({
   const now = new Date();
   return await db.transaction(async (transaction) => {
     const [existing] = await transaction
-      .select({ id: phoneIdentities.id, userId: phoneIdentities.userId })
+      .select({
+        assurance: phoneIdentities.assurance,
+        id: phoneIdentities.id,
+        userId: phoneIdentities.userId,
+      })
       .from(phoneIdentities)
       .where(
         and(
           eq(phoneIdentities.phoneLookupHash, phoneLookupHash),
-          eq(phoneIdentities.status, "verified")
+          inArray(phoneIdentities.status, ["verified", "active"])
         )
       )
       .for("update")
@@ -97,7 +104,12 @@ async function recordVerifiedPhoneIdentityTransaction({
     if (existing?.userId === userId) {
       const [identity] = await transaction
         .update(phoneIdentities)
-        .set({ updatedAt: now, verifiedAt: now })
+        .set({
+          assurance: "otp_verified",
+          status: "verified",
+          updatedAt: now,
+          verifiedAt: now,
+        })
         .where(eq(phoneIdentities.id, existing.id))
         .returning();
       if (!identity) throw new Error("Failed to refresh phone identity.");
@@ -115,7 +127,7 @@ async function recordVerifiedPhoneIdentityTransaction({
     const [identity] = await transaction
       .insert(phoneIdentities)
       .values({
-        encryptedPhoneNumber: encryptPhoneNumber(
+        encryptedPhoneNumber: encryptPhoneIdentityPhoneNumber(
           id,
           normalizedPhoneNumber,
           secretEncryptionKey
@@ -123,6 +135,7 @@ async function recordVerifiedPhoneIdentityTransaction({
         id,
         phoneLookupHash,
         userId,
+        assurance: "otp_verified",
         verifiedAt: now,
       })
       .returning();
@@ -132,8 +145,7 @@ async function recordVerifiedPhoneIdentityTransaction({
 }
 
 export async function findVerifiedUserByPhoneNumber(phoneNumber: string) {
-  const { secretEncryptionKey } = await getInstallationSecrets();
-  const normalizedPhoneNumber = requireNormalizedPhoneNumber(phoneNumber);
+  const { phoneLookupHash } = await phoneIdentityMaterial(phoneNumber);
   const [identity] = await db
     .select({
       phoneIdentityId: phoneIdentities.id,
@@ -142,11 +154,9 @@ export async function findVerifiedUserByPhoneNumber(phoneNumber: string) {
     .from(phoneIdentities)
     .where(
       and(
-        eq(
-          phoneIdentities.phoneLookupHash,
-          lookupHash(normalizedPhoneNumber, secretEncryptionKey)
-        ),
-        eq(phoneIdentities.status, "verified")
+        eq(phoneIdentities.phoneLookupHash, phoneLookupHash),
+        eq(phoneIdentities.status, "verified"),
+        eq(phoneIdentities.assurance, "otp_verified")
       )
     )
     .limit(1);
@@ -154,8 +164,7 @@ export async function findVerifiedUserByPhoneNumber(phoneNumber: string) {
 }
 
 export async function revokePhoneIdentity(userId: string, phoneNumber: string) {
-  const { secretEncryptionKey } = await getInstallationSecrets();
-  const normalizedPhoneNumber = requireNormalizedPhoneNumber(phoneNumber);
+  const { phoneLookupHash } = await phoneIdentityMaterial(phoneNumber);
   const now = new Date();
   const rows = await db
     .update(phoneIdentities)
@@ -163,11 +172,8 @@ export async function revokePhoneIdentity(userId: string, phoneNumber: string) {
     .where(
       and(
         eq(phoneIdentities.userId, userId),
-        eq(
-          phoneIdentities.phoneLookupHash,
-          lookupHash(normalizedPhoneNumber, secretEncryptionKey)
-        ),
-        eq(phoneIdentities.status, "verified")
+        eq(phoneIdentities.phoneLookupHash, phoneLookupHash),
+        inArray(phoneIdentities.status, ["verified", "active"])
       )
     )
     .returning({ id: phoneIdentities.id });
@@ -200,7 +206,7 @@ function lookupHash(phoneNumber: string, secretEncryptionKey: string) {
     .digest("hex");
 }
 
-function encryptPhoneNumber(
+export function encryptPhoneIdentityPhoneNumber(
   id: string,
   phoneNumber: string,
   secretEncryptionKey: string

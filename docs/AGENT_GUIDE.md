@@ -46,9 +46,17 @@ The Eve channel performs its own session ownership check; do not assume a
 Next redirect is an Eve authorization decision.
 
 The native SendBlue channel is `/eve/v1/sendblue`. It remains disabled by
-default, requires exact account and receiving-line checks, and admits only a
-verified phone identity with active membership and tenant binding. Keep its
-webhook and durable message-handle ownership in `agent/channels/`.
+default, requires exact account and receiving-line checks, and admits existing
+verified phone identities with active membership and tenant binding. The
+text-first enrollment path is in implementation progress behind
+`SENDBLUE_TEXT_ONBOARDING=off` by default: an eligible new sender receives a
+channel-observed assurance, an isolated workspace/agent/binding, and a durable
+opening-request receipt before onboarding work is drained. Keep webhook and
+durable message-handle ownership in `agent/channels/`; keep onboarding
+operations in `db/services/channel-onboarding.ts` and its delivery consumer.
+Provider acceptance is not recipient delivery; accepted-but-unconfirmed work
+is reconciled as uncertain rather than blindly resent. Linq and SendBlue are
+implemented, but active production configuration remains deployment-specific.
 
 ## Directory ownership and dependency direction
 

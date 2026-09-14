@@ -20,11 +20,15 @@ const capture = vi.hoisted(() => ({
   createBinding: vi.fn(),
   decodeThreadId: vi.fn(),
   deleteState: vi.fn(),
+  drainOnboarding: vi.fn(),
+  enqueueOnboardingReply: vi.fn(),
+  getOnboardingReplyDelivery: vi.fn(),
   extendLock: vi.fn(),
   fetch: vi.fn<typeof fetch>(),
   findIdentity: vi.fn(),
   findOne: vi.fn(),
   getState: vi.fn(),
+  isTextOnboardingEnabled: vi.fn(),
   markRead: vi.fn(),
   mediaSend:
     vi.fn<
@@ -36,6 +40,11 @@ const capture = vi.hoisted(() => ({
       }) => Promise<{ readonly message_handle?: string }>
     >(),
   post: vi.fn(),
+  parseCommunicationCommand: vi.fn(),
+  provisionChannelEnrollment: vi.fn(),
+  recordChannelCommunicationStop: vi.fn(),
+  recordChannelCommunicationStart: vi.fn(),
+  resolveChannelEnrollment: vi.fn(),
   checkBudget: vi.fn(),
   convertHeicToJpeg: vi.fn<(bytes: Uint8Array) => Promise<Uint8Array | null>>(),
   recordUsageEvent: vi.fn(),
@@ -96,8 +105,10 @@ vi.mock("@/env", () => ({
     SENDBLUE_API_SECRET_KEY: "secret",
     SENDBLUE_CONVERSATIONS: "on",
     SENDBLUE_FROM_NUMBER: "+12025550123",
+    SENDBLUE_TEXT_ONBOARDING_CARD_DELIVERY: "disabled",
     SENDBLUE_WEBHOOK_SECRET: "webhook-secret",
   },
+  isSendblueTextOnboardingEnabled: capture.isTextOnboardingEnabled,
 }));
 vi.mock("@chat-adapter/state-pg", () => ({
   createPostgresState: () => ({
@@ -151,6 +162,13 @@ vi.mock("@/db/services/channel-conversations", () => ({
   resolveConversationBinding: capture.resolveBinding,
   resolveVerifiedConversationBinding: capture.resolveVerifiedBinding,
 }));
+vi.mock("@/db/services/channel-onboarding", () => ({
+  parseChannelCommunicationCommand: capture.parseCommunicationCommand,
+  provisionChannelEnrollment: capture.provisionChannelEnrollment,
+  recordChannelCommunicationStart: capture.recordChannelCommunicationStart,
+  recordChannelCommunicationStop: capture.recordChannelCommunicationStop,
+  resolveChannelEnrollment: capture.resolveChannelEnrollment,
+}));
 vi.mock("@/agent/lib/principal-scope", () => ({
   scopeFromPrincipal: () => ({ workspaceId }),
 }));
@@ -162,6 +180,13 @@ vi.mock("@/db/services/usage", () => ({
 vi.mock("@/agent/lib/browser-image-artifact/delivery", () => ({
   prepareBrowserImageArtifactDelivery:
     capture.prepareBrowserImageArtifactDelivery,
+}));
+vi.mock("@/agent/lib/onboarding/delivery", () => ({
+  drainSendblueChannelOnboarding: capture.drainOnboarding,
+}));
+vi.mock("@/db/services/channel-onboarding-delivery", () => ({
+  enqueueChannelOnboardingOutboundReply: capture.enqueueOnboardingReply,
+  getChannelOnboardingOutboundReplyDelivery: capture.getOnboardingReplyDelivery,
 }));
 
 /**
@@ -498,7 +523,8 @@ function admitTerminalReport(
   return cohortId;
 }
 
-const { dispatchSendblueMessage } = await import("@/agent/channels/sendblue");
+const { dispatchSendblueMessage, sendblueChannelConfig } =
+  await import("@/agent/channels/sendblue");
 const sendblueEvents = (
   capture.events as {
     readonly events: Record<string, (...args: unknown[]) => Promise<void>>;
@@ -519,6 +545,7 @@ const thread = {
 } as unknown as Thread;
 
 interface StoredPendingInput {
+  readonly generation?: string;
   readonly requests: readonly {
     readonly allowFreeform?: boolean;
     readonly kind?: string;
@@ -560,6 +587,27 @@ beforeEach(() => {
   capture.post.mockResolvedValue({ id: "posted" });
   capture.convertHeicToJpeg.mockResolvedValue(onePixelJpeg());
   capture.send.mockResolvedValue(undefined);
+  capture.isTextOnboardingEnabled.mockReturnValue(true);
+  capture.resolveChannelEnrollment.mockResolvedValue(undefined);
+  capture.recordChannelCommunicationStop.mockResolvedValue(undefined);
+  capture.recordChannelCommunicationStart.mockResolvedValue(undefined);
+  capture.parseCommunicationCommand.mockImplementation((text: string) => {
+    const command = text.trim().toLowerCase();
+    return command === "stop"
+      ? "stop"
+      : command === "start"
+        ? "start"
+        : undefined;
+  });
+  capture.drainOnboarding.mockResolvedValue({ attempted: 0, claimed: 0 });
+  capture.enqueueOnboardingReply.mockResolvedValue({
+    id: "reply-1",
+    inserted: true,
+  });
+  capture.getOnboardingReplyDelivery.mockResolvedValue({
+    kind: "provider_accepted",
+    providerHandle: "provider-1",
+  });
   capture.stateConnect.mockResolvedValue(undefined);
   capture.claim.mockResolvedValue(true);
   capture.acquireLock.mockResolvedValue({
@@ -585,6 +633,393 @@ beforeEach(() => {
 });
 
 describe("SendBlue channel", () => {
+  it("records an unknown STOP as minimal communication suppression without enrollment", async () => {
+    capture.findOne.mockResolvedValue(null);
+
+    await dispatchSendblueMessage(thread, inbound({ text: " STOP " }));
+
+    expect(capture.recordChannelCommunicationStop).toHaveBeenCalledWith({
+      phoneNumber: "+12025550199",
+      provider: "sendblue",
+      providerAccountId: "account@example.test",
+      providerLineId: "+12025550123",
+      messageHandle: "message-1",
+    });
+    expect(capture.resolveChannelEnrollment).not.toHaveBeenCalled();
+    expect(capture.provisionChannelEnrollment).not.toHaveBeenCalled();
+    expect(capture.send).not.toHaveBeenCalled();
+  });
+
+  it("records authenticated START as opt-in without creating an account", async () => {
+    capture.findOne.mockResolvedValue(null);
+
+    await dispatchSendblueMessage(thread, inbound({ text: "START" }));
+
+    expect(capture.recordChannelCommunicationStart).toHaveBeenCalledWith({
+      phoneNumber: "+12025550199",
+      provider: "sendblue",
+      providerAccountId: "account@example.test",
+      providerLineId: "+12025550123",
+      messageHandle: "message-1",
+    });
+    expect(capture.recordChannelCommunicationStop).not.toHaveBeenCalled();
+    expect(capture.resolveChannelEnrollment).not.toHaveBeenCalled();
+    expect(capture.provisionChannelEnrollment).not.toHaveBeenCalled();
+    expect(capture.send).not.toHaveBeenCalled();
+  });
+
+  it("provisions one eligible unknown direct sender from the authenticated provider identity", async () => {
+    capture.findOne.mockResolvedValue(null);
+    capture.provisionChannelEnrollment.mockResolvedValue({
+      agentId: "agent-new",
+      assurance: "channel_observed",
+      authAssurance: "channel_observed",
+      bindingId: "binding-new",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "channel-basic",
+      enrollmentId: "enrollment-new",
+      identityProvenance: "sendblue_direct",
+      phoneIdentityId: "phone-new",
+      principalId: "new-user",
+      receiptId: "receipt-new",
+      status: "ready",
+      userId: "new-user",
+      workspaceId,
+    });
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({ text: "What can you do?" })
+    );
+
+    expect(capture.provisionChannelEnrollment).toHaveBeenCalledWith({
+      messageId: "message-1",
+      openingDispatch: "after_welcome",
+      openingRequest: { text: "What can you do?" },
+      phoneNumber: "+12025550199",
+      provider: "sendblue",
+      providerAccountId: "account@example.test",
+      providerConversationId: thread.id,
+      providerLineId: "+12025550123",
+      welcomeParts: expect.any(Array),
+    });
+    expect(capture.drainOnboarding).toHaveBeenCalledOnce();
+  });
+
+  it.each(["hi", "hello", "Hey Jory, what can you do?"])(
+    "holds the illustrated welcome sequence before a known greeting: %s",
+    async (text) => {
+      capture.findOne.mockResolvedValue(null);
+      capture.provisionChannelEnrollment.mockResolvedValue({
+        agentId: "agent-new",
+        assurance: "channel_observed",
+        authAssurance: "channel_observed",
+        bindingId: "binding-new",
+        capabilities: ["assistant_basic", "photo_input"],
+        capabilityProfile: "channel-basic",
+        enrollmentId: "enrollment-new",
+        identityProvenance: "sendblue_direct",
+        phoneIdentityId: "phone-new",
+        principalId: "new-user",
+        receiptId: "receipt-new",
+        status: "ready",
+        userId: "new-user",
+        workspaceId,
+      });
+
+      await dispatchSendblueMessage(thread, inbound({ text }));
+
+      expect(capture.provisionChannelEnrollment).toHaveBeenCalledWith(
+        expect.objectContaining({ openingDispatch: "after_welcome" })
+      );
+    }
+  );
+
+  it("persists a normalized first-contact HEIC photo before draining onboarding", async () => {
+    capture.findOne.mockResolvedValue(null);
+    capture.provisionChannelEnrollment.mockResolvedValue({
+      agentId: "agent-new",
+      assurance: "channel_observed",
+      authAssurance: "channel_observed",
+      bindingId: "binding-new",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "channel-basic",
+      enrollmentId: "enrollment-new",
+      identityProvenance: "sendblue_direct",
+      phoneIdentityId: "phone-new",
+      principalId: "new-user",
+      receiptId: "receipt-new",
+      status: "ready",
+      userId: "new-user",
+      workspaceId,
+    });
+    capture.fetch.mockResolvedValue(
+      new Response(Uint8Array.from(heicBytes()), {
+        headers: { "content-type": "application/octet-stream" },
+      })
+    );
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({
+        attachments: [
+          {
+            mimeType: "image/heic",
+            name: "shop.HEIC",
+            type: "image",
+            url: "https://media.example.test/first-photo",
+          },
+        ],
+        text: "What is in this photo?",
+      })
+    );
+
+    expect(capture.provisionChannelEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openingRequest: expect.objectContaining({
+          attachments: [
+            expect.objectContaining({
+              contentType: "image/jpeg",
+              privateData: onePixelJpeg().toString("base64"),
+            }),
+          ],
+          text: "What is in this photo?",
+        }),
+      })
+    );
+    expect(capture.drainOnboarding).toHaveBeenCalledOnce();
+    expect(capture.send).not.toHaveBeenCalled();
+  });
+
+  it("continues an enrolled channel-observed sender after new enrollment is turned off", async () => {
+    capture.findOne.mockResolvedValue(null);
+    capture.isTextOnboardingEnabled.mockReturnValue(false);
+    capture.resolveChannelEnrollment.mockResolvedValue({
+      agentId: "agent-enrolled",
+      assurance: "channel_observed",
+      authAssurance: "channel_observed",
+      bindingId: "binding-enrolled",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "channel-basic",
+      enrollmentId: "enrollment-enrolled",
+      identityProvenance: "sendblue_direct",
+      phoneIdentityId: "phone-enrolled",
+      principalId: "existing-user",
+      receiptId: "receipt-enrolled",
+      status: "ready",
+      userId: "existing-user",
+      workspaceId,
+    });
+    capture.provisionChannelEnrollment.mockResolvedValue({
+      agentId: "agent-enrolled",
+      assurance: "channel_observed",
+      authAssurance: "channel_observed",
+      bindingId: "binding-enrolled",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "channel-basic",
+      enrollmentId: "enrollment-enrolled",
+      identityProvenance: "sendblue_direct",
+      phoneIdentityId: "phone-enrolled",
+      principalId: "existing-user",
+      receiptId: "receipt-next",
+      status: "ready",
+      userId: "existing-user",
+      workspaceId,
+    });
+
+    await dispatchSendblueMessage(thread, inbound());
+
+    expect(capture.resolveChannelEnrollment).toHaveBeenCalledWith({
+      phoneNumber: "+12025550199",
+      provider: "sendblue",
+      providerAccountId: "account@example.test",
+      providerConversationId: thread.id,
+      providerLineId: "+12025550123",
+    });
+    expect(capture.provisionChannelEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: "message-1",
+        providerConversationId: thread.id,
+      })
+    );
+    expect(capture.drainOnboarding).toHaveBeenCalledWith(
+      expect.objectContaining({ bindingId: "binding-enrolled" })
+    );
+    expect(capture.send).not.toHaveBeenCalled();
+  });
+
+  it("resumes a parked observed-channel input reply instead of appending a new opening request", async () => {
+    capture.findOne.mockResolvedValue(null);
+    capture.resolveChannelEnrollment.mockResolvedValue({
+      agentId: "agent-enrolled",
+      assurance: "channel_observed",
+      authAssurance: "channel_observed",
+      bindingId: "binding-enrolled",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "channel-basic",
+      enrollmentId: "enrollment-enrolled",
+      identityProvenance: "sendblue_direct",
+      phoneIdentityId: "phone-enrolled",
+      principalId: "better-auth:existing-user",
+      receiptId: "receipt-enrolled",
+      status: "ready",
+      userId: "existing-user",
+      workspaceId,
+    });
+    capture.getState.mockResolvedValue(pending());
+
+    await dispatchSendblueMessage(thread, inbound({ text: "yes" }));
+
+    expect(capture.provisionChannelEnrollment).not.toHaveBeenCalled();
+    expect(capture.drainOnboarding).not.toHaveBeenCalled();
+    expect(capture.send).toHaveBeenCalledWith(
+      { inputResponses: [{ optionId: "approve", requestId: "request-1" }] },
+      expect.objectContaining({ thread })
+    );
+  });
+
+  it("appends a later ordinary observed-channel message as durable ordered work", async () => {
+    capture.findOne.mockResolvedValue(null);
+    capture.resolveChannelEnrollment.mockResolvedValue({
+      agentId: "agent-enrolled",
+      assurance: "channel_observed",
+      authAssurance: "channel_observed",
+      bindingId: "binding-enrolled",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "channel-basic",
+      enrollmentId: "enrollment-enrolled",
+      identityProvenance: "sendblue_direct",
+      phoneIdentityId: "phone-enrolled",
+      principalId: "better-auth:existing-user",
+      receiptId: "receipt-enrolled",
+      status: "ready",
+      userId: "existing-user",
+      workspaceId,
+    });
+    capture.provisionChannelEnrollment.mockResolvedValue({
+      agentId: "agent-enrolled",
+      assurance: "channel_observed",
+      authAssurance: "channel_observed",
+      bindingId: "binding-enrolled",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "channel-basic",
+      enrollmentId: "enrollment-enrolled",
+      identityProvenance: "sendblue_direct",
+      phoneIdentityId: "phone-enrolled",
+      principalId: "better-auth:existing-user",
+      receiptId: "receipt-later",
+      status: "ready",
+      userId: "existing-user",
+      workspaceId,
+    });
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({ text: "Can you check yesterday's Square sales?" })
+    );
+
+    expect(capture.provisionChannelEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: "message-1",
+        openingDispatch: "after_intro",
+        openingRequest: { text: "Can you check yesterday's Square sales?" },
+      })
+    );
+    expect(capture.drainOnboarding).toHaveBeenCalledWith(
+      expect.objectContaining({ bindingId: "binding-enrolled" })
+    );
+    expect(capture.send).not.toHaveBeenCalled();
+  });
+
+  it("keeps a same-binding OTP-upgraded enrollment on the durable continuation path with full auth", async () => {
+    capture.findOne.mockResolvedValue(null);
+    capture.resolveChannelEnrollment.mockResolvedValue({
+      agentId: "agent-enrolled",
+      assurance: "otp_verified",
+      authAssurance: "otp_verified",
+      bindingId: "binding-enrolled",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "full",
+      enrollmentId: "enrollment-enrolled",
+      identityProvenance: "phone_otp",
+      phoneIdentityId: "phone-enrolled",
+      principalId: "better-auth:existing-user",
+      receiptId: "receipt-enrolled",
+      status: "ready",
+      userId: "existing-user",
+      workspaceId,
+    });
+    capture.provisionChannelEnrollment.mockResolvedValue({
+      agentId: "agent-enrolled",
+      assurance: "otp_verified",
+      authAssurance: "otp_verified",
+      bindingId: "binding-enrolled",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "full",
+      enrollmentId: "enrollment-enrolled",
+      identityProvenance: "phone_otp",
+      phoneIdentityId: "phone-enrolled",
+      principalId: "better-auth:existing-user",
+      receiptId: "receipt-later",
+      status: "ready",
+      userId: "existing-user",
+      workspaceId,
+    });
+
+    const result = await sendblueChannelConfig.onMessage(
+      { thread },
+      inbound({ text: "Please connect Square." })
+    );
+
+    expect(capture.provisionChannelEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: "message-1" })
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        auth: expect.objectContaining({
+          attributes: expect.objectContaining({
+            authAssurance: "otp_verified",
+            capabilityProfile: "full",
+            identityProvenance: "phone_otp",
+          }),
+        }),
+        drainOnboarding: true,
+      })
+    );
+  });
+
+  it("does not enroll or dispatch a genuinely new sender while enrollment is off", async () => {
+    capture.findOne.mockResolvedValue(null);
+    capture.isTextOnboardingEnabled.mockReturnValue(false);
+
+    await dispatchSendblueMessage(thread, inbound());
+
+    expect(capture.resolveChannelEnrollment).toHaveBeenCalledOnce();
+    expect(capture.provisionChannelEnrollment).not.toHaveBeenCalled();
+    expect(capture.send).not.toHaveBeenCalled();
+  });
+
+  it("keeps the verified SendBlue path available while new enrollment is off", async () => {
+    capture.isTextOnboardingEnabled.mockReturnValue(false);
+
+    await dispatchSendblueMessage(thread, inbound());
+
+    expect(capture.provisionChannelEnrollment).not.toHaveBeenCalled();
+    expect(capture.send).toHaveBeenCalledWith(
+      "hello",
+      expect.objectContaining({
+        auth: expect.objectContaining({
+          attributes: expect.objectContaining({
+            authAssurance: "otp_verified",
+            capabilityProfile: "full",
+            identityProvenance: "phone_otp",
+          }),
+        }),
+        thread,
+      })
+    );
+  });
+
   it("admits a verified bound sender and sends the user turn", async () => {
     await dispatchSendblueMessage(thread, inbound());
     expect(capture.markRead).toHaveBeenCalledWith(thread.id);
@@ -1215,11 +1650,13 @@ describe("SendBlue channel", () => {
   it.each([
     [
       "unverified Better Auth phone",
-      () =>
+      () => {
+        capture.isTextOnboardingEnabled.mockReturnValue(false);
         capture.findOne.mockResolvedValue({
           id: "alice",
           phoneNumberVerified: false,
-        }),
+        });
+      },
     ],
     [
       "unavailable workspace scope",
@@ -1836,6 +2273,443 @@ describe("SendBlue channel", () => {
     expect(capture.post).not.toHaveBeenCalled();
   });
 
+  it("queues a channel-observed text reply and settles only after a provider handle is recorded", async () => {
+    beginFinalMessageDelivery();
+
+    await getSendblueEvent("action.result")(
+      action({
+        output: { kind: "message", text: "Your sales summary is ready." },
+      }),
+      { thread },
+      channelObservedSessionContext()
+    );
+
+    expect(capture.enqueueOnboardingReply).toHaveBeenCalledWith({
+      bindingId: "binding-enrolled",
+      payload: {
+        from: "+12025550123",
+        presentation: { kind: "text" },
+        text: "Your sales summary is ready.",
+        to: "+12025550199",
+        version: 1,
+      },
+      replyKey: "turn-1:call-1:text:0",
+    });
+    expect(capture.drainOnboarding).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bindingId: "binding-enrolled",
+        kinds: ["outbound_reply"],
+      })
+    );
+    expect(capture.getOnboardingReplyDelivery).toHaveBeenCalledWith({
+      bindingId: "binding-enrolled",
+      replyKey: "turn-1:call-1:text:0",
+    });
+    expect(capture.post).not.toHaveBeenCalled();
+    expect(finalDeliveryStatus("turn-1")).toBe("completed");
+  });
+
+  it("allows a later same-binding OTP upgrade to use the normal authorized media path", async () => {
+    const upgradedSession = {
+      session: {
+        auth: {
+          current: {
+            attributes: {
+              authAssurance: "otp_verified",
+              capabilityProfile: "full",
+              channelBindingId: "binding-enrolled",
+              conversationChannel: "sendblue",
+              conversationId: thread.id,
+              identityProvenance: "phone_otp",
+              workspaceId,
+            },
+            authenticator: "sendblue-message",
+            principalId: "better-auth:existing-user",
+            principalType: "user",
+          },
+          initiator: channelObservedSessionContext().session.auth.initiator,
+        },
+        id: "root-session-1",
+      },
+    };
+
+    await getSendblueEvent("action.result")(
+      action({
+        output: {
+          attachments: [
+            { kind: "image", url: "https://media.example/upgraded.png" },
+          ],
+          kind: "message",
+          text: "Here is the report.",
+        },
+      }),
+      { thread },
+      upgradedSession
+    );
+
+    expect(capture.enqueueOnboardingReply).not.toHaveBeenCalled();
+    expect(capture.mediaSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        media_url: "https://media.example/upgraded.png",
+      })
+    );
+    expect(capture.checkBudget).toHaveBeenCalledOnce();
+  });
+
+  it("does not let a different current principal lift observed-channel media restrictions", async () => {
+    const mismatchedCurrent = {
+      session: {
+        auth: {
+          current: {
+            attributes: {
+              authAssurance: "otp_verified",
+              capabilityProfile: "full",
+              channelBindingId: "binding-enrolled",
+              conversationChannel: "sendblue",
+              conversationId: thread.id,
+              identityProvenance: "phone_otp",
+              workspaceId,
+            },
+            authenticator: "sendblue-message",
+            principalId: "better-auth:other-user",
+            principalType: "user",
+          },
+          initiator: channelObservedSessionContext().session.auth.initiator,
+        },
+        id: "root-session-1",
+      },
+    };
+
+    await getSendblueEvent("action.result")(
+      action({
+        output: {
+          attachments: [
+            { kind: "image", url: "https://media.example/blocked.png" },
+          ],
+          kind: "message",
+          text: "Here is the report.",
+        },
+      }),
+      { thread },
+      mismatchedCurrent
+    );
+
+    expect(capture.enqueueOnboardingReply).not.toHaveBeenCalled();
+    expect(capture.mediaSend).not.toHaveBeenCalled();
+    expect(capture.post).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      current: {
+        attributes: {
+          authAssurance: "otp_verified",
+          capabilityProfile: "full",
+          channelBindingId: "binding-enrolled",
+          conversationChannel: "sendblue",
+          conversationId: thread.id,
+          identityProvenance: "phone_otp",
+          workspaceId: "workspace:other",
+        },
+        authenticator: "sendblue-message",
+        principalId: "better-auth:existing-user",
+        principalType: "user",
+      },
+      name: "workspace",
+    },
+    {
+      current: {
+        attributes: {
+          authAssurance: "otp_verified",
+          capabilityProfile: "full",
+          channelBindingId: "binding-enrolled",
+          conversationChannel: "sendblue",
+          conversationId: thread.id,
+          identityProvenance: "phone_otp",
+          workspaceId,
+        },
+        authenticator: "other-authenticator",
+        principalId: "better-auth:existing-user",
+        principalType: "user",
+      },
+      name: "authenticator",
+    },
+  ])(
+    "keeps an observed channel restricted on a mismatched OTP $name",
+    async ({ current }) => {
+      await getSendblueEvent("action.result")(
+        action({
+          output: {
+            attachments: [
+              { kind: "image", url: "https://media.example/blocked.png" },
+            ],
+            kind: "message",
+            text: "Here is the report.",
+          },
+        }),
+        { thread },
+        {
+          session: {
+            auth: {
+              current,
+              initiator: channelObservedSessionContext().session.auth.initiator,
+            },
+            id: "root-session-1",
+          },
+        }
+      );
+
+      expect(capture.enqueueOnboardingReply).not.toHaveBeenCalled();
+      expect(capture.mediaSend).not.toHaveBeenCalled();
+      expect(capture.post).not.toHaveBeenCalled();
+    }
+  );
+
+  it("splits an observed-channel reply at SendBlue's documented limit with stable part keys", async () => {
+    beginFinalMessageDelivery();
+    const text = "a".repeat(18_996 + 3);
+
+    await getSendblueEvent("action.result")(
+      action({ output: { kind: "message", text } }),
+      { thread },
+      channelObservedSessionContext()
+    );
+
+    expect(capture.enqueueOnboardingReply).toHaveBeenCalledTimes(2);
+    expect(capture.enqueueOnboardingReply).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        payload: expect.objectContaining({ text: "a".repeat(18_996) }),
+        replyKey: "turn-1:call-1:text:0",
+      })
+    );
+    expect(capture.enqueueOnboardingReply).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        payload: expect.objectContaining({ text: "aaa" }),
+        replyKey: "turn-1:call-1:text:1",
+      })
+    );
+    expect(capture.getOnboardingReplyDelivery).toHaveBeenCalledWith({
+      bindingId: "binding-enrolled",
+      replyKey: "turn-1:call-1:text:1",
+    });
+    expect(capture.post).not.toHaveBeenCalled();
+    expect(finalDeliveryStatus("turn-1")).toBe("completed");
+  });
+
+  it("queues an observed-channel input prompt before making its answer eligible", async () => {
+    await getSendblueEvent("input.requested")(
+      { ...inputRequest(), turnId: "turn-input" },
+      { thread },
+      channelObservedSessionContext()
+    );
+
+    expect(capture.enqueueOnboardingReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bindingId: "binding-enrolled",
+        replyKey:
+          "input:root-session-1:binding-enrolled:turn-input:request-1:0",
+      })
+    );
+    expect(capture.drainOnboarding).toHaveBeenCalledWith({
+      bindingId: "binding-enrolled",
+      kinds: ["outbound_reply"],
+    });
+    expect(capture.post).not.toHaveBeenCalled();
+    expect(capture.setState).toHaveBeenCalledWith(
+      `pending-input:${thread.id}`,
+      expect.any(Object),
+      expect.any(Number)
+    );
+  });
+
+  it("keeps an observed-channel input prompt recoverable while its durable reply is pending", async () => {
+    capture.getOnboardingReplyDelivery.mockResolvedValueOnce({
+      kind: "pending",
+    });
+
+    await getSendblueEvent("input.requested")(
+      { ...inputRequest(), turnId: "turn-input" },
+      { thread },
+      channelObservedSessionContext()
+    );
+
+    expect(capture.post).not.toHaveBeenCalled();
+    expect(capture.setState).toHaveBeenCalledWith(
+      `pending-input:${thread.id}`,
+      expect.objectContaining({
+        generation:
+          "observed:root-session-1:binding-enrolled:turn-input:request-1",
+      }),
+      expect.any(Number)
+    );
+  });
+
+  it("retains an observed input request while its first provider attempt is pending, then resumes it after recovery", async () => {
+    let stored: StoredPendingInput | null = null;
+    capture.setState.mockImplementation(async (_key, value) => {
+      stored = value as StoredPendingInput;
+    });
+    capture.getState.mockImplementation(async () => stored);
+    capture.getOnboardingReplyDelivery.mockResolvedValueOnce({
+      kind: "pending",
+    });
+    capture.resolveChannelEnrollment.mockResolvedValue({
+      agentId: "agent-enrolled",
+      assurance: "channel_observed",
+      authAssurance: "channel_observed",
+      bindingId: "binding-enrolled",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "channel-basic",
+      enrollmentId: "enrollment-enrolled",
+      identityProvenance: "sendblue_direct",
+      phoneIdentityId: "phone-enrolled",
+      principalId: "better-auth:existing-user",
+      receiptId: "receipt-enrolled",
+      status: "ready",
+      userId: "existing-user",
+      workspaceId,
+    });
+
+    await getSendblueEvent("input.requested")(
+      { ...inputRequest(), turnId: "turn-input" },
+      { thread },
+      channelObservedSessionContext()
+    );
+
+    expect(stored).toEqual(
+      expect.objectContaining({
+        generation:
+          "observed:root-session-1:binding-enrolled:turn-input:request-1",
+        requests: [expect.objectContaining({ requestId: "request-1" })],
+      })
+    );
+
+    // The schedule can accept the already-persisted prompt later. The next
+    // actual inbound answer must still resume Eve, not become an opening task.
+    capture.getOnboardingReplyDelivery.mockResolvedValue({
+      kind: "provider_accepted",
+      providerHandle: "recovered-provider-handle",
+    });
+    await dispatchSendblueMessage(thread, inbound({ text: "yes" }));
+
+    expect(capture.provisionChannelEnrollment).not.toHaveBeenCalled();
+    expect(capture.send).toHaveBeenCalledWith(
+      { inputResponses: [{ optionId: "approve", requestId: "request-1" }] },
+      expect.objectContaining({ thread })
+    );
+  });
+
+  it("does not erase answered observed input on a replayed same-generation prompt", async () => {
+    let stored: StoredPendingInput | null = {
+      generation:
+        "observed:root-session-1:binding-enrolled:turn-input:request-1",
+      requests: pending().requests,
+      responses: [{ optionId: "approve", requestId: "request-1" }],
+      workspaceId,
+    };
+    capture.getState.mockImplementation(async () => stored);
+    capture.setState.mockImplementation(async (_key, value) => {
+      stored = value as StoredPendingInput;
+    });
+
+    await getSendblueEvent("input.requested")(
+      { ...inputRequest(), turnId: "turn-input" },
+      { thread },
+      channelObservedSessionContext()
+    );
+
+    expect(stored.responses).toEqual([
+      { optionId: "approve", requestId: "request-1" },
+    ]);
+  });
+
+  it("persists the prior observed answer before a delayed second prompt, then resumes both answers", async () => {
+    let stored: StoredPendingInput | null = {
+      generation: "generation-1",
+      requests: [
+        firstPendingRequest(),
+        {
+          allowFreeform: true,
+          kind: "question",
+          prompt: "What is the second answer?",
+          requestId: "request-2",
+        },
+      ],
+      responses: [],
+      workspaceId,
+    };
+    capture.getState.mockImplementation(async () => stored);
+    capture.setState.mockImplementation(async (_key, value) => {
+      stored = value as StoredPendingInput;
+    });
+    capture.getOnboardingReplyDelivery.mockResolvedValueOnce({
+      kind: "pending",
+    });
+    capture.resolveChannelEnrollment.mockResolvedValue({
+      agentId: "agent-enrolled",
+      assurance: "channel_observed",
+      authAssurance: "channel_observed",
+      bindingId: "binding-enrolled",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "channel-basic",
+      enrollmentId: "enrollment-enrolled",
+      identityProvenance: "sendblue_direct",
+      phoneIdentityId: "phone-enrolled",
+      principalId: "better-auth:existing-user",
+      receiptId: "receipt-enrolled",
+      status: "ready",
+      userId: "existing-user",
+      workspaceId,
+    });
+
+    await dispatchSendblueMessage(thread, inbound({ text: "yes" }));
+
+    expect(stored).toEqual(
+      expect.objectContaining({
+        responses: [{ optionId: "approve", requestId: "request-1" }],
+      })
+    );
+    expect(capture.provisionChannelEnrollment).not.toHaveBeenCalled();
+
+    capture.getOnboardingReplyDelivery.mockResolvedValue({
+      kind: "provider_accepted",
+      providerHandle: "recovered-provider-handle",
+    });
+    await dispatchSendblueMessage(
+      thread,
+      inbound({ messageId: "message-2", text: "second answer" })
+    );
+
+    expect(capture.provisionChannelEnrollment).not.toHaveBeenCalled();
+    expect(capture.send).toHaveBeenCalledWith(
+      {
+        inputResponses: [
+          { optionId: "approve", requestId: "request-1" },
+          { requestId: "request-2", text: "second answer" },
+        ],
+      },
+      expect.objectContaining({ thread })
+    );
+  });
+
+  it("queues an observed-channel failure response instead of bypassing its outbound ceiling", async () => {
+    await getSendblueEvent("turn.failed")(
+      { turnId: "turn-failure" },
+      { thread },
+      channelObservedSessionContext()
+    );
+
+    expect(capture.enqueueOnboardingReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bindingId: "binding-enrolled",
+        replyKey: "turn-failed:root-session-1:turn-failure:0",
+      })
+    );
+    expect(capture.post).not.toHaveBeenCalled();
+  });
+
   it("suppresses the automatic fallback after an unconfirmed progress send", async () => {
     capture.post.mockRejectedValueOnce(new Error("provider timeout"));
     await expect(
@@ -2337,20 +3211,22 @@ describe("SendBlue channel", () => {
 function inbound(
   overrides: Partial<{
     readonly attachments: readonly unknown[];
+    readonly messageId: string;
     readonly text: string;
   }> = {}
 ): Parameters<typeof dispatchSendblueMessage>[1] {
+  const messageId = overrides.messageId ?? "message-1";
   return {
     attachments: [],
     author: { isBot: false, userName: "+12025550199" },
-    id: "message-1",
+    id: messageId,
     raw: {
       accountEmail: "account@example.test",
       content: "hello",
       from_number: "+12025550199",
       group_id: "",
       is_outbound: false,
-      message_handle: "message-1",
+      message_handle: messageId,
       message_type: "message",
       sendblue_number: "+12025550123",
       service: "iMessage",
@@ -2439,6 +3315,30 @@ function sessionContext() {
         current: {
           attributes: { workspaceId },
           principalId: "better-auth:alice",
+          principalType: "user",
+        },
+      },
+      id: "root-session-1",
+    },
+  };
+}
+
+function channelObservedSessionContext() {
+  return {
+    session: {
+      auth: {
+        initiator: {
+          attributes: {
+            authAssurance: "channel_observed",
+            capabilityProfile: "channel-basic",
+            channelBindingId: "binding-enrolled",
+            conversationChannel: "sendblue",
+            conversationId: thread.id,
+            identityProvenance: "sendblue_direct",
+            workspaceId,
+          },
+          authenticator: "sendblue-message",
+          principalId: "better-auth:existing-user",
           principalType: "user",
         },
       },

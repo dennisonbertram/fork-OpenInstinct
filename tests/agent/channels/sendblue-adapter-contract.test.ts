@@ -252,7 +252,19 @@ defineMessagingProviderContract("SendBlue", () => ({
         ],
       },
       { thread: { id: "sendblue:provider-contract", post } },
-      { session: { auth: { current: {}, initiator: null } } }
+      {
+        session: {
+          auth: {
+            current: {
+              attributes: {},
+              authenticator: "provider-contract",
+              principalId: "provider-contract",
+              principalType: "user",
+            },
+            initiator: null,
+          },
+        },
+      }
     );
     const raw = post.mock.calls[0]?.[0];
     return raw?.raw ?? "";

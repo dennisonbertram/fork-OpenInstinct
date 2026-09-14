@@ -13,6 +13,7 @@ being considered. Documents use three labels deliberately:
 | Reader                | Document                                                           | Purpose                                                                                                                |
 | --------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | Operator              | [`operations/VERCEL.md`](operations/VERCEL.md)                     | Zero-to-running local and Vercel setup, Linq, verification, rollback, and incidents                                    |
+| Operator              | [`operations/TEXT_ONBOARDING.md`](operations/TEXT_ONBOARDING.md)   | Text-first enrollment gates, recovery, rollback, and fresh-phone acceptance                                            |
 | Coding agent          | [`AGENT_GUIDE.md`](AGENT_GUIDE.md)                                 | Repository topology, ownership boundaries, change recipes, and gates                                                   |
 | Developer/operator    | [`AGENT_DEVELOPMENT.md`](AGENT_DEVELOPMENT.md)                     | Developer lifecycle, verification, diagnostics, deployment identity, and acceptance evidence                           |
 | Architect             | [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md)                 | Current system, trust boundaries, findings, and portability limits                                                     |
@@ -55,6 +56,12 @@ runtime instructions.
 - Linq and SendBlue channel adapters are implemented in the repository. Which
   provider is enabled is deployment-specific; live provider evidence remains
   separate from model-free contract evidence.
+- Plan 026 text-first enrollment is locally implemented and verified, awaiting
+  its reviewed PR and merge; activation remains off by default
+  (`SENDBLUE_TEXT_ONBOARDING=off`). Its channel-observed assurance, isolated
+  provisioning, durable welcome operations, STOP handling, and uncertain
+  delivery recovery are local implementation facts, not production onboarding
+  proof. See the text-onboarding runbook for the acceptance and rollback gates.
 - `workspace` is the intended customer, isolation, billing, and lifecycle
   boundary. A future `agent` is a separately configurable resource owned by a
   workspace.

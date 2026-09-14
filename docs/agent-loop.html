@@ -148,6 +148,22 @@
     color: var(--muted);
     max-width: 90ch;
   }
+  .onboarding {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--park);
+    background: var(--park-soft);
+    color: var(--ink);
+    font-size: 13px;
+  }
+  .onboarding strong,
+  .onboarding code {
+    color: var(--park);
+  }
+  .onboarding code {
+    font-family: var(--mono);
+    font-size: 12px;
+  }
   figcaption code,
   p code,
   td code {
@@ -216,7 +232,9 @@
     <p>
       How one user message becomes one reply. Every box names the file that owns
       it. eve runs the loop as a durable workflow; the project supplies the
-      channels, hooks, tools, skills, and instructions around it.
+      channels, hooks, tools, skills, and instructions around it. The first-text
+      branch additionally admits a channel-observed principal, provisions an
+      isolated scope, persists welcome/card operations, and drains them safely.
     </p>
   </header>
 
@@ -227,7 +245,7 @@
       <svg
         viewBox="0 0 1160 560"
         role="img"
-        aria-label="One turn end to end: a message arrives on iMessage through Linq or on the web chat, is mapped to a Better Auth user and workspace scope, wakes a durable eve session, runs a turn of checkpointed steps, and the final message is split into iMessage bubbles or streamed to the web chat."
+        aria-label="One turn end to end: a message arrives on iMessage through Linq or SendBlue or on web chat; a verified user or channel-observed new sender is mapped to an isolated workspace scope; onboarding persists the opening receipt and welcome/card outbox before a durable Eve session runs; provider acceptance is distinguished from delivered or uncertain status; STOP cancels unsent work; and optional web OTP or Square access remains a later upgrade."
       >
         <defs>
           <marker
@@ -539,30 +557,43 @@
         </text>
       </svg>
     </div>
+    <div class="onboarding" aria-label="First text onboarding branch">
+      <strong>FIRST TEXT ONBOARDING · eligible SendBlue sender</strong><br />
+      <code>db/services/channel-onboarding.ts</code> provisions the isolated
+      scope and binding, opening receipt, and welcome/card outbox →
+      <code>agent/lib/onboarding/delivery.ts</code> plus
+      <code>agent/schedules/channel-onboarding.ts</code> recover delivery →
+      normal scoped Eve turn. <strong>STOP</strong> cancels unsent work; web OTP
+      is a later upgrade.
+    </div>
     <figcaption>
-      One turn end to end. All three channels resolve to the same principal and
-      verified workspace scope before eve sees the message. After authentication
-      and before dispatch, Linq and SendBlue fetch candidate images, inspect
-      their bytes, convert HEIC to JPEG, and withhold images they cannot
-      prepare. Linq and SendBlue resolve an owned conversation binding and
-      atomically claim each inbound provider message ID. Its Chat SDK locks and
-      pending input IDs live in Postgres, so an exact text reply resumes the
-      parked Eve request rather than starting a new model turn. The session,
-      vault, Square grant, and usage ledger all key on that scope. Patched Eve
-      forwards a context entry an older bundle cannot read without interpreting
-      or deleting it; a compatible bundle can hydrate it later. This does not
-      retroactively repair a root that an earlier deployed revision already
-      drove. If completion state is absent, recovery compares typed task
-      terminals with durable report parts. Only known, latest, complete accepted
-      coverage is delivered; partial or ambiguous history is unconfirmed and is
-      never automatically resent. A fresh request with no current report
-      obligation can therefore send its own text without old task content. A
-      report-only wake binds every currently owed cohort. Before a physical
-      report reaches the provider, its whole roster is claimed and marked
-      attempted together; acceptance is then recorded for that roster. An exact
-      SendBlue callback replay after completed or unconfirmed final delivery is
-      skipped. Provider acceptance is not evidence that the recipient received
-      or read a message.
+      One turn end to end. Existing users resolve to verified workspace scope; a
+      new eligible text sender takes the channel-observed assurance branch,
+      which claims the inbound, provisions an isolated workspace and binding,
+      and persists the opening receipt plus ordered welcome operations with
+      optional cards selected by the configured mode before eve sees the
+      message. STOP suppresses onboarding and cancels unsent work. After
+      authentication and before dispatch, Linq and SendBlue fetch candidate
+      images, inspect their bytes, convert HEIC to JPEG, and withhold images
+      they cannot prepare. Linq and SendBlue resolve an owned conversation
+      binding and atomically claim each inbound provider message ID. Its Chat
+      SDK locks and pending input IDs live in Postgres, so an exact text reply
+      resumes the parked Eve request rather than starting a new model turn. The
+      session, vault, Square grant, and usage ledger all key on that scope.
+      Patched Eve forwards a context entry an older bundle cannot read without
+      interpreting or deleting it; a compatible bundle can hydrate it later.
+      This does not retroactively repair a root that an earlier deployed
+      revision already drove. If completion state is absent, recovery compares
+      typed task terminals with durable report parts. Only known, latest,
+      complete accepted coverage is delivered; partial or ambiguous history is
+      unconfirmed and is never automatically resent. A fresh request with no
+      current report obligation can therefore send its own text without old task
+      content. A report-only wake binds every currently owed cohort. Before a
+      physical report reaches the provider, its whole roster is claimed and
+      marked attempted together; acceptance is then recorded for that roster. An
+      exact SendBlue callback replay after completed or unconfirmed final
+      delivery is skipped. Provider acceptance is not evidence that the
+      recipient received or read a message.
     </figcaption>
   </figure>
 

@@ -38,6 +38,7 @@ const useLocalInstallationDefaults =
 const requiredValue = z
   .string()
   .refine((value) => value.trim().length > 0, "Required");
+const positiveInteger = z.coerce.number().int().positive();
 
 const buildSha256Schema = z.string().regex(/^[a-f0-9]{64}$/i);
 const buildVersionSchema = z.string().regex(/^\d+\.\d+\.\d+$/);
@@ -122,6 +123,21 @@ export const env = createEnv({
     SENDBLUE_API_KEY_ID: requiredValue.optional(),
     SENDBLUE_API_SECRET_KEY: requiredValue.optional(),
     SENDBLUE_CONVERSATIONS: z.enum(["on", "off"]).default("off"),
+    // New-sender enrollment is a separately gated product path. Operators set
+    // the limits; this code intentionally does not invent provider quotas.
+    SENDBLUE_TEXT_ONBOARDING: z.enum(["on", "off"]).default("off"),
+    SENDBLUE_TEXT_ONBOARDING_MAX_ENROLLMENTS_PER_SENDER:
+      positiveInteger.optional(),
+    SENDBLUE_TEXT_ONBOARDING_MAX_MODEL_TURNS_PER_DAY:
+      positiveInteger.optional(),
+    SENDBLUE_TEXT_ONBOARDING_MAX_OUTBOUND_MESSAGES_PER_DAY:
+      positiveInteger.optional(),
+    // The provider API supports several media formats, but a line's usable
+    // capability is an operational fact. Enrollment therefore requires an
+    // explicit choice rather than silently selecting a format.
+    SENDBLUE_TEXT_ONBOARDING_CARD_DELIVERY: z
+      .enum(["disabled", "carousel", "single_media"])
+      .optional(),
     SENDBLUE_ACCOUNT_ID: requiredValue.optional(),
     SENDBLUE_WEBHOOK_SECRET: requiredValue.optional(),
     SENDBLUE_FROM_NUMBER: requiredValue
@@ -182,6 +198,23 @@ export const env = createEnv({
       )
       .refine(
         (value) =>
+          value.SENDBLUE_TEXT_ONBOARDING !== "on" ||
+          (value.SENDBLUE_CONVERSATIONS === "on" &&
+            value.SENDBLUE_TEXT_ONBOARDING_MAX_ENROLLMENTS_PER_SENDER !==
+              undefined &&
+            value.SENDBLUE_TEXT_ONBOARDING_MAX_MODEL_TURNS_PER_DAY !==
+              undefined &&
+            value.SENDBLUE_TEXT_ONBOARDING_MAX_OUTBOUND_MESSAGES_PER_DAY !==
+              undefined &&
+            value.SENDBLUE_TEXT_ONBOARDING_CARD_DELIVERY !== undefined),
+        {
+          message:
+            "SENDBLUE_TEXT_ONBOARDING=on requires SendBlue conversations, all operator-approved enrollment/model-turn/outbound-message bounds, and an explicit card-delivery capability.",
+          path: ["SENDBLUE_TEXT_ONBOARDING"],
+        }
+      )
+      .refine(
+        (value) =>
           value.WORKSPACE_SCOPE_ENFORCEMENT !== "off" ||
           (value.NODE_ENV !== "production" &&
             value.VERCEL_ENV !== "production"),
@@ -222,6 +255,10 @@ export function isContractFixtureEnabled() {
 
 export function isWorkflowResumeTimingEnabled() {
   return env.WORKFLOW_RESUME_TIMING === "on";
+}
+
+export function isSendblueTextOnboardingEnabled() {
+  return env.SENDBLUE_TEXT_ONBOARDING === "on";
 }
 
 const featureFlags = {

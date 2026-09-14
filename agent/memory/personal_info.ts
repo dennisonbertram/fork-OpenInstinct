@@ -15,11 +15,12 @@ import {
   userProfilePatchSchema,
   userProfileSchema,
 } from "@/lib/user-profile";
-import { resolveModeValue } from "../lib/mode";
+import { isChannelObservedSession, resolveModeValue } from "../lib/mode";
 
 function resolvePersonalInfoAccessScope(
   context: Pick<MemoryScopeContext | SessionContext, "session">
 ): AccessScope | null {
+  if (isChannelObservedSession(context)) return null;
   const caller = [
     context.session.auth.current,
     context.session.auth.initiator,

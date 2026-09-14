@@ -254,6 +254,7 @@ function resolveMessaging(
   const interactive = { react_to_message, send_message };
 
   return resolveModeValue<typeof interactive | typeof sendOnly>(context, {
+    "channel-observed": sendOnly,
     // While a written summary is owed, offering a reaction invites the model to
     // answer with one. Removing it is the structural half of the guard; the
     // executor check above is what holds if the model calls it anyway.

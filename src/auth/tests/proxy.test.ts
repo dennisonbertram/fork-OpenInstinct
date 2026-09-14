@@ -56,6 +56,17 @@ describe("auth proxy matcher", () => {
     expect(getAuthSession).not.toHaveBeenCalled();
   });
 
+  it("allows only the channel-onboarding schedule dispatcher without a browser session", async () => {
+    const response = await proxy(
+      new NextRequest(
+        "http://localhost:3000/eve/v1/dev/schedules/channel-onboarding"
+      )
+    );
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(getAuthSession).not.toHaveBeenCalled();
+  });
+
   it("leaves only the SendBlue webhook route to its channel secret check", async () => {
     const response = await proxy(
       new NextRequest("http://localhost:3000/eve/v1/sendblue")
@@ -63,6 +74,28 @@ describe("auth proxy matcher", () => {
 
     expect(response.headers.get("x-middleware-next")).toBe("1");
     expect(getAuthSession).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "/onboarding/example-1.png",
+    "/onboarding/example-2.png",
+    "/onboarding/example-3.png",
+  ])("allows the public SendBlue onboarding asset %s", async (pathname) => {
+    const response = await proxy(
+      new NextRequest(`http://localhost:3000${pathname}`)
+    );
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(getAuthSession).not.toHaveBeenCalled();
+  });
+
+  it("continues to protect arbitrary onboarding files", async () => {
+    const response = await proxy(
+      new NextRequest("http://localhost:3000/onboarding/private.png")
+    );
+
+    expect(response.headers.get("location")).toContain("/sign-in");
+    expect(getAuthSession).toHaveBeenCalledOnce();
   });
 
   it("continues to protect unrelated Eve routes", async () => {

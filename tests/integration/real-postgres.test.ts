@@ -2,10 +2,13 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { createPostgresState } from "@chat-adapter/state-pg";
 import { Pool } from "pg";
 import { afterAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   resetDatabaseForIntegrationTest,
   setDatabaseForIntegrationTest,
 } from "@/db";
+import { env } from "@/env";
+import type { ChannelOnboardingBudgetTransaction } from "@/db/services/channel-onboarding-budgets";
 import {
   claimCompletionReportBundle,
   claimCompletionReportPart,
@@ -24,7 +27,24 @@ import * as schema from "../../db/schema";
 import { createRealPostgres } from "../harness/real-postgres";
 
 const realPostgres = await createRealPostgres();
+const persistedPhotoContentSchema = z.tuple([
+  z.object({ text: z.string(), type: z.literal("text") }),
+  z.object({
+    data: z.instanceof(URL),
+    mediaType: z.literal("image/jpeg"),
+    type: z.literal("file"),
+  }),
+]);
+
+function onboardingQuotaScope(
+  providerLineId: string,
+  providerAccountId: string
+) {
+  return { provider: "sendblue" as const, providerAccountId, providerLineId };
+}
 const originalAdminPhoneNumbers = adminDependencies.adminPhoneNumbers;
+const restartFixtureJpeg =
+  "data:image/jpeg;base64,/9j/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAABgj/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABykX//Z";
 
 afterAll(async () => {
   await realPostgres?.close();
@@ -172,6 +192,532 @@ describe.skipIf(realPostgres === undefined)(
         );
         expect(rows).toHaveLength(1);
       } finally {
+        resetDatabaseForIntegrationTest();
+        await pool.end();
+      }
+    });
+
+    it("provisions concurrent channel events through separate Postgres connections", async () => {
+      if (!realPostgres) throw new Error("Real Postgres was not initialized.");
+      const pool = new Pool({
+        connectionString: realPostgres.connectionString,
+        max: 2,
+      });
+      const database = drizzle({ client: pool, schema });
+      setDatabaseForIntegrationTest(database);
+      const providerAccountId = "sendblue/real-pg-concurrency";
+      const providerLineId = "+12025550991";
+      const providerConversationId = "sendblue:real-pg-concurrency";
+      const restartAccountId = "sendblue/real-pg-restart";
+      const restartLineId = "+12025550996";
+      const restartConversationId = "sendblue:real-pg-restart";
+      const restartPhone = "+12025550997";
+      const originalLimits = {
+        enrollments: env.SENDBLUE_TEXT_ONBOARDING_MAX_ENROLLMENTS_PER_SENDER,
+        modelTurns: env.SENDBLUE_TEXT_ONBOARDING_MAX_MODEL_TURNS_PER_DAY,
+        outboundMessages:
+          env.SENDBLUE_TEXT_ONBOARDING_MAX_OUTBOUND_MESSAGES_PER_DAY,
+      };
+
+      try {
+        Object.assign(env, {
+          SENDBLUE_TEXT_ONBOARDING_MAX_ENROLLMENTS_PER_SENDER: 1,
+          SENDBLUE_TEXT_ONBOARDING_MAX_MODEL_TURNS_PER_DAY: 2,
+          SENDBLUE_TEXT_ONBOARDING_MAX_OUTBOUND_MESSAGES_PER_DAY: 2,
+        });
+        const service = await import("@/db/services/channel-onboarding");
+        const budgets =
+          await import("@/db/services/channel-onboarding-budgets");
+        await pool.query(
+          `INSERT INTO platform_lines (id, provider, provider_line_id)
+           VALUES ($1, 'sendblue', $2)`,
+          ["line-real-pg-concurrency", providerLineId]
+        );
+        const connections = await Promise.all([pool.connect(), pool.connect()]);
+        connections.forEach((connection) => {
+          connection.release();
+        });
+
+        const firstEvents = await Promise.all([
+          service.provisionChannelEnrollment({
+            messageId: "real-pg-message-1",
+            phoneNumber: "+12025550992",
+            provider: "sendblue",
+            providerAccountId,
+            providerConversationId,
+            providerLineId,
+            welcomeParts: onboardingWelcomeParts(
+              providerLineId,
+              "+12025550992"
+            ),
+          }),
+          service.provisionChannelEnrollment({
+            messageId: "real-pg-message-2",
+            phoneNumber: "+12025550992",
+            provider: "sendblue",
+            providerAccountId,
+            providerConversationId,
+            providerLineId,
+            welcomeParts: onboardingWelcomeParts(
+              providerLineId,
+              "+12025550992"
+            ),
+          }),
+        ]);
+        expect(firstEvents.every((result) => result.status === "ready")).toBe(
+          true
+        );
+        expect(new Set(firstEvents.map((result) => result.userId)).size).toBe(
+          1
+        );
+
+        const duplicate = await service.provisionChannelEnrollment({
+          messageId: "real-pg-message-1",
+          phoneNumber: "+12025550992",
+          provider: "sendblue",
+          providerAccountId,
+          providerConversationId,
+          providerLineId,
+          welcomeParts: onboardingWelcomeParts(providerLineId, "+12025550992"),
+        });
+        expect(duplicate).toMatchObject({ status: "ready" });
+
+        const otherSender = await service.provisionChannelEnrollment({
+          messageId: "real-pg-message-other",
+          phoneNumber: "+12025550993",
+          provider: "sendblue",
+          providerAccountId,
+          providerConversationId: "sendblue:real-pg-other",
+          providerLineId,
+          welcomeParts: onboardingWelcomeParts(providerLineId, "+12025550993"),
+        });
+        expect(otherSender).toMatchObject({ status: "ready" });
+        expect(otherSender.userId).not.toBe(firstEvents[0].userId);
+        expect(otherSender.workspaceId).not.toBe(firstEvents[0].workspaceId);
+
+        const quotaNow = new Date("2026-09-14T12:00:00.000Z");
+        await expect(
+          budgets.reserveChannelOnboardingModelTurn({
+            now: quotaNow,
+            requestKey: "real-pg-model-seed",
+            scope: onboardingQuotaScope(providerLineId, providerAccountId),
+          })
+        ).resolves.toEqual({ kind: "reserved" });
+        const modelResults = await concurrentlyReserveQuota(pool, [
+          (transaction) =>
+            budgets.reserveChannelOnboardingModelTurn({
+              now: quotaNow,
+              requestKey: "real-pg-model-line-a",
+              scope: onboardingQuotaScope(providerLineId, providerAccountId),
+              transaction,
+            }),
+          (transaction) =>
+            budgets.reserveChannelOnboardingModelTurn({
+              now: quotaNow,
+              requestKey: "real-pg-model-line-b",
+              scope: onboardingQuotaScope("+12025550994", providerAccountId),
+              transaction,
+            }),
+        ]);
+        expect(
+          modelResults.filter((result) => result.kind === "reserved")
+        ).toHaveLength(1);
+        expect(
+          modelResults.filter((result) => result.kind === "limit_reached")
+        ).toHaveLength(1);
+        const acceptedModelKey =
+          modelResults[0]?.kind === "reserved"
+            ? "real-pg-model-line-a"
+            : "real-pg-model-line-b";
+        await expect(
+          budgets.reserveChannelOnboardingModelTurn({
+            now: quotaNow,
+            requestKey: acceptedModelKey,
+            scope: onboardingQuotaScope("+12025550995", providerAccountId),
+          })
+        ).resolves.toEqual({ kind: "already_reserved" });
+        await expect(
+          budgets.reserveChannelOnboardingModelTurn({
+            now: quotaNow,
+            requestKey: "real-pg-model-other-account",
+            scope: onboardingQuotaScope(
+              providerLineId,
+              "sendblue/real-pg-other-account"
+            ),
+          })
+        ).resolves.toEqual({ kind: "reserved" });
+
+        await expect(
+          budgets.reserveChannelOnboardingOutboundMessage({
+            now: quotaNow,
+            requestKey: "real-pg-outbound-seed",
+            scope: onboardingQuotaScope(providerLineId, providerAccountId),
+          })
+        ).resolves.toEqual({ kind: "reserved" });
+        const outboundResults = await concurrentlyReserveQuota(pool, [
+          (transaction) =>
+            budgets.reserveChannelOnboardingOutboundMessage({
+              now: quotaNow,
+              requestKey: "real-pg-outbound-line-a",
+              scope: onboardingQuotaScope(providerLineId, providerAccountId),
+              transaction,
+            }),
+          (transaction) =>
+            budgets.reserveChannelOnboardingOutboundMessage({
+              now: quotaNow,
+              requestKey: "real-pg-outbound-line-b",
+              scope: onboardingQuotaScope("+12025550994", providerAccountId),
+              transaction,
+            }),
+        ]);
+        expect(
+          outboundResults.filter((result) => result.kind === "reserved")
+        ).toHaveLength(1);
+        expect(
+          outboundResults.filter((result) => result.kind === "limit_reached")
+        ).toHaveLength(1);
+        const acceptedOutboundKey =
+          outboundResults[0]?.kind === "reserved"
+            ? "real-pg-outbound-line-a"
+            : "real-pg-outbound-line-b";
+        await expect(
+          budgets.reserveChannelOnboardingOutboundMessage({
+            now: quotaNow,
+            requestKey: acceptedOutboundKey,
+            scope: onboardingQuotaScope("+12025550995", providerAccountId),
+          })
+        ).resolves.toEqual({ kind: "already_reserved" });
+        await expect(
+          budgets.reserveChannelOnboardingOutboundMessage({
+            now: quotaNow,
+            requestKey: "real-pg-outbound-other-account",
+            scope: onboardingQuotaScope(
+              providerLineId,
+              "sendblue/real-pg-other-account"
+            ),
+          })
+        ).resolves.toEqual({ kind: "reserved" });
+
+        await expect(
+          pool.query<{
+            users: number;
+            workspaces: number;
+            bindings: number;
+            receipts: number;
+          }>(
+            `SELECT
+               (SELECT count(DISTINCT e.user_id) FROM channel_onboarding_enrollments e
+                INNER JOIN channel_onboarding_receipts r ON r.enrollment_id = e.id
+                WHERE r.provider = 'sendblue' AND r.provider_account_id = $1)::int AS users,
+               (SELECT count(DISTINCT e.workspace_id) FROM channel_onboarding_enrollments e
+                INNER JOIN channel_onboarding_receipts r ON r.enrollment_id = e.id
+                WHERE r.provider = 'sendblue' AND r.provider_account_id = $1)::int AS workspaces,
+               (SELECT count(*) FROM channel_conversations
+                WHERE provider = 'sendblue' AND provider_account_id = $1)::int AS bindings,
+               (SELECT count(*) FROM channel_onboarding_receipts
+                WHERE provider = 'sendblue' AND provider_account_id = $1)::int AS receipts`,
+            [providerAccountId]
+          )
+        ).resolves.toMatchObject({
+          rows: [{ users: 2, workspaces: 2, bindings: 2, receipts: 3 }],
+        });
+
+        // This uses two independent client pools against the same PostgreSQL
+        // database. It is the actual consumer/process boundary: only the
+        // transactionally persisted receipt and lease survive the first pool.
+        await pool.query(
+          `INSERT INTO platform_lines (id, provider, provider_line_id)
+           VALUES ($1, 'sendblue', $2)`,
+          ["line-real-pg-restart", restartLineId]
+        );
+        const firstConsumerPool = new Pool({
+          connectionString: realPostgres.connectionString,
+        });
+        setDatabaseForIntegrationTest(
+          drizzle({ client: firstConsumerPool, schema })
+        );
+        const restartEnrollment = await service.provisionChannelEnrollment({
+          messageId: "real-pg-restart-message-1",
+          openingRequest: {
+            attachments: [
+              {
+                contentType: "image/jpeg",
+                privateData: restartFixtureJpeg.split(",")[1] ?? "",
+              },
+            ],
+            text: "What is in this persisted photo?",
+          },
+          phoneNumber: restartPhone,
+          provider: "sendblue",
+          providerAccountId: restartAccountId,
+          providerConversationId: restartConversationId,
+          providerLineId: restartLineId,
+          welcomeParts: onboardingWelcomeParts(restartLineId, restartPhone),
+        });
+        if (restartEnrollment.status !== "ready") {
+          throw new Error("Expected the restart enrollment.");
+        }
+        const delivery =
+          await import("@/db/services/channel-onboarding-delivery");
+        const [oldClaim] = await delivery.claimChannelOnboardingOperations({
+          bindingId: restartEnrollment.bindingId,
+          leaseForMs: 1_000,
+          limit: 1,
+          now: quotaNow,
+          owner: "consumer-before-crash",
+        });
+        if (!oldClaim) throw new Error("Expected the first pre-crash lease.");
+        await firstConsumerPool.end();
+
+        const restartedPool = new Pool({
+          connectionString: realPostgres.connectionString,
+        });
+        setDatabaseForIntegrationTest(
+          drizzle({ client: restartedPool, schema })
+        );
+        try {
+          const afterCrash = new Date(quotaNow.getTime() + 1_001);
+          const [replacement] = await delivery.claimChannelOnboardingOperations(
+            {
+              bindingId: restartEnrollment.bindingId,
+              leaseForMs: 1_000,
+              limit: 1,
+              now: afterCrash,
+              owner: "consumer-after-crash",
+            }
+          );
+          if (!replacement) throw new Error("Expected the recovered lease.");
+          expect(replacement.id).toBe(oldClaim.id);
+          await expect(
+            delivery.markChannelOnboardingOperationAttempted(
+              oldClaim,
+              afterCrash
+            )
+          ).resolves.toBe(false);
+          await expect(
+            delivery.markChannelOnboardingOperationAttempted(
+              replacement,
+              afterCrash
+            )
+          ).resolves.toBe(true);
+          await expect(
+            delivery.acceptChannelOnboardingProviderOperation(
+              { ...replacement, providerHandle: "restart-welcome-1" },
+              afterCrash
+            )
+          ).resolves.toBe(true);
+
+          const [secondWelcome] =
+            await delivery.claimChannelOnboardingOperations({
+              bindingId: restartEnrollment.bindingId,
+              leaseForMs: 1_000,
+              limit: 1,
+              now: afterCrash,
+              owner: "consumer-after-crash",
+            });
+          if (!secondWelcome) throw new Error("Expected the second welcome.");
+          await expect(
+            delivery.markChannelOnboardingOperationAttempted(
+              secondWelcome,
+              afterCrash
+            )
+          ).resolves.toBe(true);
+          await expect(
+            delivery.acceptChannelOnboardingProviderOperation(
+              { ...secondWelcome, providerHandle: "restart-welcome-2" },
+              afterCrash
+            )
+          ).resolves.toBe(true);
+
+          const laterOpening = await service.provisionChannelEnrollment({
+            messageId: "real-pg-restart-message-2",
+            openingRequest: { text: "A later durable request." },
+            phoneNumber: restartPhone,
+            provider: "sendblue",
+            providerAccountId: restartAccountId,
+            providerConversationId: restartConversationId,
+            providerLineId: restartLineId,
+          });
+          if (laterOpening.status !== "ready") {
+            throw new Error("Expected the later opening receipt.");
+          }
+
+          const [opening] = await delivery.claimChannelOnboardingOperations({
+            bindingId: restartEnrollment.bindingId,
+            leaseForMs: 1_000,
+            limit: 1,
+            now: afterCrash,
+            owner: "consumer-after-crash",
+          });
+          if (opening?.kind !== "opening_request") {
+            throw new Error(
+              "Expected the original opening request after restart."
+            );
+          }
+          const { projectPersistedOperation } =
+            await import("@/agent/lib/onboarding/delivery");
+          const projected = await projectPersistedOperation(opening);
+          if (projected.kind !== "opening_request") {
+            throw new Error("Expected an Eve opening projection.");
+          }
+          const [, photo] = persistedPhotoContentSchema.parse(
+            projected.payload
+          );
+          expect(
+            Buffer.from(photo.data.href.split(",")[1] ?? "", "base64")
+          ).toEqual(
+            Buffer.from(restartFixtureJpeg.split(",")[1] ?? "", "base64")
+          );
+
+          const competingOpeningClaims = await Promise.all([
+            delivery.claimChannelOnboardingOperations({
+              bindingId: restartEnrollment.bindingId,
+              kinds: ["opening_request"],
+              leaseForMs: 1_000,
+              limit: 1,
+              now: afterCrash,
+              owner: "opening-owner-competing-a",
+            }),
+            delivery.claimChannelOnboardingOperations({
+              bindingId: restartEnrollment.bindingId,
+              kinds: ["opening_request"],
+              leaseForMs: 1_000,
+              limit: 1,
+              now: afterCrash,
+              owner: "opening-owner-competing-b",
+            }),
+          ]);
+          expect(competingOpeningClaims.flat()).toEqual([]);
+          await expect(
+            delivery.markChannelOnboardingOperationAttempted(
+              opening,
+              afterCrash
+            )
+          ).resolves.toBe(true);
+          await expect(
+            delivery.acceptChannelOnboardingHandoffOperation(
+              { ...opening, sessionId: "restart-opening-1" },
+              afterCrash
+            )
+          ).resolves.toBe(true);
+          const secondOpeningClaims =
+            await delivery.claimChannelOnboardingOperations({
+              bindingId: restartEnrollment.bindingId,
+              kinds: ["opening_request"],
+              leaseForMs: 1_000,
+              limit: 1,
+              now: afterCrash,
+              owner: "opening-owner-second",
+            });
+          expect(secondOpeningClaims).toHaveLength(1);
+          const [secondOpening] = secondOpeningClaims;
+          expect(secondOpening?.kind).toBe("opening_request");
+          expect(secondOpening?.id).not.toBe(opening.id);
+
+          const replyPayload = {
+            from: restartLineId,
+            presentation: { kind: "text" as const },
+            text: "First durable reply part.",
+            to: restartPhone,
+            version: 1 as const,
+          };
+          const firstReply =
+            await delivery.enqueueChannelOnboardingOutboundReply({
+              bindingId: restartEnrollment.bindingId,
+              payload: replyPayload,
+              replyKey: "restart:turn-1:part-0",
+            });
+          const secondReply =
+            await delivery.enqueueChannelOnboardingOutboundReply({
+              bindingId: restartEnrollment.bindingId,
+              payload: { ...replyPayload, text: "Second durable reply part." },
+              replyKey: "restart:turn-1:part-1",
+            });
+          if (!firstReply || !secondReply) {
+            throw new Error("Expected both split reply intents.");
+          }
+          const [leasedFirstReply] =
+            await delivery.claimChannelOnboardingOperations({
+              bindingId: restartEnrollment.bindingId,
+              kinds: ["outbound_reply"],
+              leaseForMs: 1_000,
+              limit: 1,
+              now: afterCrash,
+              owner: "reply-owner-first",
+            });
+          if (!leasedFirstReply || leasedFirstReply.id !== firstReply.id) {
+            throw new Error("Expected the first split reply lease.");
+          }
+
+          // The restarted pool permits concurrent PostgreSQL transactions. A
+          // lease on part zero must not let either contender skip to part one.
+          const competingClaims = await Promise.all([
+            delivery.claimChannelOnboardingOperations({
+              bindingId: restartEnrollment.bindingId,
+              kinds: ["outbound_reply"],
+              leaseForMs: 1_000,
+              limit: 1,
+              now: afterCrash,
+              owner: "reply-owner-competing-a",
+            }),
+            delivery.claimChannelOnboardingOperations({
+              bindingId: restartEnrollment.bindingId,
+              kinds: ["outbound_reply"],
+              leaseForMs: 1_000,
+              limit: 1,
+              now: afterCrash,
+              owner: "reply-owner-competing-b",
+            }),
+          ]);
+          expect(competingClaims.flat()).toEqual([]);
+
+          await expect(
+            delivery.markChannelOnboardingOperationAttempted(
+              leasedFirstReply,
+              afterCrash
+            )
+          ).resolves.toBe(true);
+          await expect(
+            delivery.acceptChannelOnboardingProviderOperation(
+              { ...leasedFirstReply, providerHandle: "restart-reply-1" },
+              afterCrash
+            )
+          ).resolves.toBe(true);
+          await expect(
+            delivery.claimChannelOnboardingOperations({
+              bindingId: restartEnrollment.bindingId,
+              kinds: ["outbound_reply"],
+              leaseForMs: 1_000,
+              limit: 1,
+              now: afterCrash,
+              owner: "reply-owner-second",
+            })
+          ).resolves.toEqual([
+            expect.objectContaining({
+              id: secondReply.id,
+              kind: "outbound_reply",
+            }),
+          ]);
+        } finally {
+          await restartedPool.end();
+          setDatabaseForIntegrationTest(database);
+        }
+      } finally {
+        await pool.query(
+          `DELETE FROM channel_participants p
+           USING channel_conversations c
+           WHERE p.conversation_id = c.id
+             AND c.provider_account_id IN ($1, $2)`,
+          [providerAccountId, restartAccountId]
+        );
+        Object.assign(env, {
+          SENDBLUE_TEXT_ONBOARDING_MAX_ENROLLMENTS_PER_SENDER:
+            originalLimits.enrollments,
+          SENDBLUE_TEXT_ONBOARDING_MAX_MODEL_TURNS_PER_DAY:
+            originalLimits.modelTurns,
+          SENDBLUE_TEXT_ONBOARDING_MAX_OUTBOUND_MESSAGES_PER_DAY:
+            originalLimits.outboundMessages,
+        });
         resetDatabaseForIntegrationTest();
         await pool.end();
       }
@@ -852,9 +1398,50 @@ describe.skipIf(realPostgres === undefined)(
   }
 );
 
+function onboardingWelcomeParts(from: string, to: string) {
+  return ["You’re in!", "Welcome to Jory."].map((text) => ({
+    from,
+    text,
+    to,
+    version: 1 as const,
+  }));
+}
+
 const manifest = {
   capabilities: ["calendar.read"],
   instructions: "Be helpful.",
   modelPolicy: { tier: "standard" as const },
   version: 1 as const,
 };
+
+async function concurrentlyReserveQuota<T>(
+  pool: Pool,
+  reservations: readonly [
+    (transaction: ChannelOnboardingBudgetTransaction) => Promise<T>,
+    (transaction: ChannelOnboardingBudgetTransaction) => Promise<T>,
+  ]
+) {
+  const connections = await Promise.all([pool.connect(), pool.connect()]);
+  try {
+    return await Promise.all(
+      reservations.map(async (reserve, index) => {
+        const connection = connections[index];
+        if (!connection) throw new Error("Expected a PostgreSQL connection.");
+        await connection.query("BEGIN");
+        try {
+          const transaction = drizzle({ client: connection, schema });
+          const result = await reserve(transaction);
+          await connection.query("COMMIT");
+          return result;
+        } catch (error) {
+          await connection.query("ROLLBACK");
+          throw error;
+        }
+      })
+    );
+  } finally {
+    connections.forEach((connection) => {
+      connection.release();
+    });
+  }
+}

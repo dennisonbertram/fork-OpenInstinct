@@ -59,10 +59,10 @@ describe("verification CLI checks lane", () => {
     const checks = requireValue(receipt.lanes.checks, "checks lane");
     expect(checks.status).toBe("passed");
     expect(checks.tests).toEqual({
-      discovered: 12,
+      discovered: 13,
       passed: 6,
       failed: 0,
-      skipped: 6,
+      skipped: 7,
       flaky: 0,
     });
     expect(checks.steps).toHaveLength(2);
@@ -394,7 +394,7 @@ function stubScript(mode: StubMode) {
         : ": # intentionally emit no Vitest summaries\n";
   const marketingSummary =
     mode === "success" || mode === "exit-17"
-      ? "printf '%s\\n' '      Tests 4 passed | 6 skipped (10)'"
+      ? "printf '%s\\n' '      Tests 4 passed | 7 skipped (11)'"
       : mode === "zero-summaries"
         ? "printf '%s\\n' '      Tests 0 passed (0)'"
         : ": # intentionally emit no marketing Vitest summary";

@@ -129,7 +129,7 @@ interface FixtureCleanupEvidence {
   networks: CleanupResourceEvidence;
 }
 
-const expectedRealPgSkipCount = 6;
+const expectedRealPgSkipCount = 7;
 const maxCapturedOutputBytes = 1024 * 1024;
 let activeChild: ChildProcess | undefined;
 let interruption: NodeJS.Signals | undefined;

@@ -89,7 +89,7 @@ describe("phone identity verification wiring", () => {
     expect(options.verifyOTP?.({ code: "000000", phoneNumber })).toBe(true);
   });
 
-  it("does not reject verification when identity recording fails", async () => {
+  it("propagates identity recording failures to the OTP callback", async () => {
     const storageError = new Error("storage unavailable");
     storageError.name = "IdentityStoreError";
     const recordVerifiedPhoneIdentity = vi
@@ -100,20 +100,14 @@ describe("phone identity verification wiring", () => {
         }) => Promise<void>
       >()
       .mockRejectedValue(storageError);
-    const error = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
     const { options } = optionsFor({ recordVerifiedPhoneIdentity });
 
-    await options.callbackOnVerification?.({
-      phoneNumber,
-      user: verifiedUser(),
-    });
-
-    expect(error).toHaveBeenCalledWith(
-      "Failed to record verified phone identity.",
-      "IdentityStoreError"
-    );
+    await expect(
+      options.callbackOnVerification?.({
+        phoneNumber,
+        user: verifiedUser(),
+      })
+    ).rejects.toBe(storageError);
   });
 });
 
