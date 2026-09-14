@@ -1,6 +1,9 @@
 import type { Attachment } from "chat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { prepareModelImageAttachments } from "@/agent/lib/linq/inbound-media";
+import {
+  partitionDirectPromptAttachments,
+  prepareModelImageAttachments,
+} from "@/agent/lib/linq/inbound-media";
 
 vi.mock("@/agent/lib/linq/heic-to-jpeg", () => ({
   convertHeicToJpeg: vi.fn<() => Promise<Uint8Array>>(
@@ -30,7 +33,7 @@ function imageAttachment(overrides: {
     mimeType: overrides.mimeType ?? "image/jpeg",
     name: overrides.name ?? "photo.jpg",
     type: overrides.type ?? "image",
-    url: overrides.url ?? "https://cdn.linqapp.com/photo.jpg",
+    url: overrides.url,
   };
 }
 
@@ -55,7 +58,13 @@ describe("prepareModelImageAttachments", () => {
     expect(resolved.withheldCount).toBe(0);
     expect(resolved.kept).toHaveLength(2);
     expect(resolved.kept[0]?.mimeType).toBe("image/jpeg");
+    expect(resolved.kept[0]?.url?.startsWith("data:image/jpeg;base64,")).toBe(
+      true
+    );
     expect(resolved.kept[1]?.mimeType).toBe("image/png");
+    expect(resolved.kept[1]?.url?.startsWith("data:image/png;base64,")).toBe(
+      true
+    );
   });
 
   it("converts HEIC bytes to a JPEG data URL", async () => {
@@ -76,6 +85,23 @@ describe("prepareModelImageAttachments", () => {
     );
   });
 
+  it("converts declared HEIC before applying the model allowlist", async () => {
+    const prepared = await prepareModelImageAttachments([
+      imageAttachment({
+        mimeType: "image/heic",
+        name: "IMG.HEIC",
+        fetchData: async () => heicBytes(),
+      }),
+    ]);
+    const resolved = partitionDirectPromptAttachments(prepared.kept);
+    const attachment = resolved.kept[0];
+    expect(resolved.droppedCount).toBe(0);
+    expect(attachment?.mimeType).toBe("image/jpeg");
+    expect(attachment?.url?.startsWith("data:image/jpeg;base64,/9j/")).toBe(
+      true
+    );
+  });
+
   it("withholds undecodable bytes and failed fetches without throwing", async () => {
     const resolved = await prepareModelImageAttachments([
       imageAttachment({
@@ -90,6 +116,18 @@ describe("prepareModelImageAttachments", () => {
 
     expect(resolved.kept).toEqual([]);
     expect(resolved.withheldCount).toBe(2);
+  });
+
+  it("withholds image bytes above Eve's 3 MiB inline-image limit", async () => {
+    const oversized = Buffer.alloc(3 * 1024 * 1024 + 1);
+    jpegBytes().copy(oversized);
+
+    const resolved = await prepareModelImageAttachments([
+      imageAttachment({ fetchData: async () => oversized }),
+    ]);
+
+    expect(resolved.kept).toEqual([]);
+    expect(resolved.withheldCount).toBe(1);
   });
 
   it("passes non-image attachments through without fetching", async () => {

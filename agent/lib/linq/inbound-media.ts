@@ -68,6 +68,7 @@ export function partitionDirectPromptAttachments(
 
 /** Caps inbound image verification: bounds memory, latency, and model payload. */
 const MAX_INBOUND_IMAGE_BYTES = 12 * 1024 * 1024;
+const MAX_MODEL_INLINE_IMAGE_BYTES = 3 * 1024 * 1024;
 const INBOUND_IMAGE_FETCH_TIMEOUT_MS = 15_000;
 
 export interface ResolvedModelImageAttachments {
@@ -129,6 +130,40 @@ function fetchDataWithTimeout(
 async function readAttachmentBytes(
   attachment: Attachment
 ): Promise<Uint8Array | null> {
+  if (attachment.url) {
+    let parsed: URL;
+    try {
+      parsed = new URL(attachment.url);
+    } catch {
+      return null;
+    }
+    if (parsed.protocol === "data:") {
+      const comma = attachment.url.indexOf(",");
+      const metadata = attachment.url.slice(5, comma).toLowerCase();
+      const encoded = attachment.url.slice(comma + 1);
+      const maximumBase64Length =
+        Math.ceil((MAX_INBOUND_IMAGE_BYTES * 4) / 3) + 4;
+      if (
+        comma === -1 ||
+        !metadata.split(";").includes("base64") ||
+        encoded.length > maximumBase64Length
+      )
+        return null;
+      const bytes = Buffer.from(encoded, "base64");
+      return bytes.byteLength > MAX_INBOUND_IMAGE_BYTES ? null : bytes;
+    }
+    if (parsed.protocol !== "https:") return null;
+    try {
+      const response = await fetch(parsed, {
+        redirect: "error",
+        signal: AbortSignal.timeout(INBOUND_IMAGE_FETCH_TIMEOUT_MS),
+      });
+      if (!response.ok) return null;
+      return await readCappedBytes(response);
+    } catch {
+      return null;
+    }
+  }
   const fetchData = attachment.fetchData;
   if (fetchData !== undefined) {
     try {
@@ -138,23 +173,7 @@ async function readAttachmentBytes(
       return null;
     }
   }
-  if (!attachment.url) return null;
-  let parsed: URL;
-  try {
-    parsed = new URL(attachment.url);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== "https:") return null;
-  try {
-    const response = await fetch(parsed, {
-      signal: AbortSignal.timeout(INBOUND_IMAGE_FETCH_TIMEOUT_MS),
-    });
-    if (!response.ok) return null;
-    return await readCappedBytes(response);
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 /**
@@ -170,7 +189,7 @@ async function resolveImageAttachment(
   if (sniffed === null) return null;
   if (sniffed === "image/heic") {
     const jpeg = await convertHeicToJpeg(bytes);
-    if (!jpeg) return null;
+    if (!jpeg || jpeg.byteLength > MAX_MODEL_INLINE_IMAGE_BYTES) return null;
     const base64 = Buffer.from(jpeg).toString("base64");
     const rawStem = attachment.name?.split(".").slice(0, -1).join(".");
     const stem = rawStem && rawStem.length > 0 ? rawStem : "photo";
@@ -181,17 +200,31 @@ async function resolveImageAttachment(
       url: `data:image/jpeg;base64,${base64}`,
     };
   }
-  if (sniffed !== mediaTypeRoot(attachment.mimeType)) {
-    return { ...attachment, mimeType: sniffed };
-  }
-  return attachment;
+  if (bytes.byteLength > MAX_MODEL_INLINE_IMAGE_BYTES) return null;
+  return {
+    ...attachment,
+    mimeType: sniffed,
+    // Eve serializes attachment URLs. Inline the exact verified bytes rather
+    // than allowing a later signed-URL fetch to observe a changed payload.
+    url: `data:${sniffed};base64,${Buffer.from(bytes).toString("base64")}`,
+  };
+}
+
+function isModelImageCandidate(attachment: Attachment): boolean {
+  const root = mediaTypeRoot(attachment.mimeType);
+  return (
+    root === undefined ||
+    root.startsWith("image/") ||
+    root === "application/octet-stream" ||
+    attachment.type === "image"
+  );
 }
 
 /**
- * Verifies every declared image attachment against its bytes: corrects
- * mislabeled formats, converts HEIC stills to JPEG, and withholds anything
- * unverifiable. Non-image attachments pass through untouched (no fetch).
- * Order is preserved; failures never throw — they withhold.
+ * Verifies model image candidates against bytes: corrects mislabeled formats,
+ * converts HEIC stills to JPEG, and withholds opaque or image candidates whose
+ * bytes cannot be classified. Explicit documents and text pass through without
+ * fetching. Order is preserved; failures never throw — they withhold.
  */
 export async function prepareModelImageAttachments(
   attachments: readonly Attachment[]
@@ -199,8 +232,7 @@ export async function prepareModelImageAttachments(
   const kept: Attachment[] = [];
   let withheldCount = 0;
   for (const attachment of attachments) {
-    const root = mediaTypeRoot(attachment.mimeType);
-    if (!root || !root.startsWith("image/")) {
+    if (!isModelImageCandidate(attachment)) {
       kept.push(attachment);
       continue;
     }

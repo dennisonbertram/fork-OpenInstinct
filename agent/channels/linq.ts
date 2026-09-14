@@ -730,21 +730,6 @@ async function dispatchLinqMessage(
   thread: Parameters<LinqOnMessage>[0]["thread"],
   message: LinqInboundMessage
 ) {
-  // AI Gateway model turns only accept images and documents (pdf, text).
-  // Raw HEIC/HEIF, video, audio, or unlabeled attachments make the gateway
-  // reject the turn with a 400 error. Filter message.attachments in place so
-  // Eve only forwards model-supported attachments in UserContent — including
-  // any copy of this message Eve retains in thread history.
-  const partitioned = partitionDirectPromptAttachments(message.attachments);
-  const withheldCount = partitioned.droppedCount;
-  if (withheldCount > 0) {
-    console.warn("[linq] withheld model-unsupported attachments", {
-      dropped: withheldCount,
-    });
-    message.attachments.length = 0;
-    message.attachments.push(...partitioned.kept);
-  }
-
   const result = await linqChannelConfig.onMessage({ thread }, message);
   if (!result) return;
 
@@ -789,16 +774,18 @@ async function dispatchLinqMessage(
   // correcting mislabels and converting HEIC stills to JPEG — so the model
   // only ever receives openable image data.
   const prepared = await prepareModelImageAttachments(message.attachments);
-  const verifiedWithheldCount = withheldCount + prepared.withheldCount;
-  if (prepared.withheldCount > 0) {
+  const partitioned = partitionDirectPromptAttachments(prepared.kept);
+  const verifiedWithheldCount =
+    prepared.withheldCount + partitioned.droppedCount;
+  if (verifiedWithheldCount > 0) {
     console.warn("[linq] withheld unverifiable image attachments", {
-      dropped: prepared.withheldCount,
+      dropped: verifiedWithheldCount,
     });
   }
   // Always apply the resolved list: conversions and MIME corrections change
   // entries even when nothing was withheld.
   message.attachments.length = 0;
-  message.attachments.push(...prepared.kept);
+  message.attachments.push(...partitioned.kept);
 
   const content = messageToUserContent(message);
   if (!Array.isArray(content)) {
