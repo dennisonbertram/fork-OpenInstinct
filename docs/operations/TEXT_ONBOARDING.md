@@ -3,6 +3,12 @@
 Status: local implementation verified and awaiting its reviewed PR and merge;
 activation remains off by default and there is no production onboarding proof.
 Plan 026 owns the product contract.
+PR 271 is not merged. A metadata-only operational audit found that preview and
+production currently share a database and observed migration journal revisions
+0028–0031 in production; the journal does not identify the actor or deployment.
+Further deployments are held pending an owner decision on preview isolation and
+a backup/restore rehearsal. Rollout limits, candidate-line card capability, and
+two fresh-phone acceptance remain pending.
 
 ## Current path
 
@@ -51,6 +57,12 @@ includes own text/photos, public `web_search`/`web_fetch`, same-thread
 authentication; private connections, browser, vault, and admin access are
 denied. Optional web OTP or Square access is a later,
 separately authorized upgrade and must not be implied by channel enrollment.
+SendBlue's provider-reserved `CANCEL` command remains STOP under its documented
+messaging controls; an approval decline such as `no` remains an approval
+response, not an opt-out. The final local review also checks STOP at the final
+legacy-output send guard, suppressing output when STOP is observed there. These
+are local implementation and test facts, not production provider evidence. See
+[SendBlue's security and messaging controls](https://docs.sendblue.com/security/).
 
 ## Recovery and diagnosis
 
@@ -98,15 +110,20 @@ duplicate/restart recovery, STOP suppression, and failed/uncertain delivery
 recovery. Record provider acceptance separately from recipient delivery and
 record observed times with sample counts; do not invent latency guarantees.
 No live acceptance is recorded here. Full deterministic local verification
-completed on 2026-09-14: Checks, Build, Real Postgres, Contract evals, and E2E
-all passed. The Checks lane recorded 2,168 passed with seven intentional
-real-Postgres skips; the Real Postgres lane passed 7/7, Contract evals passed
-15/15, and E2E passed 28 with one documented skip. Receipt:
-`.eve/verify/85fdff44-f466-414a-b718-da1018ed52b1/receipt.json`.
-The required Square evaluation passed 13/13 with 114 gates at
-2026-09-14T21:54Z (artifact:
-`.eve/square-evals/2026-09-14T21-53-46.873Z.json`). This is synthetic local
-evidence, not a deployment or live-provider claim. No operator has approved
-the budget values, card capability for the candidate line, or the two fresh
-test phones. Enrollment remains off by default while the local implementation
-awaits its reviewed PR and merge.
+completed on 2026-09-14. The earlier receipt recorded 2,168 passed with seven
+intentional real-Postgres skips and is retained as historical pre-fixture-fix
+evidence: `.eve/verify/85fdff44-f466-414a-b718-da1018ed52b1/receipt.json`. The
+final frozen reviewed worktree based on PR 271 head passed 2,179 checks with
+seven intentional real-Postgres skips; Real Postgres passed 7/7, Contract evals
+passed 15/15, and E2E passed 28 with one documented skip. Its source fingerprint
+is `7565e9620ed5a926bfa0d46668c9ac882cad170912a8ffb4682983d67a875994`.
+Receipt:
+`.eve/verify/df3d5f7b-0f01-4dfa-919e-dfcceb0dd66f/receipt.json`.
+The later Square evaluation passed 12 cases with one scored soft-judge case
+and 114 gates (13 total; artifact:
+`.eve/square-evals/2026-09-14T22-25-58.040Z.json`). This is
+synthetic local evidence, not a deployment or live-provider claim. No operator
+has approved the budget values, card capability for the candidate line, or the
+two fresh test phones. Enrollment remains off by default while PR 271 awaits
+review and merge, and further deployments remain held pending the
+preview-isolation and backup/restore decisions.

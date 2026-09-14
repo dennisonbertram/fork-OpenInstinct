@@ -785,26 +785,8 @@ export async function resolveChannelEnrollment(
   const parsed = enrollmentInputSchema
     .omit({ messageId: true, openingRequest: true, welcomeParts: true })
     .parse(input);
+  if (await isChannelCommunicationStopped(parsed)) return undefined;
   const { phoneLookupHash } = await phoneIdentityMaterial(parsed.phoneNumber);
-  const [suppression] = await db
-    .select({ status: channelCommunicationSuppressions.status })
-    .from(channelCommunicationSuppressions)
-    .where(
-      and(
-        eq(channelCommunicationSuppressions.provider, parsed.provider),
-        eq(
-          channelCommunicationSuppressions.providerAccountId,
-          parsed.providerAccountId
-        ),
-        eq(
-          channelCommunicationSuppressions.providerLineId,
-          parsed.providerLineId
-        ),
-        eq(channelCommunicationSuppressions.phoneLookupHash, phoneLookupHash)
-      )
-    )
-    .limit(1);
-  if (suppression?.status === "stopped") return undefined;
   const [row] = await db
     .select({
       agentId: agents.id,
@@ -899,6 +881,31 @@ const communicationCommandSchema = communicationSubjectSchema.extend({
 export type ChannelCommunicationCommandInput = z.input<
   typeof communicationCommandSchema
 >;
+export async function isChannelCommunicationStopped(
+  input: z.input<typeof communicationSubjectSchema>
+) {
+  const parsed = communicationSubjectSchema.parse(input);
+  const { phoneLookupHash } = await phoneIdentityMaterial(parsed.phoneNumber);
+  const [suppression] = await db
+    .select({ status: channelCommunicationSuppressions.status })
+    .from(channelCommunicationSuppressions)
+    .where(
+      and(
+        eq(channelCommunicationSuppressions.provider, parsed.provider),
+        eq(
+          channelCommunicationSuppressions.providerAccountId,
+          parsed.providerAccountId
+        ),
+        eq(
+          channelCommunicationSuppressions.providerLineId,
+          parsed.providerLineId
+        ),
+        eq(channelCommunicationSuppressions.phoneLookupHash, phoneLookupHash)
+      )
+    )
+    .limit(1);
+  return suppression?.status === "stopped";
+}
 
 export function parseChannelCommunicationCommand(value: string) {
   const normalized = value.trim().toLowerCase().replaceAll(/\s+/g, " ");

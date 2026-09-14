@@ -78,7 +78,9 @@ vi.mock("eve/context", () => ({
 vi.mock("@/env", async (importOriginal) => ({
   ...(await importOriginal<typeof EnvModule>()),
   env: {
+    BETTER_AUTH_SECRET: "synthetic-sendblue-recovery-auth-secret-0001",
     DATABASE_URL: "postgres://synthetic",
+    SECRET_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
     SENDBLUE_ACCOUNT_ID: "synthetic-account",
     SENDBLUE_API_KEY_ID: "synthetic-key",
     SENDBLUE_API_SECRET_KEY: "synthetic-secret",

@@ -11,13 +11,28 @@ recorded 2,168 passed with seven intentional real-Postgres skips; the Real
 Postgres lane passed 7/7, Contract evals passed 15/15, and E2E passed 28 with
 one documented skip. The receipt is
 `.eve/verify/85fdff44-f466-414a-b718-da1018ed52b1/receipt.json`.
+That receipt is retained as historical pre-fixture-fix evidence. The final
+frozen reviewed worktree based on PR 271 head
+`6c0f8af4251f4167636e54aa30e219394edddcdc` with source fingerprint
+`7565e9620ed5a926bfa0d46668c9ac882cad170912a8ffb4682983d67a875994` passed
+all five lanes: 2,179 checks passed with seven intentional real-Postgres
+skips, Real Postgres passed 7/7, Contract evals passed 15/15, and E2E passed
+28 with one documented skip. Its receipt is
+`.eve/verify/df3d5f7b-0f01-4dfa-919e-dfcceb0dd66f/receipt.json`.
 The required Square evaluation also passed 13/13 with 114 gates at
-2026-09-14T21:54Z; its artifact is
-`.eve/square-evals/2026-09-14T21-53-46.873Z.json`. These are local synthetic
+2026-09-14T21:54Z; the later 13-case run passed 12 cases with one scored
+soft-judge case and 114 gates. Its artifact is
+`.eve/square-evals/2026-09-14T22-25-58.040Z.json`. These are local synthetic
 verification results, not deployment or live-provider evidence. The expired
 OIDC failure from an earlier attempt is resolved for this gate; if it recurs,
 use the project-scoped recovery documented in the operational runbook rather
 than pulling all production environment values.
+PR 271 is not merged. A metadata-only operational audit found that preview and
+production currently share a database and observed migration journal revisions
+0028–0031 in production; the journal does not identify the actor or deployment.
+Further deployments are held pending an owner decision on preview isolation and
+a backup/restore rehearsal. Rollout limits, candidate-line card capability, and
+two fresh-phone acceptance also remain pending; activation stays off by default.
 Planned on 2026-09-14 against OpenInstinct `3df3051e21ed722f783a2e615f2c7b629d32b65c`.
 Priority: P1. Effort: M–L. Risk: high at the identity boundary.
 Execution ownership: Terra for identity, concurrency, and channel changes; Luna for copy and bounded tests; lead for decisions, integration, and review.
@@ -154,17 +169,24 @@ Failure behavior:
 
 STOP takes precedence over enrollment: for an unknown sender, record only the minimal keyed suppression preference, without creating a user, workspace, agent, or welcome. For an enrolled sender, set suppression and cancel unsent work without deleting the account. START can clear communication suppression only after the provider's documented opt-in condition is satisfied; it cannot clear account suspension, identity conflict, or revocation. A previously unknown eligible sender may then enroll. Ordinary text never clears suppression. If the provider suppresses the webhook or owns the opt-out confirmation, the adapter must use its documented status/reconciliation behavior; do not promise an application reply that the provider forbids.
 
+SendBlue's provider-reserved `CANCEL` command is preserved as STOP under its
+documented messaging controls; an approval decline such as `no` remains an
+approval response and is not an opt-out. The final local review also covers a
+STOP check at the final legacy-output send guard, so output is suppressed when
+STOP is observed there. These are local implementation and test facts, not
+production provider evidence. [Security and messaging controls](https://docs.sendblue.com/security/)
+
 ## 7. Delivery slices and gates
 
 Do not start implementation merely because this plan exists. After owner approval, use a linked worktree in `dennisonbertram/fork-OpenInstinct`; never push or open a PR against upstream. Preserve unrelated work. Lead owns reviewed commits, PRs, CI, merge, rollout, and cleanup under repository rules.
 
 Local implementation has now completed the queue/schedule and real-Postgres
-pool-reconnect evidence described above. It remains off by default. Before a
-rollout decision, run the full verifier, refresh Square evidence when OIDC and
-worktree linkage permit it, obtain operator approval for budgets and candidate
-line card capability, and complete two fresh-phone acceptance on the exact
-candidate deployment. Do not treat this update as live-provider, deployed, or
-operating-system crash evidence.
+pool-reconnect evidence described above. It remains off by default. Further
+deployments are held pending an owner decision on preview isolation and a
+backup/restore rehearsal. Before a rollout decision, obtain operator approval
+for budgets and candidate-line card capability, and complete two fresh-phone
+acceptance on the exact candidate deployment. Do not treat this update as
+live-provider, deployed, or operating-system crash evidence.
 
 Before editing, run `git diff --stat 3df3051e21ed722f783a2e615f2c7b629d32b65c..HEAD -- agent/channels/sendblue.ts agent/lib/sendblue db/services db/schema src/auth src/env.ts` and compare the current-state statements above. Read current AGENTS/CONTEXT, installed Eve docs routed from `eve/docs/README.md`, Better Auth 1.7.2 contracts, and provider docs. Context7 was not available during planning; the executor must use it if available and otherwise inspect installed/official sources.
 

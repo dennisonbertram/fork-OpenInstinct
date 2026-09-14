@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import type { Thread } from "chat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import type * as ChannelOnboardingService from "@/db/services/channel-onboarding";
 import { sendMessageOutputSchema } from "@/agent/lib/send-message";
 import {
   beginFinalDelivery,
@@ -28,6 +29,7 @@ const capture = vi.hoisted(() => ({
   findIdentity: vi.fn(),
   findOne: vi.fn(),
   getState: vi.fn(),
+  isChannelCommunicationStopped: vi.fn(),
   isTextOnboardingEnabled: vi.fn(),
   markRead: vi.fn(),
   mediaSend:
@@ -98,6 +100,7 @@ vi.mock("eve/context", () => ({
 }));
 
 vi.mock("@/env", () => ({
+  betterAuthSecretSchema: z.string(),
   env: {
     DATABASE_URL: "postgres://synthetic",
     SENDBLUE_ACCOUNT_ID: "account@example.test",
@@ -109,6 +112,7 @@ vi.mock("@/env", () => ({
     SENDBLUE_WEBHOOK_SECRET: "webhook-secret",
   },
   isSendblueTextOnboardingEnabled: capture.isTextOnboardingEnabled,
+  secretEncryptionKeySchema: z.string(),
 }));
 vi.mock("@chat-adapter/state-pg", () => ({
   createPostgresState: () => ({
@@ -163,6 +167,7 @@ vi.mock("@/db/services/channel-conversations", () => ({
   resolveVerifiedConversationBinding: capture.resolveVerifiedBinding,
 }));
 vi.mock("@/db/services/channel-onboarding", () => ({
+  isChannelCommunicationStopped: capture.isChannelCommunicationStopped,
   parseChannelCommunicationCommand: capture.parseCommunicationCommand,
   provisionChannelEnrollment: capture.provisionChannelEnrollment,
   recordChannelCommunicationStart: capture.recordChannelCommunicationStart,
@@ -523,6 +528,11 @@ function admitTerminalReport(
   return cohortId;
 }
 
+const {
+  parseChannelCommunicationCommand: actualParseChannelCommunicationCommand,
+} = await vi.importActual<typeof ChannelOnboardingService>(
+  "@/db/services/channel-onboarding"
+);
 const { dispatchSendblueMessage, sendblueChannelConfig } =
   await import("@/agent/channels/sendblue");
 const sendblueEvents = (
@@ -591,14 +601,10 @@ beforeEach(() => {
   capture.resolveChannelEnrollment.mockResolvedValue(undefined);
   capture.recordChannelCommunicationStop.mockResolvedValue(undefined);
   capture.recordChannelCommunicationStart.mockResolvedValue(undefined);
-  capture.parseCommunicationCommand.mockImplementation((text: string) => {
-    const command = text.trim().toLowerCase();
-    return command === "stop"
-      ? "stop"
-      : command === "start"
-        ? "start"
-        : undefined;
-  });
+  capture.parseCommunicationCommand.mockImplementation(
+    actualParseChannelCommunicationCommand
+  );
+  capture.isChannelCommunicationStopped.mockResolvedValue(false);
   capture.drainOnboarding.mockResolvedValue({ attempted: 0, claimed: 0 });
   capture.enqueueOnboardingReply.mockResolvedValue({
     id: "reply-1",
@@ -667,6 +673,150 @@ describe("SendBlue channel", () => {
     expect(capture.provisionChannelEnrollment).not.toHaveBeenCalled();
     expect(capture.send).not.toHaveBeenCalled();
   });
+
+  it("treats provider-reserved CANCEL as STOP even while an approval is parked", async () => {
+    capture.getState.mockResolvedValue(pending());
+
+    await dispatchSendblueMessage(thread, inbound({ text: "cancel" }));
+
+    expect(capture.parseCommunicationCommand).toHaveBeenCalledWith("cancel");
+    expect(capture.recordChannelCommunicationStop).toHaveBeenCalledWith({
+      phoneNumber: "+12025550199",
+      provider: "sendblue",
+      providerAccountId: "account@example.test",
+      providerLineId: "+12025550123",
+      messageHandle: "message-1",
+    });
+    expect(capture.send).not.toHaveBeenCalled();
+    expect(capture.deleteState).not.toHaveBeenCalled();
+  });
+
+  it("maps an approval decline expressed as no without using the reserved CANCEL keyword", async () => {
+    capture.getState.mockResolvedValue(pending());
+
+    await dispatchSendblueMessage(thread, inbound({ text: "no" }));
+
+    expect(capture.recordChannelCommunicationStop).not.toHaveBeenCalled();
+    expect(capture.send).toHaveBeenCalledWith(
+      { inputResponses: [{ optionId: "cancel", requestId: "request-1" }] },
+      expect.objectContaining({ thread })
+    );
+  });
+
+  it("does not admit a suppressed legacy verified sender after enrollment resolution returns undefined", async () => {
+    capture.isChannelCommunicationStopped.mockResolvedValue(true);
+
+    await dispatchSendblueMessage(thread, inbound({ text: "hello" }));
+
+    expect(capture.isChannelCommunicationStopped).toHaveBeenCalledWith({
+      phoneNumber: "+12025550199",
+      provider: "sendblue",
+      providerAccountId: "account@example.test",
+      providerLineId: "+12025550123",
+    });
+    expect(capture.send).not.toHaveBeenCalled();
+  });
+
+  it("does not admit a suppressed OTP-upgraded enrollment through the legacy fallback", async () => {
+    capture.findOne.mockResolvedValue({
+      id: "existing-user",
+      phoneNumberVerified: true,
+    });
+    capture.findIdentity.mockResolvedValue({
+      phoneIdentityId: "phone-enrolled",
+      userId: "existing-user",
+    });
+    capture.isChannelCommunicationStopped.mockResolvedValue(true);
+
+    await dispatchSendblueMessage(thread, inbound({ text: "hello" }));
+
+    expect(capture.isChannelCommunicationStopped).toHaveBeenCalledOnce();
+    expect(capture.send).not.toHaveBeenCalled();
+  });
+
+  it("does not send an unsent legacy text, media, or budget notice after STOP", async () => {
+    capture.isChannelCommunicationStopped.mockResolvedValue(true);
+    capture.checkBudget.mockRejectedValue(
+      new capture.BudgetExceededError("Workspace usage limit reached.")
+    );
+
+    await getSendblueEvent("action.result")(
+      action({
+        output: {
+          attachments: [
+            { kind: "image", url: "https://media.example/stopped.png" },
+          ],
+          kind: "message",
+          text: "Here is the report.",
+        },
+      }),
+      { thread },
+      sessionContext()
+    );
+
+    expect(capture.checkBudget).not.toHaveBeenCalled();
+    expect(capture.mediaSend).not.toHaveBeenCalled();
+    expect(capture.post).not.toHaveBeenCalled();
+  });
+
+  it("checks STOP again after budget admission and before a legacy text post", async () => {
+    capture.isChannelCommunicationStopped
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false);
+    capture.checkBudget.mockImplementationOnce(async () => {
+      capture.isChannelCommunicationStopped.mockResolvedValue(true);
+    });
+
+    await expect(
+      getSendblueEvent("action.result")(
+        action({ output: { kind: "message", text: "Here is the report." } }),
+        { thread },
+        sessionContext()
+      )
+    ).rejects.toThrow("SendBlue communication is stopped.");
+
+    expect(capture.checkBudget).toHaveBeenCalledOnce();
+    expect(capture.post).not.toHaveBeenCalled();
+  });
+
+  it("does not post a budget denial if STOP arrives during budget admission", async () => {
+    capture.isChannelCommunicationStopped
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false);
+    capture.checkBudget.mockImplementationOnce(async () => {
+      capture.isChannelCommunicationStopped.mockResolvedValue(true);
+      throw new capture.BudgetExceededError("Workspace usage limit reached.");
+    });
+
+    await getSendblueEvent("action.result")(
+      action({ output: { kind: "message", text: "Here is the report." } }),
+      { thread },
+      sessionContext()
+    );
+
+    expect(capture.checkBudget).toHaveBeenCalledOnce();
+    expect(capture.post).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { contactNumber: undefined, fromNumber: "+12025550123" },
+    { contactNumber: "+12025550199", fromNumber: "+12025550124" },
+  ])(
+    "fails closed before a legacy text send when the direct recipient or line is not exact",
+    async (decoded) => {
+      capture.decodeThreadId.mockReturnValue(decoded);
+
+      await getSendblueEvent("action.result")(
+        action({ output: { kind: "message", text: "Here is the report." } }),
+        { thread },
+        sessionContext()
+      );
+
+      expect(capture.isChannelCommunicationStopped).not.toHaveBeenCalled();
+      expect(capture.checkBudget).not.toHaveBeenCalled();
+      expect(capture.post).not.toHaveBeenCalled();
+    }
+  );
 
   it("provisions one eligible unknown direct sender from the authenticated provider identity", async () => {
     capture.findOne.mockResolvedValue(null);
@@ -1228,7 +1378,7 @@ describe("SendBlue channel", () => {
     capture.getState.mockResolvedValue(pending());
     capture.send.mockRejectedValueOnce(new Error("Eve unavailable"));
     await expect(
-      dispatchSendblueMessage(thread, inbound({ text: "cancel" }))
+      dispatchSendblueMessage(thread, inbound({ text: "no" }))
     ).rejects.toThrow("Eve unavailable");
     expect(capture.deleteState).not.toHaveBeenCalled();
   });
@@ -1263,7 +1413,7 @@ describe("SendBlue channel", () => {
     );
   });
 
-  it.each(["no", "cancel"])(
+  it.each(["no", "never mind"])(
     "maps %s to the same pending Eve request",
     async (reply) => {
       capture.getState.mockResolvedValue(pending());

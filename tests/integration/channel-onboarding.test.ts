@@ -246,6 +246,87 @@ describe("channel enrollment provisioning", () => {
     ).resolves.toMatchObject({ rows: [{ pending: 0 }] });
   });
 
+  it("uses the real SendBlue reserved commands and only resumes an OTP-upgraded enrollment after START", async () => {
+    const {
+      parseChannelCommunicationCommand,
+      phoneIdentities,
+      provisionChannelEnrollment,
+      recordChannelCommunicationStart,
+      recordChannelCommunicationStop,
+      resolveChannelEnrollment,
+    } = await loadService();
+    const first = await provisionChannelEnrollment(enrollment);
+    if (!isReady(first)) throw new Error("Expected a ready enrollment.");
+    await phoneIdentities.recordVerifiedPhoneIdentity({
+      phoneNumber: enrollment.phoneNumber,
+      userId: first.userId,
+    });
+
+    expect(parseChannelCommunicationCommand(" cancel ")).toBe("stop");
+    expect(parseChannelCommunicationCommand("START")).toBe("start");
+    await recordChannelCommunicationStop({
+      messageHandle: "sendblue-stop-resolve",
+      phoneNumber: enrollment.phoneNumber,
+      provider: enrollment.provider,
+      providerAccountId: enrollment.providerAccountId,
+      providerLineId: enrollment.providerLineId,
+    });
+    await expect(
+      resolveChannelEnrollment({
+        phoneNumber: enrollment.phoneNumber,
+        provider: enrollment.provider,
+        providerAccountId: enrollment.providerAccountId,
+        providerConversationId: enrollment.providerConversationId,
+        providerLineId: enrollment.providerLineId,
+      })
+    ).resolves.toBeUndefined();
+
+    await recordChannelCommunicationStart({
+      messageHandle: "sendblue-start-resolve",
+      phoneNumber: enrollment.phoneNumber,
+      provider: enrollment.provider,
+      providerAccountId: enrollment.providerAccountId,
+      providerLineId: enrollment.providerLineId,
+    });
+    await expect(
+      resolveChannelEnrollment({
+        phoneNumber: enrollment.phoneNumber,
+        provider: enrollment.provider,
+        providerAccountId: enrollment.providerAccountId,
+        providerConversationId: enrollment.providerConversationId,
+        providerLineId: enrollment.providerLineId,
+      })
+    ).resolves.toMatchObject({
+      authAssurance: "otp_verified",
+      status: "ready",
+    });
+  });
+
+  it("reports suppression for an un-enrolled legacy subject until START", async () => {
+    const {
+      isChannelCommunicationStopped,
+      recordChannelCommunicationStart,
+      recordChannelCommunicationStop,
+    } = await loadService();
+    const subject = {
+      phoneNumber: "+12025550125",
+      provider: enrollment.provider,
+      providerAccountId: enrollment.providerAccountId,
+      providerLineId: enrollment.providerLineId,
+    };
+
+    await recordChannelCommunicationStop({
+      ...subject,
+      messageHandle: "sendblue-stop-legacy",
+    });
+    await expect(isChannelCommunicationStopped(subject)).resolves.toBe(true);
+    await recordChannelCommunicationStart({
+      ...subject,
+      messageHandle: "sendblue-start-legacy",
+    });
+    await expect(isChannelCommunicationStopped(subject)).resolves.toBe(false);
+  });
+
   it("lets the Better Auth OTP callback promote the channel user in place", async () => {
     const { client, phoneIdentities, provisionChannelEnrollment } =
       await loadService();
@@ -471,9 +552,13 @@ async function loadService() {
   const service = await import("@/db/services/channel-onboarding");
   return {
     client,
+    isChannelCommunicationStopped: service.isChannelCommunicationStopped,
+    parseChannelCommunicationCommand: service.parseChannelCommunicationCommand,
     phoneIdentities,
     provisionChannelEnrollment: service.provisionChannelEnrollment,
+    recordChannelCommunicationStart: service.recordChannelCommunicationStart,
     recordChannelCommunicationStop: service.recordChannelCommunicationStop,
+    resolveChannelEnrollment: service.resolveChannelEnrollment,
   };
 }
 

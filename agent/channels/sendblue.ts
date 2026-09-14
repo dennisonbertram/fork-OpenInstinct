@@ -37,6 +37,7 @@ import {
 } from "@/db/services/channel-conversations";
 import { findVerifiedUserByPhoneNumber } from "@/db/services/phone-identities";
 import {
+  isChannelCommunicationStopped,
   parseChannelCommunicationCommand,
   provisionChannelEnrollment,
   recordChannelCommunicationStart,
@@ -313,6 +314,10 @@ export const sendblueChannelConfig = {
         drainOnboarding: true,
       };
     }
+    // `resolveChannelEnrollment` intentionally returns undefined for a
+    // stopped enrollment. Recheck the exact authenticated subject before any
+    // legacy OTP fallback so a STOP cannot be bypassed through Better Auth.
+    if (await isChannelCommunicationStopped(communicationSubject)) return null;
     const verifiedUserId = await findVerifiedAuthUserIdByPhoneNumber(
       admitted.senderNumber
     );
@@ -478,6 +483,7 @@ const bridge = chatSdkChannel({
     },
     async "action.result"(event, context, session) {
       if (event.status !== "completed" || !context.thread) return;
+      const actionThread = context.thread;
       if (isFinalDeliveryReplay(event.turnId, event.result.callId)) return;
       const scope = scopeForSession(session);
       const reaction = reactToMessageToolResultSchema.safeParse(event.result);
@@ -685,6 +691,8 @@ const bridge = chatSdkChannel({
                   .digest("hex"),
                 conversationId,
                 dispatch: async () => {
+                  if (await isSendblueThreadCommunicationStopped(actionThread))
+                    throw new Error("SendBlue communication is stopped.");
                   const response = await adapter.getSdk().messages.send({
                     content: index === 0 ? attachmentCaption : "",
                     from_number: configured.fromNumber,
@@ -1305,12 +1313,15 @@ async function postSendblueReply(
   scope?: AccessScope,
   report?: ReportDispatchOptions
 ) {
+  if (await isSendblueThreadCommunicationStopped(thread)) return false;
   if (!(await checkSendblueMessageBudget(thread, scope))) return false;
   const dispatched = await dispatchReportPart({
     channel: "sendblue",
     contentDigest: createHash("sha256").update(outgoing.raw).digest("hex"),
     conversationId: report?.conversationId ?? thread.id,
     dispatch: async () => {
+      if (await isSendblueThreadCommunicationStopped(thread))
+        throw new Error("SendBlue communication is stopped.");
       const posted = await thread.post(outgoing);
       if (!posted.id) throw new Error("SendBlue did not accept the message.");
     },
@@ -1327,6 +1338,7 @@ async function checkSendblueMessageBudget(
   thread: SendblueThread,
   scope?: AccessScope
 ) {
+  if (await isSendblueThreadCommunicationStopped(thread)) return false;
   if (!scope) return true;
   try {
     await checkBudget(scope, "provider_message");
@@ -1337,6 +1349,7 @@ async function checkSendblueMessageBudget(
       !(error instanceof WorkspaceNotOperableError)
     )
       throw error;
+    if (await isSendblueThreadCommunicationStopped(thread)) return false;
     const posted = await thread.post({ raw: error.message });
     if (!posted.id)
       throw new Error("SendBlue did not accept the message.", {
@@ -1345,6 +1358,21 @@ async function checkSendblueMessageBudget(
     await recordSendblueUsage(scope);
     return false;
   }
+}
+
+async function isSendblueThreadCommunicationStopped(thread: SendblueThread) {
+  const recipient = adapter.decodeThreadId(thread.id);
+  if (
+    !recipient.contactNumber ||
+    recipient.fromNumber !== configured.fromNumber
+  )
+    return true;
+  return isChannelCommunicationStopped({
+    phoneNumber: recipient.contactNumber,
+    provider: "sendblue",
+    providerAccountId: configured.accountId,
+    providerLineId: configured.fromNumber,
+  });
 }
 
 async function recordSendblueUsage(scope?: AccessScope) {
