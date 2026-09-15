@@ -1,18 +1,14 @@
 # Text-first onboarding
 
-Status: local implementation verified and awaiting its reviewed PR and merge;
-activation remains off by default and there is no production onboarding proof.
-Plan 026 owns the product contract.
-PR 271 is not merged. A metadata-only operational audit found that preview and
-production currently share a database and observed migration journal revisions
-0028–0031 in production; the journal does not identify the actor or deployment.
-Further deployments are held pending an owner decision on preview isolation and
-the remaining rollout gates. The owner waived the restore rehearsal for this
-unused development database; a fresh production-main snapshot was recorded.
-The owner requested 100 assistant turns per day; whether that limit is per-user
-or account-wide remains unconfirmed. One test phone is designated; a second
-tester and live acceptance remain pending. The outbound cap and candidate-line
-card capability remain unapproved.
+Status: production release is user-authorized after the local gate and CI pass;
+the approved values are configured for the next development deployment,
+activation remains off by default, and there is no production onboarding proof.
+Plan 026 owns the product contract. The planned release limits are 100
+account-wide model turns per day, 1 enrollment per sender, 1,000 account-wide
+outbound messages per day, and `single_media` card delivery. They are configured
+for the next development deployment but are not yet deployed. One designated
+tester remains required for post-activation live acceptance; no tester phone
+number is recorded here.
 
 ## Current path
 
@@ -68,6 +64,12 @@ legacy-output send guard, suppressing output when STOP is observed there. These
 are local implementation and test facts, not production provider evidence. See
 [SendBlue's security and messaging controls](https://docs.sendblue.com/security/).
 
+An authenticated direct sender may send the exact command `reset onboarding`
+(surrounding whitespace and case do not matter) to replay the durable Jory
+welcome and configured example cards in the same thread. It does not create or
+reset an account, replay an opening request, clear quotas, or bypass STOP,
+suspension, binding, or tenant checks.
+
 ## Recovery and diagnosis
 
 `channel-onboarding` operations are persisted. The local implementation uses a
@@ -107,8 +109,8 @@ do not delete enrolled accounts or roll back the schema incompatibly.
 
 ## Acceptance gate
 
-Before any rollout decision, use two explicitly designated, previously
-unregistered test phones on the exact candidate deployment. Prove plain-text
+After development activation, use one explicitly designated, previously
+unregistered test phone on the exact candidate deployment. Prove plain-text
 welcome and useful answer, independent isolation, image-first preservation,
 duplicate/restart recovery, STOP suppression, and failed/uncertain delivery
 recovery. Record provider acceptance separately from recipient delivery and
@@ -123,15 +125,36 @@ passed 15/15, and E2E passed 28 with one documented skip. Its source fingerprint
 is `7565e9620ed5a926bfa0d46668c9ac882cad170912a8ffb4682983d67a875994`.
 Receipt:
 `.eve/verify/df3d5f7b-0f01-4dfa-919e-dfcceb0dd66f/receipt.json`.
-The later Square evaluation passed 12 cases with one scored soft-judge case
-and 114 gates (13 total; artifact:
-`.eve/square-evals/2026-09-14T22-25-58.040Z.json`). This is
-synthetic local evidence, not a deployment or live-provider claim. No operator
-has approved the outbound cap or card capability for the candidate line. The
-owner requested 100 assistant turns per day; whether that limit is per-user or
-account-wide remains unconfirmed. One test phone is designated; a second tester
-and live acceptance remain pending. Enrollment remains off by default while PR
-271 awaits review and merge, and further deployments remain held pending the
-preview-isolation decision and the remaining rollout gates. The owner waived the
-restore rehearsal for this unused development database; a fresh
-production-main snapshot was recorded.
+The earlier reset verification run on 2026-09-15 passed all five lanes: 2,185 checks
+passed with seven intentional real-Postgres skips, Real Postgres passed 7/7,
+Contract evals passed 15/15, and E2E passed 28 with one documented skip.
+Receipt: `.eve/verify/ae88b967-b225-4ccd-b109-9f4c52f31064/receipt.json`.
+It was captured at HEAD
+`305505eb0d35b84d8dfa5d5c93316345cad831bc` with source fingerprint
+`04274fe960ff68d48c56496fcba882914e888a6c70236824a23f9dd6e61add05`; the
+reviewed runtime/test content is now committed as
+`aea8003dff4822e90df2a99c07ed3e08dffa3ff1`.
+The retained initial Square summary at `.eve/evals/2026-09-15T00-26-50/summary.json`
+reports 12 passed, 1 failed, and 0 scored cases (13 total), with 113/114 gates:
+case `0002` returned `$5,575.00` instead of `$55.75` despite correct store and
+page selection. The two focused `0001` reruns at
+`.eve/evals/2026-09-15T00-19-14/summary.json` and
+`.eve/evals/2026-09-15T00-22-15/summary.json` each passed 1/1 with 12/12 gates.
+After the exact minor-unit aggregation tool and guidance were added, the full
+Square summary at `.eve/evals/2026-09-15T00-41-59/summary.json` passed 13/13
+with 114/114 gates. Its `0002` trace records `square-money-total` receiving
+875, 2000, and 2700 USD, returning `$55.75`, and the delivered message using
+that value. The complete deterministic verifier then passed all five lanes:
+2,200 checks passed with seven known real-Postgres skips, Real Postgres passed
+7/7, Contract evals passed 15/15, and E2E passed 28 with one documented skip.
+Receipt: `.eve/verify/aa1aa432-313e-4343-9c23-ba7a3f48944a/receipt.json`.
+Its frozen source fingerprint was
+`4209d1cd8b9d586cc2d3c7c1d4ccc3e92ecfaa544f4facfc131b8e77b29a68e4`; only
+this evidence prose follows that run. This is synthetic local evidence, not
+deployment or live-provider evidence.
+The configured development plan uses 100 account-wide UTC model turns per day,
+1 enrollment per sender, 1,000 outbound messages per day, and `single_media`
+card delivery; deployment and one designated tester's live acceptance remain
+pending.
+Code defaults remain off; the configured Production flag takes effect at the
+next deployment.

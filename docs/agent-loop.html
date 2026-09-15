@@ -164,6 +164,18 @@
     font-family: var(--mono);
     font-size: 12px;
   }
+  .tool-note {
+    margin-top: 12px;
+    padding: 9px 12px;
+    border: 1px solid var(--accent);
+    background: var(--accent-soft);
+    color: var(--ink);
+    font-size: 13px;
+  }
+  .tool-note code {
+    font-family: var(--mono);
+    font-size: 12px;
+  }
   figcaption code,
   p code,
   td code {
@@ -843,6 +855,14 @@
           browser-agent task keeps running; the new turn can still see it.
         </text>
       </svg>
+    </div>
+    <div class="tool-note" aria-label="Square money tool flow">
+      <strong>Square money tool:</strong>
+      <code>raw SquareMoney</code> minor units → native
+      <code>square-money-total.ts</code> → formatted monetary total used in the
+      reply. This is pure in-process arithmetic, available to interactive and
+      scheduled-worker turns like <code>date-range</code>; it makes no API
+      writes and adds no auth boundary.
     </div>
     <figcaption>
       Inside one step. The model sees the instructions, recalled memory, skill

@@ -28,6 +28,7 @@ describe("root and worker capability boundaries", () => {
       "read_file.ts",
       "schedules.ts",
       "square-date-range.ts",
+      "square-money-total.ts",
       "todo.ts",
       "vault.ts",
       "write_file.ts",

@@ -27,15 +27,43 @@ verification results, not deployment or live-provider evidence. The expired
 OIDC failure from an earlier attempt is resolved for this gate; if it recurs,
 use the project-scoped recovery documented in the operational runbook rather
 than pulling all production environment values.
+The earlier reset verification run on 2026-09-15 passed all five lanes on the frozen
+worktree: 2,185 checks passed with seven intentional real-Postgres skips, Real
+Postgres passed 7/7, Contract evals passed 15/15, and E2E passed 28 with one
+documented skip. Receipt:
+`.eve/verify/ae88b967-b225-4ccd-b109-9f4c52f31064/receipt.json` (captured at
+HEAD `305505eb0d35b84d8dfa5d5c93316345cad831bc`, source fingerprint
+`04274fe960ff68d48c56496fcba882914e888a6c70236824a23f9dd6e61add05`; the
+reviewed runtime/test content is now committed as `aea8003dff4822e90df2a99c07ed3e08dffa3ff1`).
+The retained initial Square summary at `.eve/evals/2026-09-15T00-26-50/summary.json`
+reports 12 passed, 1 failed, and 0 scored cases (13 total), with 113/114 gates:
+case `0002` returned `$5,575.00` instead of `$55.75` despite correct store and
+page selection. The two focused `0001` reruns at
+`.eve/evals/2026-09-15T00-19-14/summary.json` and
+`.eve/evals/2026-09-15T00-22-15/summary.json` each passed 1/1 with 12/12 gates.
+After the exact minor-unit aggregation tool and guidance were added, the full
+Square summary at `.eve/evals/2026-09-15T00-41-59/summary.json` passed 13/13
+with 114/114 gates. Its `0002` trace records `square-money-total` receiving
+875, 2000, and 2700 USD, returning `$55.75`, and the delivered message using
+that value. The complete deterministic verifier then passed all five lanes:
+2,200 checks passed with seven known real-Postgres skips, Real Postgres passed
+7/7, Contract evals passed 15/15, and E2E passed 28 with one documented skip.
+Receipt: `.eve/verify/aa1aa432-313e-4343-9c23-ba7a3f48944a/receipt.json`.
+Its frozen source fingerprint was
+`4209d1cd8b9d586cc2d3c7c1d4ccc3e92ecfaa544f4facfc131b8e77b29a68e4`; only
+this evidence prose follows that run. These remain local synthetic verification
+results, not deployment or live-provider evidence.
 PR 271 is not merged. A metadata-only operational audit found that preview and
 production currently share a database and observed migration journal revisions
 0028–0031 in production; the journal does not identify the actor or deployment.
-Further deployments are held pending an owner decision on preview isolation and
-the remaining rollout gates. The owner waived the restore rehearsal for this
-unused development database; a fresh production-main snapshot was recorded in
-`docs/operations/text-onboarding-restore-2026-09-14.md`. Rollout limits,
-candidate-line card capability, and two fresh-phone acceptance also remain
-pending; activation stays off by default.
+The user authorized the development merge, deployment, and test path against
+this unused development database; preview isolation is not a routing change or
+a gate for that development path. The owner waived the restore rehearsal; a
+fresh production-main snapshot was recorded in
+`docs/operations/text-onboarding-restore-2026-09-14.md`. One designated
+fresh-phone acceptance and candidate-line capability confirmation remain
+pending as post-activation live acceptance; activation stays off by default
+until the lead deploys the approved development values.
 Planned on 2026-09-14 against OpenInstinct `3df3051e21ed722f783a2e615f2c7b629d32b65c`.
 Priority: P1. Effort: M–L. Risk: high at the identity boundary.
 Execution ownership: Terra for identity, concurrency, and channel changes; Luna for copy and bounded tests; lead for decisions, integration, and review.
@@ -69,6 +97,11 @@ If the first text is “What is in this photo?”, send a compact welcome and an
 For an ordinary greeting or capability question such as “What can you do?”, send the full welcome sequence—welcome, intro, examples, album, then beta/STOP—and invite the next action. If the opening contains a concrete question, photo, or other task, preserve it, send a compact welcome, and answer promptly; cards may follow when appropriate. This ordering follows the request content and does not require a brittle intent classifier. If the person replies while example cards are being sent, stop unsent cards and handle the new request. Do not make them wait through a presentation. Existing users do not receive the welcome again. An explicit “examples” request may show the current illustrative cards without resetting enrollment.
 
 Names, location, and preferences are collected only when useful to the next request. Do not guess location from a phone number. Connected accounts and permissions are requested when a task actually needs them. No password, payment card, or OTP should be requested as ordinary chat content.
+
+`reset onboarding` is a non-destructive replay and does not erase user state. A
+future full reset that erases a user's Jory state is tracked separately in
+[backlog issue #272](https://github.com/dennisonbertram/fork-OpenInstinct/issues/272)
+and is not implemented by this plan.
 
 ## 3. State and delivery contract
 
@@ -155,7 +188,7 @@ Verified official documentation on 2026-09-14:
 
 Do not disable contact restrictions, change account plans, purchase a line, or alter webhooks without explicit operational authorization. If provider policy blocks first contact, application code alone cannot deliver this journey.
 
-For v1, set configurable per-sender enrollment limits and account-wide model-turn and outbound-message admission caps before activation. These are not dollar, token, per-tool, or per-turn ceilings; operator launch risk remains explicit. The owner requested 100 assistant turns per day, but whether that limit is per-user or account-wide remains unconfirmed. The outbound cap is not yet approved. The welcome builder requires an explicit card mode: disabled produces four text operations, carousel produces four texts plus one three-image operation, and single_media produces four texts plus three single-image operations. In all modes beta/STOP is last; cards are optional work and can be cancelled. The candidate line's card capability is not yet approved. No unsolicited follow-up campaign. Unknown senders cannot start expensive tools before enrollment is ready.
+For v1, set configurable per-sender enrollment limits and account-wide model-turn and outbound-message admission caps before activation. These are not dollar, token, per-tool, or per-turn ceilings; operator launch risk remains explicit. The authorized development rollout plan selects 100 account-wide UTC model turns per day, 1000 outbound messages per day, one enrollment per sender, and `single_media`; the lead selected these values within the user-authorized rollout. The five values are configured in Vercel Production for the next deployment; they are not yet live. The welcome builder requires an explicit card mode: disabled produces four text operations, carousel produces four texts plus one three-image operation, and single_media produces four texts plus three single-image operations. In all modes beta/STOP is last; cards are optional work and can be cancelled. Candidate-line capability confirmation remains pending. No unsolicited follow-up campaign. Unknown senders cannot start expensive tools before enrollment is ready.
 
 Failure behavior:
 
@@ -184,13 +217,13 @@ production provider evidence. [Security and messaging controls](https://docs.sen
 Do not start implementation merely because this plan exists. After owner approval, use a linked worktree in `dennisonbertram/fork-OpenInstinct`; never push or open a PR against upstream. Preserve unrelated work. Lead owns reviewed commits, PRs, CI, merge, rollout, and cleanup under repository rules.
 
 Local implementation has now completed the queue/schedule and real-Postgres
-pool-reconnect evidence described above. It remains off by default. Further
-deployments are held pending an owner decision on preview isolation and the
-remaining rollout gates. The owner waived the restore rehearsal for this unused
-development database; a fresh production-main snapshot was recorded.
-Before a rollout decision, obtain operator approval for budgets and
-candidate-line card capability, and complete two fresh-phone acceptance on the
-exact candidate deployment. Do not treat this update as live-provider,
+pool-reconnect evidence described above. It remains off by default. The
+authorized development rollout is planned for the values above. The five values
+are configured in Vercel Production for the next deployment; they are not yet
+live. The user-approved development path does not require a
+preview-isolation routing change. After development activation, complete one
+designated fresh-phone acceptance on the exact candidate deployment and
+confirm candidate-line capability. Do not treat this update as live-provider,
 deployed, or operating-system crash evidence.
 
 Before editing, run `git diff --stat 3df3051e21ed722f783a2e615f2c7b629d32b65c..HEAD -- agent/channels/sendblue.ts agent/lib/sendblue db/services db/schema src/auth src/env.ts` and compare the current-state statements above. Read current AGENTS/CONTEXT, installed Eve docs routed from `eve/docs/README.md`, Better Auth 1.7.2 contracts, and provider docs. Context7 was not available during planning; the executor must use it if available and otherwise inspect installed/official sources.

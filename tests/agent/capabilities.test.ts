@@ -24,6 +24,7 @@ import gmail from "@/agent/tools/gmail";
 import messaging from "@/agent/tools/messaging";
 import schedules from "@/agent/tools/schedules";
 import squareDateRangeTools from "@/agent/tools/square-date-range";
+import squareMoneyTotalTools from "@/agent/tools/square-money-total";
 import vault from "@/agent/tools/vault";
 
 const groupedTools = [
@@ -33,6 +34,7 @@ const groupedTools = [
   messaging,
   schedules,
   squareDateRangeTools,
+  squareMoneyTotalTools,
   vault,
 ];
 
@@ -149,6 +151,7 @@ describe("authored mode capability matrix", () => {
       "schedules-update",
       "send_message",
       "square-date-range",
+      "square-money-total",
     ]);
   });
 
@@ -161,6 +164,7 @@ describe("authored mode capability matrix", () => {
       "gmail-read-thread",
       "gmail-search",
       "square-date-range",
+      "square-money-total",
     ]);
   });
 
