@@ -1,14 +1,21 @@
 # Text-first onboarding
 
-Status: production release is user-authorized after the local gate and CI pass;
-the approved values are configured for the next development deployment,
-activation remains off by default, and there is no production onboarding proof.
-Plan 026 owns the product contract. The planned release limits are 100
-account-wide model turns per day, 1 enrollment per sender, 1,000 account-wide
-outbound messages per day, and `single_media` card delivery. They are configured
-for the next development deployment but are not yet deployed. One designated
-tester remains required for post-activation live acceptance; no tester phone
-number is recorded here.
+Status: PR 271 is merged and its 2026-09-14 production release was observed on
+Vercel and Railway. The existing-user reset/cards/reply path was observed; fresh-user
+enrollment remains unverified pending one designated unregistered sender. Plan
+026 owns the product contract. The release limits are 100 account-wide model
+turns per day, 1 enrollment per sender, 1,000 account-wide outbound messages per
+day, and `single_media` card delivery. No tester phone number is recorded here.
+
+The merged release is `e2f67d86ddd4a722ee7d998815077a149c7d0542`. In the
+2026-09-14 release observation, Vercel deployment
+`dpl_BU6nXGw5ztSDNPoxKZcRUecA9r3H` was READY at the canonical
+`https://open-instinct-ashy.vercel.app`; Railway deployment
+`a63080fe-1e35-4733-a08b-d71b1207cddf` was SUCCESS for the same SHA. Release
+evidence is recorded in the [release comment](https://github.com/dennisonbertram/fork-OpenInstinct/pull/271#issuecomment-5673100934)
+and [web update](https://github.com/dennisonbertram/fork-OpenInstinct/pull/271#issuecomment-5673124358).
+The owner waived restore, preview-isolation, and two-phone gates for this
+release.
 
 ## Current path
 
@@ -21,8 +28,8 @@ channel binding, and opening-request receipt before welcome work is eligible.
 The original text and required private attachment data stay in scoped durable
 storage; they are not metadata log content.
 
-The welcome operation has four ordered text parts and three labeled example
-cards. The explicit card mode determines the operation count: disabled is four
+The welcome operation has four ordered text parts and three example cards. The
+explicit card mode determines the operation count: disabled is four
 texts, carousel is four texts plus one operation containing all three media
 items, and single_media is four texts plus three media operations. Beta/STOP is
 last in every mode. The card assets are local implementation artifacts at
@@ -115,7 +122,12 @@ welcome and useful answer, independent isolation, image-first preservation,
 duplicate/restart recovery, STOP suppression, and failed/uncertain delivery
 recovery. Record provider acceptance separately from recipient delivery and
 record observed times with sample counts; do not invent latency guarantees.
-No live acceptance is recorded here. Full deterministic local verification
+The 2026-09-14 production observation used the designated existing account: `reset
+onboarding`, three cards, and a normal reply were observed in Messages from
+21:03–21:05 New York time on 2026-09-14; a web turn and reload persisted at
+21:07. This proves the existing-user/reset path, not fresh-user enrollment.
+Fresh-user acceptance still requires one designated unregistered sender. Full
+deterministic local verification
 completed on 2026-09-14. The earlier receipt recorded 2,168 passed with seven
 intentional real-Postgres skips and is retained as historical pre-fixture-fix
 evidence: `.eve/verify/85fdff44-f466-414a-b718-da1018ed52b1/receipt.json`. The
@@ -154,7 +166,7 @@ this evidence prose follows that run. This is synthetic local evidence, not
 deployment or live-provider evidence.
 The configured development plan uses 100 account-wide UTC model turns per day,
 1 enrollment per sender, 1,000 outbound messages per day, and `single_media`
-card delivery; deployment and one designated tester's live acceptance remain
-pending.
-Code defaults remain off; the configured Production flag takes effect at the
-next deployment.
+card delivery; the PR271 release observation covers deployment and existing-user
+behavior, while one designated unregistered sender's live acceptance remains
+pending. Code defaults remain off; production configuration is release-specific
+and does not by itself prove fresh-user enrollment.

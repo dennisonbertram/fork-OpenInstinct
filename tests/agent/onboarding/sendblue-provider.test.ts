@@ -95,7 +95,7 @@ describe("onboarding SendBlue provider", () => {
     ).resolves.toEqual({ kind: "accepted", providerHandle: "carousel-1" });
 
     expect(capture.fetch).toHaveBeenCalledWith(
-      "https://api.sendblue.co/api/send-carousel",
+      "https://api.sendblue.com/api/send-carousel",
       expect.objectContaining({
         body: JSON.stringify({
           from_number: "+12025550123",
@@ -109,6 +109,86 @@ describe("onboarding SendBlue provider", () => {
       })
     );
   });
+
+  it("sends a media-only single image without an empty content field", async () => {
+    capture.fetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          message_handle: "single-image-1",
+          status: "ACCEPTED",
+        }),
+        { status: 200 }
+      )
+    );
+
+    await expect(
+      sendOnboardingSendbluePayload({
+        from: "+12025550123",
+        media: [
+          { contentType: "image/png", url: "https://assets.example/one.png" },
+        ],
+        presentation: { kind: "single_media" },
+        text: "",
+        to: "+12025550199",
+        version: 1,
+      })
+    ).resolves.toEqual({ kind: "accepted", providerHandle: "single-image-1" });
+
+    expect(capture.fetch).toHaveBeenCalledWith(
+      "https://api.sendblue.co/api/send-message",
+      expect.objectContaining({
+        body: JSON.stringify({
+          from_number: "+12025550123",
+          media_url: "https://assets.example/one.png",
+          number: "+12025550199",
+        }),
+      })
+    );
+  });
+
+  it("rejects a blank text-only payload before a provider call", async () => {
+    await expect(
+      sendOnboardingSendblueMessage({
+        from: "+12025550123",
+        text: " ",
+        to: "+12025550199",
+      })
+    ).resolves.toEqual({ kind: "rejected" });
+
+    expect(capture.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["whitespace text", " ", 1],
+    ["no media", "", undefined],
+    ["empty media", "", 0],
+    ["two media items", "", 2],
+  ])(
+    "rejects a media-only single image with %s before a provider call",
+    async (_caseName, text, mediaCount) => {
+      const image = {
+        contentType: "image/png",
+        url: "https://assets.example/one.png",
+      };
+      const media =
+        mediaCount === undefined
+          ? undefined
+          : Array.from({ length: mediaCount }, () => image);
+
+      await expect(
+        sendOnboardingSendbluePayload({
+          from: "+12025550123",
+          media,
+          presentation: { kind: "single_media" },
+          text,
+          to: "+12025550199",
+          version: 1,
+        })
+      ).resolves.toEqual({ kind: "rejected" });
+
+      expect(capture.fetch).not.toHaveBeenCalled();
+    }
+  );
 
   it("rejects an invalid persisted media presentation before an attempted provider call", async () => {
     await expect(

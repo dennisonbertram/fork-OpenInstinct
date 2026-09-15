@@ -49,10 +49,17 @@ export const directChannelOnboardingPayloadSchema = z
           path: ["media"],
         });
       }
-    } else if (payload.text.trim().length === 0) {
+    } else if (
+      !(
+        payload.presentation?.kind === "single_media" &&
+        payload.media?.length === 1 &&
+        payload.text === ""
+      ) &&
+      payload.text.trim().length === 0
+    ) {
       context.addIssue({
         code: "custom",
-        message: "A direct text message requires text.",
+        message: "A direct message requires text unless it has one media item.",
         path: ["text"],
       });
     }

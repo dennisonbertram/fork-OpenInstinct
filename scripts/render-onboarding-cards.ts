@@ -33,13 +33,11 @@ function cardMarkup(card: (typeof ONBOARDING_EXAMPLE_CARDS)[number]) {
     <main class="canvas">
       <header class="topbar">
         <div class="brand"><span class="brand-mark">J</span><span>Jory</span></div>
-        <div class="sample-label">${escapeHtml(card.label)}</div>
       </header>
       <div class="thread-title">${escapeHtml(card.title)}</div>
-      <section class="thread" aria-label="${escapeHtml(card.label)}">
+      <section class="thread" aria-label="${escapeHtml(card.title)} example conversation">
         ${bubbles}
       </section>
-      <footer>sample data · example only</footer>
     </main>
   </body>
 </html>`;
@@ -69,7 +67,6 @@ const styles = `
   .topbar { display: flex; flex-direction: column; align-items: center; gap: 7px; }
   .brand { display: flex; align-items: center; gap: 7px; color: #182645; font-size: 17px; font-weight: 700; }
   .brand-mark { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 50%; background: #182645; color: #fff; font-size: 14px; }
-  .sample-label { padding: 4px 8px; border: 1px solid #d6deea; border-radius: 7px; background: #f8fafc; color: #64718a; font-size: 10px; font-weight: 600; line-height: 1.2; }
   .thread-title { margin: 17px 0 13px; color: #65728a; font-size: 12px; font-weight: 700; letter-spacing: .02em; text-align: center; }
   .thread { display: flex; flex-direction: column; gap: 8px; padding: 0 1px; }
   .row { display: flex; width: 100%; }
@@ -78,7 +75,6 @@ const styles = `
   .bubble { max-width: 88%; padding: 9px 13px 10px; border-radius: 18px; font-size: 18px; line-height: 1.23; white-space: pre-wrap; }
   .jory .bubble { border: 1px solid #d9e0e9; border-bottom-left-radius: 5px; background: #f0f2f5; color: #263653; }
   .owner .bubble { border-bottom-right-radius: 5px; background: #1877f2; color: #fff; }
-  footer { margin-top: auto; padding-top: 12px; color: #8490a4; font-size: 10px; letter-spacing: .02em; text-align: center; }
 `;
 /* oxlint-enable tailwindcss/no-duplicate-classes, tailwindcss/no-unknown-classes */
 

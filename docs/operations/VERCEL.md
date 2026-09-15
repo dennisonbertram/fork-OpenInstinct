@@ -20,6 +20,17 @@ premium channel. That resolver, agent, API, and webhook design is proposed in
 [`../PRODUCT_DIRECTION.md`](../PRODUCT_DIRECTION.md); it is not implemented by
 this runbook.
 
+PR 271 release evidence observed on 2026-09-14: merged SHA
+`e2f67d86ddd4a722ee7d998815077a149c7d0542` is serving from Vercel deployment
+`dpl_BU6nXGw5ztSDNPoxKZcRUecA9r3H` (`READY`) at
+`https://open-instinct-ashy.vercel.app`; the Railway marketing deployment
+`a63080fe-1e35-4733-a08b-d71b1207cddf` is `SUCCESS` for the same SHA. See the
+[release comment](https://github.com/dennisonbertram/fork-OpenInstinct/pull/271#issuecomment-5673100934)
+and [web update](https://github.com/dennisonbertram/fork-OpenInstinct/pull/271#issuecomment-5673124358).
+The 2026-09-14 production observation covered an existing user's `reset onboarding`,
+three cards, and normal reply, plus a web turn that persisted after reload. It
+does not establish fresh-user enrollment with an unregistered sender.
+
 ## Current runbook and operations tooling
 
 This runbook describes the current Vercel/Eve procedure. This branch contains
@@ -652,12 +663,13 @@ existing SendBlue OTP values
 `SENDBLUE_API_KEY_ID`, `SENDBLUE_API_SECRET_KEY`, and `SENDBLUE_FROM_NUMBER`.
 When off, conversational processing is disabled and OTP remains independent.
 
-The channel admits only a verified Better Auth phone identity with active
-membership, bound tenant, active agent, and participant. It supports 1:1
-iMessage, SMS, and RCS. Before provider admission, server-side checks must
+The legacy verified-identity path admits a Better Auth phone identity with
+active membership, bound tenant, active agent, and participant. PR 271 also
+adds authenticated channel-observed enrollment for eligible new direct
+SendBlue senders, with isolated provisioning before welcome work. It supports
+1:1 iMessage, SMS, and RCS. Before provider admission, server-side checks must
 match the exact SendBlue account and receiving line; missing, conflicting, or
-wrong lines, outbound events, and groups are dropped. There is no phone
-bootstrap or unverified workspace claim. Durable per-provider message-handle
+wrong lines, outbound events, and groups are dropped. Durable per-provider message-handle
 claims in existing Postgres state prevent A,B,A replay. The additive `0026`
 migration is required to admit `sendblue` in the committed `platform_lines`
 provider check. Admission claims the handle before Eve dispatch; a dispatch
@@ -702,9 +714,11 @@ negatives, plus the webchat OTP regression. Disable the flag and redeploy, or
 remove only the owned webhook, to stop the channel.
 
 Automated checks cover the native text path and the adapter's media, reaction,
-and approval contracts. Live provider acceptance still requires the designated
-user's message, same-number reply, duplicate and wrong-line negatives, and a
-webchat OTP regression. Track only the adapter patch version in `EVE_PATCHES`.
+and approval contracts. The 2026-09-14 production evidence covers the designated
+existing account's reset, cards, and reply; fresh-user acceptance with an
+unregistered sender remains pending, along with duplicate and wrong-line
+negatives for that new-sender path. Track only the adapter patch version in
+`EVE_PATCHES`.
 Approval prompts use “no” for refusal because SendBlue treats “cancel” as an
 opt-out keyword.
 Browser screenshots remain private artifacts. For a SendBlue reply, the channel
@@ -718,7 +732,9 @@ Scheduled reminders are not supported on SendBlue, so schedule tools remain
 hidden for this channel and webchat is the current path. Group chats,
 iPhone-specific behavior, and animation are outside this slice. Synthetic
 canonical route checks observed unsigned `401`, wrong-line `200`, malformed
-JSON `400`, and health `200`; no live phone delivery has been verified.
+JSON `400`, and health `200`. The dated existing-user observation is not a
+blanket claim of fresh-sender enrollment or recipient delivery for every provider
+response.
 
 ## Google Workspace connector
 

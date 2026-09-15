@@ -7,7 +7,7 @@ import {
 import { z } from "zod";
 
 const sendMessageUrl = "https://api.sendblue.co/api/send-message";
-const sendCarouselUrl = "https://api.sendblue.co/api/send-carousel";
+const sendCarouselUrl = "https://api.sendblue.com/api/send-carousel";
 const messageStatusUrl = "https://api.sendblue.co/api/status";
 export { maximumSendblueOnboardingTextCharacters };
 const responseSchema = z.object({
@@ -94,12 +94,14 @@ export async function sendOnboardingSendbluePayload({
   text,
   to,
 }: SendblueOnboardingDirectPayload): Promise<SendblueOnboardingSendResult> {
+  const mediaOnlySingle =
+    presentation.kind === "single_media" && text === "" && media?.length === 1;
   if (
     !isE164PhoneNumber(from) ||
     !isE164PhoneNumber(to) ||
     (presentation.kind === "carousel"
       ? text.length !== 0
-      : text.trim().length === 0) ||
+      : !mediaOnlySingle && text.trim().length === 0) ||
     text.length > maximumSendblueOnboardingTextCharacters ||
     !env.SENDBLUE_API_KEY_ID ||
     !env.SENDBLUE_API_SECRET_KEY
@@ -157,9 +159,11 @@ function providerRequest({
   readonly text: string;
   readonly to: string;
 }) {
-  const base = { content: text, from_number: from, number: to };
+  const routing = { from_number: from, number: to };
   if (presentation.kind === "text")
-    return media?.length ? undefined : { body: base, url: sendMessageUrl };
+    return media?.length
+      ? undefined
+      : { body: { content: text, ...routing }, url: sendMessageUrl };
   if (!media?.every((item) => isHttpsUrl(item.url))) return undefined;
   if (presentation.kind === "carousel") {
     if (media.length < 2 || media.length > 20) return undefined;
@@ -174,12 +178,23 @@ function providerRequest({
     };
   }
   if (media.length !== 1) return undefined;
-  const body = {
-    ...base,
-    media_url: media[0]?.url,
-    // JSON omits undefined values, so this remains absent unless configured.
-    send_style: presentation.sendStyle,
-  };
+  const body =
+    text.length > 0
+      ? {
+          content: text,
+          from_number: from,
+          media_url: media[0]?.url,
+          number: to,
+          // JSON omits undefined values, so this remains absent unless configured.
+          send_style: presentation.sendStyle,
+        }
+      : {
+          from_number: from,
+          media_url: media[0]?.url,
+          number: to,
+          // JSON omits undefined values, so this remains absent unless configured.
+          send_style: presentation.sendStyle,
+        };
   return {
     body,
     url: sendMessageUrl,

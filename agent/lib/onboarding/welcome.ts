@@ -105,12 +105,12 @@ export function buildWelcomeOperations({
         required: false,
       });
     } else {
-      for (const [ordinal, card] of ONBOARDING_EXAMPLE_CARDS.entries()) {
+      for (const [ordinal] of ONBOARDING_EXAMPLE_CARDS.entries()) {
         const url = urls[ordinal];
         if (!url) throw new Error("Missing onboarding card asset URL.");
         operations.push({
           key: `onboarding:v1:card:${String(ordinal)}`,
-          payload: payload(from, to, card.label, { kind: "single_media" }, [
+          payload: payload(from, to, "", { kind: "single_media" }, [
             { contentType: "image/png", url },
           ]),
           required: false,
