@@ -284,6 +284,95 @@ describe("channel onboarding delivery persistence", () => {
     expect(photo).not.toHaveProperty("url");
   });
 
+  it("atomically records one bounded availability reply when the first model turn is quota-denied", async () => {
+    const { client, delivery, provisionChannelEnrollment } =
+      await loadServices();
+    const ready = await provisionChannelEnrollment(enrollment);
+    if (ready.status !== "ready") throw new Error("Expected an enrollment.");
+    await acceptCoreWelcomes(delivery, ["welcome-1", "welcome-2"], "worker");
+
+    const [opening] = await delivery.claimChannelOnboardingOperations({
+      bindingId: ready.bindingId,
+      kinds: ["opening_request"],
+      leaseForMs: 1_000,
+      limit: 1,
+      now,
+      owner: "quota-worker",
+    });
+    if (opening?.kind !== "opening_request") {
+      throw new Error("Expected a leased opening request.");
+    }
+
+    await expect(
+      delivery.failChannelOnboardingOpeningRequestForModelQuota(opening, now)
+    ).resolves.toBe(true);
+    await expect(
+      delivery.failChannelOnboardingOpeningRequestForModelQuota(opening, now)
+    ).resolves.toBe(false);
+    await expect(
+      client.query<{ count: number; state: string }>(
+        `SELECT count(*)::int AS count, min(state) AS state
+         FROM channel_onboarding_operations
+         WHERE enrollment_id = '${ready.enrollmentId}'
+           AND reply_key = 'model-quota-availability:${opening.id}'`
+      )
+    ).resolves.toMatchObject({ rows: [{ count: 1, state: "pending" }] });
+    await expect(
+      client.query<{ state: string }>(
+        `SELECT state FROM channel_onboarding_operations WHERE id = '${opening.id}'`
+      )
+    ).resolves.toMatchObject({ rows: [{ state: "failed" }] });
+
+    const [notice] = await delivery.claimChannelOnboardingOperations({
+      bindingId: ready.bindingId,
+      kinds: ["outbound_reply"],
+      leaseForMs: 1_000,
+      limit: 10,
+      now,
+      owner: "recovery-worker",
+    });
+    if (notice?.kind !== "outbound_reply") {
+      throw new Error("Expected the single availability reply.");
+    }
+    await expect(projectPersistedOperation(notice)).resolves.toMatchObject({
+      kind: "outbound_reply",
+      text: "I’ve reached my daily limit. Please try again tomorrow.",
+    });
+
+    const later = await provisionChannelEnrollment({
+      ...enrollment,
+      messageId: "sendblue-message-later-quota-denial",
+      openingRequest: { text: "Please try my next request." },
+    });
+    if (later.status !== "ready") throw new Error("Expected later request.");
+    const [laterOpening] = await delivery.claimChannelOnboardingOperations({
+      bindingId: ready.bindingId,
+      kinds: ["opening_request"],
+      leaseForMs: 1_000,
+      limit: 1,
+      now: new Date(now.getTime() + 1),
+      owner: "later-quota-worker",
+    });
+    if (laterOpening?.kind !== "opening_request") {
+      throw new Error("Expected later leased opening request.");
+    }
+    await expect(
+      delivery.failChannelOnboardingOpeningRequestForModelQuota(
+        laterOpening,
+        new Date(now.getTime() + 1)
+      )
+    ).resolves.toBe(true);
+    await expect(
+      client.query<{ count: number; maximumOrdinal: number }>(
+        `SELECT count(*)::int AS count, max(ordinal)::int AS "maximumOrdinal"
+         FROM channel_onboarding_operations
+         WHERE enrollment_id = '${ready.enrollmentId}'
+           AND kind = 'outbound_reply'
+           AND reply_key LIKE 'model-quota-availability:%'`
+      )
+    ).resolves.toMatchObject({ rows: [{ count: 2, maximumOrdinal: 1 }] });
+  });
+
   it("continues the original request after an uncertain welcome without resending it", async () => {
     const { delivery, provisionChannelEnrollment } = await loadServices();
     await provisionChannelEnrollment(enrollment);

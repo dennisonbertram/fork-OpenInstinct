@@ -944,6 +944,97 @@ describe("SendBlue channel", () => {
     expect(capture.send).not.toHaveBeenCalled();
   });
 
+  it("keeps first-contact text and records that an unavailable original attachment needs resend", async () => {
+    capture.findOne.mockResolvedValue(null);
+    capture.provisionChannelEnrollment.mockResolvedValue(readyEnrollment());
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({
+        attachments: [
+          {
+            mimeType: "image/jpeg",
+            name: "unavailable.jpg",
+            type: "image",
+            url: "https://media.example.test/unavailable",
+          },
+        ],
+        text: "What is in this photo?",
+      })
+    );
+
+    expect(capture.provisionChannelEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openingRequest: {
+          text: "What is in this photo?\n\nOne original attachment was unavailable. Ask the sender to resend it as a JPEG or PNG.",
+        },
+      })
+    );
+  });
+
+  it("keeps first-contact text when a non-data PDF cannot be preserved", async () => {
+    capture.findOne.mockResolvedValue(null);
+    capture.provisionChannelEnrollment.mockResolvedValue(readyEnrollment());
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({
+        attachments: [
+          {
+            mimeType: "application/pdf",
+            name: "sales.pdf",
+            type: "file",
+            url: "https://media.example.test/sales.pdf",
+          },
+        ],
+        text: "Please summarize this.",
+      })
+    );
+
+    expect(capture.provisionChannelEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openingRequest: {
+          text: "Please summarize this.\n\nOne original attachment was unavailable. Ask the sender to resend it as a JPEG or PNG.",
+        },
+      })
+    );
+  });
+
+  it("keeps usable first-contact attachments while disclosing other unavailable originals", async () => {
+    capture.findOne.mockResolvedValue(null);
+    capture.provisionChannelEnrollment.mockResolvedValue(readyEnrollment());
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({
+        attachments: [
+          {
+            mimeType: "image/jpeg",
+            name: "kept.jpg",
+            type: "image",
+            url: `data:image/jpeg;base64,${onePixelJpeg().toString("base64")}`,
+          },
+          {
+            mimeType: "image/jpeg",
+            name: "unavailable.jpg",
+            type: "image",
+            url: "https://media.example.test/unavailable",
+          },
+        ],
+        text: "Compare these photos.",
+      })
+    );
+
+    expect(capture.provisionChannelEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openingRequest: {
+          attachments: [expect.objectContaining({ contentType: "image/jpeg" })],
+          text: "Compare these photos.\n\nOne original attachment was unavailable. Ask the sender to resend it as a JPEG or PNG.",
+        },
+      })
+    );
+  });
+
   it("continues an enrolled channel-observed sender after new enrollment is turned off", async () => {
     capture.findOne.mockResolvedValue(null);
     capture.isTextOnboardingEnabled.mockReturnValue(false);
@@ -1207,6 +1298,63 @@ describe("SendBlue channel", () => {
       expect.objectContaining({ bindingId: "binding-enrolled" })
     );
     expect(capture.send).not.toHaveBeenCalled();
+  });
+
+  it("preserves the resend context on the existing durable continuation path", async () => {
+    capture.findOne.mockResolvedValue(null);
+    capture.resolveChannelEnrollment.mockResolvedValue(readyEnrollment());
+    capture.provisionChannelEnrollment.mockResolvedValue(readyEnrollment());
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({
+        attachments: [
+          {
+            mimeType: "image/jpeg",
+            name: "unavailable.jpg",
+            type: "image",
+            url: "https://media.example.test/unavailable",
+          },
+        ],
+        text: "Can you use this for yesterday's sales?",
+      })
+    );
+
+    expect(capture.provisionChannelEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openingRequest: {
+          text: "Can you use this for yesterday's sales?\n\nOne original attachment was unavailable. Ask the sender to resend it as a JPEG or PNG.",
+        },
+      })
+    );
+  });
+
+  it("keeps an attachment-only first contact actionable when its original cannot be read", async () => {
+    capture.findOne.mockResolvedValue(null);
+    capture.provisionChannelEnrollment.mockResolvedValue(readyEnrollment());
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({
+        attachments: [
+          {
+            mimeType: "image/jpeg",
+            name: "unavailable.jpg",
+            type: "image",
+            url: "https://media.example.test/unavailable",
+          },
+        ],
+        text: "",
+      })
+    );
+
+    expect(capture.provisionChannelEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openingRequest: {
+          text: "One original attachment was unavailable. Ask the sender to resend it as a JPEG or PNG.",
+        },
+      })
+    );
   });
 
   it("keeps a same-binding OTP-upgraded enrollment on the durable continuation path with full auth", async () => {
@@ -3514,6 +3662,25 @@ function inbound(
     text: "hello",
     ...overrides,
   } as unknown as Parameters<typeof dispatchSendblueMessage>[1];
+}
+
+function readyEnrollment() {
+  return {
+    agentId: "agent-enrolled",
+    assurance: "channel_observed" as const,
+    authAssurance: "channel_observed" as const,
+    bindingId: "binding-enrolled",
+    capabilities: ["assistant_basic", "photo_input"] as const,
+    capabilityProfile: "channel-basic" as const,
+    enrollmentId: "enrollment-enrolled",
+    identityProvenance: "sendblue_direct" as const,
+    phoneIdentityId: "phone-enrolled",
+    principalId: "existing-user",
+    receiptId: "receipt-enrolled",
+    status: "ready" as const,
+    userId: "existing-user",
+    workspaceId,
+  };
 }
 
 function heicBytes(): Buffer {

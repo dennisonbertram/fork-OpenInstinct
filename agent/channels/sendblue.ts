@@ -348,6 +348,8 @@ export const sendblueChannelConfig = {
       }
       const prepared = await prepareModelImageAttachments(message.attachments);
       const partitioned = partitionDirectPromptAttachments(prepared.kept);
+      const unavailableAttachmentCount =
+        prepared.withheldCount + partitioned.droppedCount;
       const continued = await provisionChannelEnrollment({
         messageId: admitted.messageHandle,
         openingDispatch: isKnownCapabilityGreeting(
@@ -357,7 +359,8 @@ export const sendblueChannelConfig = {
         openingRequest: openingRequestFrom(
           message.text,
           partitioned.kept,
-          message.attachments.length > 0
+          message.attachments.length > 0,
+          unavailableAttachmentCount
         ),
         phoneNumber: admitted.senderNumber,
         provider: "sendblue",
@@ -384,12 +387,15 @@ export const sendblueChannelConfig = {
       if (!cardMode) return null;
       const prepared = await prepareModelImageAttachments(message.attachments);
       const partitioned = partitionDirectPromptAttachments(prepared.kept);
+      const unavailableAttachmentCount =
+        prepared.withheldCount + partitioned.droppedCount;
       const enrollment = await provisionChannelEnrollment({
         messageId: admitted.messageHandle,
         openingRequest: openingRequestFrom(
           message.text,
           partitioned.kept,
-          message.attachments.length > 0
+          message.attachments.length > 0,
+          unavailableAttachmentCount
         ),
         phoneNumber: admitted.senderNumber,
         provider: "sendblue",
@@ -1146,7 +1152,8 @@ function inputRequestTurnId(event: InputRequestEventMetadata) {
 function openingRequestFrom(
   text: string,
   attachments: readonly { readonly mimeType?: string; readonly url?: string }[],
-  hadAttachment: boolean
+  hadAttachment: boolean,
+  unavailableAttachmentCount = 0
 ) {
   const preserved = attachments.flatMap((attachment) => {
     const data = dataUrlPrivateAttachment(attachment.url, attachment.mimeType);
@@ -1154,11 +1161,28 @@ function openingRequestFrom(
   });
   const request: OnboardingOpeningRequest = {};
   if (preserved.length) request.attachments = [...preserved];
-  if (text.trim().length) request.text = text;
-  else if (hadAttachment && preserved.length === 0)
+  const unavailableContext = attachmentUnavailableContext(
+    unavailableAttachmentCount +
+      Math.max(0, attachments.length - preserved.length)
+  );
+  if (text.trim().length) {
+    request.text = unavailableContext
+      ? `${text}\n\n${unavailableContext}`
+      : text;
+  } else if (unavailableContext) {
+    request.text = unavailableContext;
+  } else if (hadAttachment && preserved.length === 0) {
     request.text =
-      "The sender attached a file that could not be safely read. Ask them to resend it as a JPEG or PNG.";
+      "One original attachment was unavailable. Ask the sender to resend it as a JPEG or PNG.";
+  }
   return request;
+}
+
+function attachmentUnavailableContext(count: number) {
+  if (count < 1) return undefined;
+  return count === 1
+    ? "One original attachment was unavailable. Ask the sender to resend it as a JPEG or PNG."
+    : `${String(count)} original attachments were unavailable. Ask the sender to resend them as JPEG or PNG.`;
 }
 
 function isKnownCapabilityGreeting(text: string, attachmentCount: number) {

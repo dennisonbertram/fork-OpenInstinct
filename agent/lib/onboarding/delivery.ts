@@ -12,6 +12,7 @@ import {
   claimChannelOnboardingOperations,
   type ClaimedChannelOnboardingOperation as PersistedChannelOnboardingOperation,
   failChannelOnboardingOperationAfterProvenUnsentFailure,
+  failChannelOnboardingOpeningRequestForModelQuota,
   markChannelOnboardingOperationAttempted,
   markChannelOnboardingOperationUncertain,
   releaseChannelOnboardingOperationAfterProvenUnsentFailure,
@@ -129,6 +130,8 @@ export interface ChannelOnboardingDeliveryDependencies {
     input: OperationFence & { retryAt?: Date }
   ) => Promise<void>;
   readonly failProvenUnsent: (fence: OperationFence) => Promise<void>;
+  /** Atomically records a denied first model turn and queues one plain-text availability reply. */
+  readonly handleModelQuotaExhausted: (fence: OperationFence) => Promise<void>;
   readonly markUncertain: (fence: OperationFence) => Promise<void>;
   readonly sendWelcome: (
     operation: ClaimedWelcomeOperation
@@ -233,7 +236,11 @@ export async function drainChannelOnboardingDelivery({
     for (const operation of operations) {
       const reservation = await dependencies.reserve(operation);
       if (reservation.kind === "limit_reached") {
-        await dependencies.failProvenUnsent(fenceFor(operation));
+        if (operation.kind === "opening_request") {
+          await dependencies.handleModelQuotaExhausted(fenceFor(operation));
+        } else {
+          await dependencies.failProvenUnsent(fenceFor(operation));
+        }
         continue;
       }
       if (!(await dependencies.markAttempted(fenceFor(operation)))) continue;
@@ -313,6 +320,9 @@ export async function drainSendblueChannelOnboarding({
       },
       failProvenUnsent: async (fence) => {
         await failChannelOnboardingOperationAfterProvenUnsentFailure(fence);
+      },
+      handleModelQuotaExhausted: async (fence) => {
+        await failChannelOnboardingOpeningRequestForModelQuota(fence);
       },
       releaseProvenUnsent: async (input) => {
         await releaseChannelOnboardingOperationAfterProvenUnsentFailure(input);
