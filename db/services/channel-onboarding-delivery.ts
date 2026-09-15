@@ -29,6 +29,7 @@ import {
   type PlatformLineProvider,
 } from "@/db";
 import {
+  decryptChannelOnboardingOperationPayload,
   encryptChannelOnboardingOperationPayload,
   type ChannelOnboardingOperationPayload,
 } from "./channel-onboarding";
@@ -537,6 +538,160 @@ export async function failChannelOnboardingOperationAfterProvenUnsentFailure(
     )
     .returning({ id: channelOnboardingOperations.id });
   return updated !== undefined;
+}
+
+/**
+ * The first opening request has a separate, safe failure path when the shared
+ * model bucket is exhausted. It makes that request terminal and appends one
+ * durable text reply in the same transaction, so lease recovery cannot turn a
+ * repeated claim into repeated availability messages. The reply itself still
+ * consumes the existing shared outbound bucket when it drains.
+ */
+export async function failChannelOnboardingOpeningRequestForModelQuota(
+  fence: ChannelOnboardingOperationFence,
+  now = new Date()
+) {
+  const welcome = alias(
+    channelOnboardingOperations,
+    "model_quota_notice_welcome"
+  );
+  const [source] = await db
+    .select({
+      encryptedPayload: welcome.encryptedPayload,
+      enrollmentId: channelOnboardingOperations.enrollmentId,
+      welcomeId: welcome.id,
+    })
+    .from(channelOnboardingOperations)
+    .innerJoin(
+      welcome,
+      and(
+        eq(welcome.enrollmentId, channelOnboardingOperations.enrollmentId),
+        eq(welcome.kind, "welcome"),
+        eq(welcome.ordinal, 0)
+      )
+    )
+    .where(eq(channelOnboardingOperations.id, fence.id))
+    .limit(1);
+  if (!source?.encryptedPayload) return false;
+
+  // Reuse the durable welcome's authenticated recipient and configured line;
+  // an inbound webhook value must never become an outbound destination here.
+  const welcomePayload = await decryptChannelOnboardingOperationPayload({
+    encryptedPayload: source.encryptedPayload,
+    operationId: source.welcomeId,
+  });
+  const noticeId = randomUUID();
+  const encryptedPayload = await encryptChannelOnboardingOperationPayload({
+    operationId: noticeId,
+    payload: {
+      from: welcomePayload.from,
+      presentation: { kind: "text" },
+      text: "I’ve reached my daily limit. Please try again tomorrow.",
+      to: welcomePayload.to,
+      version: 1,
+    },
+  });
+  const replyKey = `model-quota-availability:${fence.id}`;
+
+  return db.transaction(async (transaction) => {
+    // Match the established enqueue/provision order: lock the enrollment
+    // before its operations, avoiding a cross-path lock-order inversion.
+    const [enrollment] = await transaction
+      .select({ id: channelOnboardingEnrollments.id })
+      .from(channelOnboardingEnrollments)
+      .where(eq(channelOnboardingEnrollments.id, source.enrollmentId))
+      .for("update")
+      .limit(1);
+    if (!enrollment) return false;
+
+    const [opening] = await transaction
+      .select({
+        enrollmentId: channelOnboardingOperations.enrollmentId,
+        provider: channelOnboardingOperations.provider,
+        providerAccountId: channelOnboardingOperations.providerAccountId,
+        providerConversationId:
+          channelOnboardingOperations.providerConversationId,
+        providerLineId: channelOnboardingOperations.providerLineId,
+        receiptId: channelOnboardingOperations.receiptId,
+      })
+      .from(channelOnboardingOperations)
+      .where(
+        and(
+          exactLease(fence),
+          eq(channelOnboardingOperations.enrollmentId, enrollment.id),
+          eq(channelOnboardingOperations.kind, "opening_request"),
+          eq(channelOnboardingOperations.state, "leased"),
+          gt(channelOnboardingOperations.leaseExpiresAt, now),
+          activeRuntimeGuard(channelOnboardingOperations)
+        )
+      )
+      .for("update")
+      .limit(1);
+    if (!opening) return false;
+    if (welcomePayload.from !== opening.providerLineId) return false;
+
+    const [existing] = await transaction
+      .select({ id: channelOnboardingOperations.id })
+      .from(channelOnboardingOperations)
+      .where(eq(channelOnboardingOperations.replyKey, replyKey))
+      .limit(1);
+    if (!existing) {
+      const [lastOutboundReply] = await transaction
+        .select({
+          id: channelOnboardingOperations.id,
+          ordinal: channelOnboardingOperations.ordinal,
+        })
+        .from(channelOnboardingOperations)
+        .where(
+          and(
+            eq(channelOnboardingOperations.enrollmentId, opening.enrollmentId),
+            eq(channelOnboardingOperations.kind, "outbound_reply")
+          )
+        )
+        .orderBy(sql`${channelOnboardingOperations.ordinal} desc`)
+        .limit(1);
+      await transaction.insert(channelOnboardingOperations).values({
+        copyVersion: "v1",
+        dependsOnOperationId: lastOutboundReply?.id ?? fence.id,
+        encryptedPayload,
+        enrollmentId: opening.enrollmentId,
+        id: noticeId,
+        kind: "outbound_reply",
+        ordinal: (lastOutboundReply?.ordinal ?? -1) + 1,
+        provider: opening.provider,
+        providerAccountId: opening.providerAccountId,
+        providerConversationId: opening.providerConversationId,
+        providerLineId: opening.providerLineId,
+        receiptId: opening.receiptId,
+        replyKey,
+      });
+    }
+
+    const [failed] = await transaction
+      .update(channelOnboardingOperations)
+      .set({
+        lastError: "The onboarding model quota was exhausted before dispatch.",
+        leaseExpiresAt: null,
+        leaseToken: null,
+        retryAt: null,
+        state: "failed",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          exactLease(fence),
+          eq(channelOnboardingOperations.state, "leased"),
+          activeRuntimeGuard(channelOnboardingOperations)
+        )
+      )
+      .returning({ id: channelOnboardingOperations.id });
+    if (!failed) {
+      throw new Error(
+        "The model-quota availability notice lost its opening-request lease."
+      );
+    }
+    return true;
+  });
 }
 
 export async function markChannelOnboardingOperationUncertain(

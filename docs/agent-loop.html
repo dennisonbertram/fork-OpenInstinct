@@ -575,8 +575,10 @@
       scope and binding, opening receipt, and welcome/card outbox →
       <code>agent/lib/onboarding/delivery.ts</code> plus
       <code>agent/schedules/channel-onboarding.ts</code> recover delivery →
-      normal scoped Eve turn. <strong>STOP</strong> cancels unsent work; web OTP
-      is a later upgrade. An authenticated direct sender can issue
+      normal scoped Eve turn. If the shared daily model limit is exhausted, the
+      leased opening request becomes terminal and one durable availability text
+      is queued without starting Eve. <strong>STOP</strong> cancels unsent work;
+      web OTP is a later upgrade. An authenticated direct sender can issue
       <code>reset onboarding</code>: the same-user welcome and examples replay
       through the existing durable queue, without a model turn. It does not
       delete the account, history, or connections; pending requests and

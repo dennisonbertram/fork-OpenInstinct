@@ -104,6 +104,61 @@ describe("channel onboarding delivery", () => {
     expect(dependencies.sendWelcome).not.toHaveBeenCalled();
   });
 
+  it("turns a denied opening model reservation into one durable availability notice without an Eve handoff", async () => {
+    const operation = openingRequest();
+    const dependencies = {
+      ...dependenciesFor([operation]),
+      handleModelQuotaExhausted: vi
+        .fn<() => Promise<void>>()
+        .mockResolvedValue(undefined),
+    };
+    vi.mocked(dependencies.reserve).mockResolvedValue({
+      kind: "limit_reached",
+    });
+
+    await drainChannelOnboardingDelivery({
+      dependencies,
+      now,
+      owner: "worker-1",
+    });
+
+    expect(dependencies.handleModelQuotaExhausted).toHaveBeenCalledWith({
+      id: operation.id,
+      leaseToken: operation.leaseToken,
+      version: operation.version,
+    });
+    expect(dependencies.failProvenUnsent).not.toHaveBeenCalled();
+    expect(dependencies.markAttempted).not.toHaveBeenCalled();
+    expect(dependencies.dispatchOpeningRequest).not.toHaveBeenCalled();
+  });
+
+  it("does not recursively create an availability notice when its outbound reservation is denied", async () => {
+    const operation = outboundReply();
+    const dependencies = {
+      ...dependenciesFor([operation]),
+      handleModelQuotaExhausted: vi
+        .fn<() => Promise<void>>()
+        .mockResolvedValue(undefined),
+    };
+    vi.mocked(dependencies.reserve).mockResolvedValue({
+      kind: "limit_reached",
+    });
+
+    await drainChannelOnboardingDelivery({
+      dependencies,
+      now,
+      owner: "worker-1",
+    });
+
+    expect(dependencies.handleModelQuotaExhausted).not.toHaveBeenCalled();
+    expect(dependencies.failProvenUnsent).toHaveBeenCalledWith({
+      id: operation.id,
+      leaseToken: operation.leaseToken,
+      version: operation.version,
+    });
+    expect(dependencies.sendOutboundReply).not.toHaveBeenCalled();
+  });
+
   it("uses the same fenced provider path for the first durable assistant reply", async () => {
     const operation = outboundReply();
     const dependencies = dependenciesFor([operation]);
@@ -270,6 +325,10 @@ function dependenciesFor(
       vi.fn<ChannelOnboardingDeliveryDependencies["dispatchOpeningRequest"]>(),
     failProvenUnsent:
       vi.fn<ChannelOnboardingDeliveryDependencies["failProvenUnsent"]>(),
+    handleModelQuotaExhausted:
+      vi.fn<
+        ChannelOnboardingDeliveryDependencies["handleModelQuotaExhausted"]
+      >(),
     markAttempted: vi
       .fn<ChannelOnboardingDeliveryDependencies["markAttempted"]>()
       .mockResolvedValue(true),
