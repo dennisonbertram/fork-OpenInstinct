@@ -51,7 +51,7 @@ describe("text-first onboarding messages", () => {
   it("keeps three clearly illustrative small-business example cards", () => {
     expect(ONBOARDING_EXAMPLE_CARDS).toHaveLength(3);
     for (const card of ONBOARDING_EXAMPLE_CARDS) {
-      expect(card.label).toBe("Example conversation • sample data");
+      expect(card).not.toHaveProperty("label");
       expect(card.conversation).toHaveLength(4);
       for (const { text } of card.conversation) {
         expect(text.trim()).not.toBe("");

@@ -1,6 +1,8 @@
 # Plan 026: Join and start using the assistant by text
 
-Status: IN PROGRESS — local implementation complete; rollout not authorized.
+Status: PR 271 merged; its 2026-09-14 production release observation is recorded,
+with fresh-user
+acceptance still pending.
 The local queue, scoped immediate drain, native recovery schedule, and
 real-Postgres pool-reconnect proof are implemented. The inspected seven-test
 receipt is `c21f137c-d049-4531-a83a-96a090799cc2`; it does not prove an
@@ -53,17 +55,19 @@ Its frozen source fingerprint was
 `4209d1cd8b9d586cc2d3c7c1d4ccc3e92ecfaa544f4facfc131b8e77b29a68e4`; only
 this evidence prose follows that run. These remain local synthetic verification
 results, not deployment or live-provider evidence.
-PR 271 is not merged. A metadata-only operational audit found that preview and
-production currently share a database and observed migration journal revisions
-0028–0031 in production; the journal does not identify the actor or deployment.
-The user authorized the development merge, deployment, and test path against
-this unused development database; preview isolation is not a routing change or
-a gate for that development path. The owner waived the restore rehearsal; a
-fresh production-main snapshot was recorded in
-`docs/operations/text-onboarding-restore-2026-09-14.md`. One designated
-fresh-phone acceptance and candidate-line capability confirmation remain
-pending as post-activation live acceptance; activation stays off by default
-until the lead deploys the approved development values.
+PR 271 merged at `e2f67d86ddd4a722ee7d998815077a149c7d0542`. In the
+2026-09-14 production release observation, Vercel deployment
+`dpl_BU6nXGw5ztSDNPoxKZcRUecA9r3H` was `READY` and selected by canonical
+`https://open-instinct-ashy.vercel.app`; Railway deployment
+`a63080fe-1e35-4733-a08b-d71b1207cddf` was `SUCCESS` for the same merge SHA. See the [release observation](https://github.com/dennisonbertram/fork-OpenInstinct/pull/271#issuecomment-5673100934)
+and [web update](https://github.com/dennisonbertram/fork-OpenInstinct/pull/271#issuecomment-5673124358).
+The owner waived the restore, preview-isolation, and two-phone gates for this
+release. A designated existing account's `reset onboarding`, three
+`single_media` cards, and normal reply were observed in Messages at 21:03–21:05
+New York time on 2026-09-14; a web turn and reload persistence were observed at
+21:07. This proves the current existing-user/reset path, not fresh-user
+enrollment. Fresh-user acceptance still requires an unregistered sender; no
+full phone number is recorded here.
 Planned on 2026-09-14 against OpenInstinct `3df3051e21ed722f783a2e615f2c7b629d32b65c`.
 Priority: P1. Effort: M–L. Risk: high at the identity boundary.
 Execution ownership: Terra for identity, concurrency, and channel changes; Luna for copy and bounded tests; lead for decisions, integration, and review.
@@ -80,17 +84,18 @@ Proposed enrollment policy: open text enrollment with bounded usage. This follow
 
 ## 2. The conversation
 
-The complete text-first flow is locally implemented and verified below, while
-activation remains off by default and production rollout is not authorized.
+The complete text-first flow is implemented in the merged release. Current
+production evidence covers an existing user's reset/cards/reply path; fresh-user
+enrollment remains unverified until the designated unregistered-sender test.
 
-| Step             | Person sees                                                                                                                | Behavior                                                                                                                                                       |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| First contact    | Person texts “Hey Jory, what can you do?” or any ordinary first message                                                    | Validate provider event, enroll once, preserve the original message.                                                                                           |
-| Welcome          | “You’re in! 🎉” followed by intro, capability examples, the business example album, and beta/STOP text                     | Normal greeting sequence is welcome → intro → examples → album → beta; concrete task/photo requests get a compact welcome and prompt answer.                   |
-| Show value       | “Let’s try something useful. Here are a few ways I can help with your Square account, stock, and deliveries.”              | Keep the capability framing bounded to the approved small-business journey.                                                                                    |
-| Example cards    | Three short, readable, clearly labeled illustrative iMessage-style cards: daily sales, low stock, and receiving a delivery | Intended journey content with a reliable text fallback; do not block the first answer on cards. Do not fabricate live numbers or imply existing Square access. |
-| Set expectations | “I'm in beta, so tell me if something goes wrong. Reply STOP to stop messages.”                                            | Include approved service/privacy links if required; exact URLs and policy copy are TBD. Do not claim invite-only unless enabled.                               |
-| Start            | “What would you like help with?”                                                                                           | Ask only if the opening message contained no actionable request.                                                                                               |
+| Step             | Person sees                                                                                                   | Behavior                                                                                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| First contact    | Person texts “Hey Jory, what can you do?” or any ordinary first message                                       | Validate provider event, enroll once, preserve the original message.                                                                                           |
+| Welcome          | “You’re in! 🎉” followed by intro, capability examples, the business example album, and beta/STOP text        | Normal greeting sequence is welcome → intro → examples → album → beta; concrete task/photo requests get a compact welcome and prompt answer.                   |
+| Show value       | “Let’s try something useful. Here are a few ways I can help with your Square account, stock, and deliveries.” | Keep the capability framing bounded to the approved small-business journey.                                                                                    |
+| Example cards    | Three short, readable illustrative iMessage-style cards: daily sales, low stock, and receiving a delivery     | Intended journey content with a reliable text fallback; do not block the first answer on cards. Do not fabricate live numbers or imply existing Square access. |
+| Set expectations | “I'm in beta, so tell me if something goes wrong. Reply STOP to stop messages.”                               | Include approved service/privacy links if required; exact URLs and policy copy are TBD. Do not claim invite-only unless enabled.                               |
+| Start            | “What would you like help with?”                                                                              | Ask only if the opening message contained no actionable request.                                                                                               |
 
 If the first text is “What is in this photo?”, send a compact welcome and answer the photo in the same flow. Do not throw the image away, require a resend, or ask what the user wants after they already said it. Treat opening message and attachments as private task content, not logs or onboarding-card examples.
 
@@ -158,12 +163,13 @@ This assurance split is a required design review before implementation. If insta
 
 ## 5. Current OpenInstinct evidence and implementation map
 
-The bullets below preserve the planning-base map and proposals. Local
-implementation has since added channel-observed assurance/provenance,
-transactional enrollment intents, and the durable delivery service; it has not
-been deployed or live-provider verified.
+The bullets below preserve the planning-base map and proposals. The merged
+implementation adds channel-observed assurance/provenance, transactional
+enrollment intents, and the durable delivery service. The 2026-09-14 production
+evidence covers an existing-user/reset path; fresh-user enrollment remains
+unverified.
 
-- `agent/channels/sendblue.ts`, `sendblueChannelConfig.onMessage`: currently calls `findVerifiedAuthUserIdByPhoneNumber`, then returns `null` if missing; also requires `verifyScopeAccess` and `findVerifiedUserByPhoneNumber`. This explains the general silence for unknown users, but does not prove which check rejected a particular person's message.
+- `agent/channels/sendblue.ts`, `sendblueChannelConfig.onMessage`: the planning-base implementation called `findVerifiedAuthUserIdByPhoneNumber` and returned `null` when missing. PR 271 now adds the channel-observed enrollment path; the current release evidence above proves the existing-user/reset path, not fresh-user enrollment.
 - `agent/lib/sendblue/admission.ts`: owns webhook-secret comparison and exact account/line/direct-message validation. Keep this before enrollment.
 - `src/auth/index.ts`, `createPhoneNumberOptions`: `requireVerification: true`; OTP callback records identity. This remains the web-login proof path.
 - `db/schema/platform.ts`, `phoneIdentities`: identity is linked to a canonical auth user and currently has a verified-status model. Add explicit assurance/provenance and audit every consumer; do not overload verified status without checking its meaning.
@@ -176,7 +182,7 @@ been deployed or live-provider verified.
 
 Proposed file ownership: channel orchestration in `agent/channels/sendblue.ts`; fixed copy/state decisions under `agent/lib/onboarding/`; persistence under `db/services/channel-onboarding.ts` and owning schema/migrations; identity changes in `db/services/phone-identities.ts`, `db/schema/platform.ts`, and required auth consumers; default provisioning in owning scope/agent/binding services. New names are proposals, not existing APIs. Avoid a generic framework or dependency addition.
 
-SendBlue is the observed working Jory iMessage provider as of 2026-09-14/PR #270. Linq is implemented, but this session did not verify its production configuration. Update `AGENTS.md` and the operational docs with this distinction when the implementation is approved. Do not claim the active provider is Linq or change connector configuration as part of documentation.
+SendBlue is the observed working Jory iMessage provider in the PR 271 release. Linq is implemented, but this release evidence does not establish Linq as the active production conversation provider. Do not claim the active provider is Linq or change connector configuration as part of documentation.
 
 ## 6. Provider, failure, and cost boundaries
 
@@ -188,7 +194,7 @@ Verified official documentation on 2026-09-14:
 
 Do not disable contact restrictions, change account plans, purchase a line, or alter webhooks without explicit operational authorization. If provider policy blocks first contact, application code alone cannot deliver this journey.
 
-For v1, set configurable per-sender enrollment limits and account-wide model-turn and outbound-message admission caps before activation. These are not dollar, token, per-tool, or per-turn ceilings; operator launch risk remains explicit. The authorized development rollout plan selects 100 account-wide UTC model turns per day, 1000 outbound messages per day, one enrollment per sender, and `single_media`; the lead selected these values within the user-authorized rollout. The five values are configured in Vercel Production for the next deployment; they are not yet live. The welcome builder requires an explicit card mode: disabled produces four text operations, carousel produces four texts plus one three-image operation, and single_media produces four texts plus three single-image operations. In all modes beta/STOP is last; cards are optional work and can be cancelled. Candidate-line capability confirmation remains pending. No unsolicited follow-up campaign. Unknown senders cannot start expensive tools before enrollment is ready.
+For v1, set configurable per-sender enrollment limits and account-wide model-turn and outbound-message admission caps before activation. These are not dollar, token, per-tool, or per-turn ceilings; operator launch risk remains explicit. The authorized development rollout plan selects 100 account-wide UTC model turns per day, 1000 outbound messages per day, one enrollment per sender, and `single_media`; the lead selected these values within the user-authorized rollout. The five values are configured in Vercel Production for the observed release; this configuration does not by itself prove fresh-user enrollment. The welcome builder requires an explicit card mode: disabled produces four text operations, carousel produces four texts plus one three-image operation, and single_media produces four texts plus three single-image operations. In all modes beta/STOP is last; cards are optional work and can be cancelled. Single-media capability is proven; carousel V2 capability and fresh-user acceptance remain pending. No unsolicited follow-up campaign. Unknown senders cannot start expensive tools before enrollment is ready.
 
 Failure behavior:
 
@@ -216,15 +222,13 @@ production provider evidence. [Security and messaging controls](https://docs.sen
 
 Do not start implementation merely because this plan exists. After owner approval, use a linked worktree in `dennisonbertram/fork-OpenInstinct`; never push or open a PR against upstream. Preserve unrelated work. Lead owns reviewed commits, PRs, CI, merge, rollout, and cleanup under repository rules.
 
-Local implementation has now completed the queue/schedule and real-Postgres
-pool-reconnect evidence described above. It remains off by default. The
-authorized development rollout is planned for the values above. The five values
-are configured in Vercel Production for the next deployment; they are not yet
-live. The user-approved development path does not require a
-preview-isolation routing change. After development activation, complete one
-designated fresh-phone acceptance on the exact candidate deployment and
-confirm candidate-line capability. Do not treat this update as live-provider,
-deployed, or operating-system crash evidence.
+Local implementation has completed the queue/schedule and real-Postgres
+pool-reconnect evidence described above. The PR271 release was observed deployed
+on the Vercel and Railway targets on 2026-09-14. The owner waived restore, preview-isolation,
+and two-phone gates for this release. Existing-user/reset live evidence is
+recorded above; fresh-user acceptance still requires one designated
+unregistered sender. Do not treat that remaining gap as evidence that the
+current existing-user path is unavailable.
 
 Before editing, run `git diff --stat 3df3051e21ed722f783a2e615f2c7b629d32b65c..HEAD -- agent/channels/sendblue.ts agent/lib/sendblue db/services db/schema src/auth src/env.ts` and compare the current-state statements above. Read current AGENTS/CONTEXT, installed Eve docs routed from `eve/docs/README.md`, Better Auth 1.7.2 contracts, and provider docs. Context7 was not available during planning; the executor must use it if available and otherwise inspect installed/official sources.
 

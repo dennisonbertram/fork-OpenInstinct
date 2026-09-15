@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildWelcomeOperations } from "@/agent/lib/onboarding/welcome";
+import { directChannelOnboardingPayloadSchema } from "@/lib/channel-onboarding-contract";
 
 const addresses = { from: "+15550000001", to: "+15550000002" } as const;
 const origin = "https://assistant.example";
@@ -60,6 +61,9 @@ describe("welcome operation builder", () => {
         .slice(3, 6)
         .every(({ payload }) => payload.presentation?.kind === "single_media")
     ).toBe(true);
+    expect(
+      operations.slice(3, 6).every(({ payload }) => payload.text === "")
+    ).toBe(true);
     const beta = operations[6];
     if (!beta) throw new Error("Expected beta operation.");
     expect(beta.key).toBe("onboarding:v1:text:beta");
@@ -93,5 +97,32 @@ describe("welcome operation builder", () => {
         ...addresses,
       })
     ).toThrow(/explicit onboarding card mode is required/i);
+  });
+
+  it("accepts only one-media blank-text single-media payloads", () => {
+    const base = {
+      from: addresses.from,
+      presentation: { kind: "single_media" as const },
+      to: addresses.to,
+      version: 1 as const,
+    };
+    const media = [
+      { contentType: "image/png", url: "https://assets.example/one.png" },
+    ];
+
+    expect(
+      directChannelOnboardingPayloadSchema.parse({ ...base, media, text: "" })
+    ).toMatchObject({ text: "" });
+
+    for (const invalid of [
+      { media, text: " " },
+      { media: undefined, text: "" },
+      { media: [], text: "" },
+      { media: [...media, ...media], text: "" },
+    ]) {
+      expect(() =>
+        directChannelOnboardingPayloadSchema.parse({ ...base, ...invalid })
+      ).toThrow(/direct message requires text/i);
+    }
   });
 });

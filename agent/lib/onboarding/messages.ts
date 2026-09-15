@@ -9,7 +9,6 @@ export const ONBOARDING_CAPABILITY_EXAMPLES =
 
 export const ONBOARDING_EXAMPLE_CARDS = [
   {
-    label: "Example conversation • sample data",
     title: "Daily sales",
     conversation: [
       { speaker: "Owner", text: "How did we do today on Square?" },
@@ -25,7 +24,6 @@ export const ONBOARDING_EXAMPLE_CARDS = [
     ],
   },
   {
-    label: "Example conversation • sample data",
     title: "Low stock",
     conversation: [
       { speaker: "Owner", text: "What needs restocking?" },
@@ -41,7 +39,6 @@ export const ONBOARDING_EXAMPLE_CARDS = [
     ],
   },
   {
-    label: "Example conversation • sample data",
     title: "Receiving a delivery",
     conversation: [
       {

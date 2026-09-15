@@ -24,10 +24,10 @@ function readPngDimensions(path: string) {
 }
 
 describe("onboarding example cards", () => {
-  it("ships one labeled mobile PNG for every example", () => {
+  it("ships one caption-free mobile PNG for every example", () => {
     expect(ONBOARDING_EXAMPLE_CARDS).toHaveLength(3);
     for (const [index, card] of ONBOARDING_EXAMPLE_CARDS.entries()) {
-      expect(card.label).toBe("Example conversation • sample data");
+      expect(card).not.toHaveProperty("label");
       const path = join(
         repositoryRoot,
         "public",

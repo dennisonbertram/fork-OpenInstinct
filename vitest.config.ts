@@ -1,3 +1,4 @@
+import { availableParallelism } from "node:os";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
@@ -35,6 +36,8 @@ const defaultTestInclude = "**/*.{test,spec}.?(c|m)[jt]s?(x)";
 
 export default defineConfig({
   test: {
+    // PGlite/process-test contention needs a bounded worker count.
+    maxWorkers: Math.min(4, availableParallelism()),
     coverage: {
       provider: "v8",
       exclude: [
