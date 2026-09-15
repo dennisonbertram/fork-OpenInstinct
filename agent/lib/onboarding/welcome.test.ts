@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildWelcomeOperations } from "@/agent/lib/onboarding/welcome";
+import { ONBOARDING_CAPABILITY_EXAMPLES } from "@/agent/lib/onboarding/messages";
 import { directChannelOnboardingPayloadSchema } from "@/lib/channel-onboarding-contract";
 
 const addresses = { from: "+15550000001", to: "+15550000002" } as const;
@@ -67,6 +68,23 @@ describe("welcome operation builder", () => {
     const beta = operations[6];
     if (!beta) throw new Error("Expected beta operation.");
     expect(beta.key).toBe("onboarding:v1:text:beta");
+  });
+
+  it("uses the shared capability intro as the single_media text fallback", () => {
+    const operations = buildWelcomeOperations({
+      ...addresses,
+      assetOrigin: origin,
+      cardMode: "single_media",
+    });
+    const examples = operations[2];
+    if (!examples) throw new Error("Expected examples operation.");
+    expect(examples.key).toBe("onboarding:v1:text:examples");
+    expect(examples.required).toBe(true);
+    expect(examples.payload.text).toBe(ONBOARDING_CAPABILITY_EXAMPLES);
+    expect(examples.payload.text.trim()).not.toBe("");
+    expect(
+      operations.slice(3, 6).every(({ payload }) => payload.text === "")
+    ).toBe(true);
   });
 
   it("keeps from/to aligned and rejects non-HTTPS asset origins", () => {

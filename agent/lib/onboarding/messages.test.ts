@@ -48,6 +48,19 @@ describe("text-first onboarding messages", () => {
     expect(ONBOARDING_RATE_LIMITED).toMatch(/try again later/i);
   });
 
+  it("marks capability examples as illustrations, not live results", () => {
+    expect(ONBOARDING_CAPABILITY_EXAMPLES).toMatch(/daily sales/i);
+    expect(ONBOARDING_CAPABILITY_EXAMPLES).toMatch(/low stock/i);
+    expect(ONBOARDING_CAPABILITY_EXAMPLES).toMatch(/deliver/i);
+    expect(ONBOARDING_CAPABILITY_EXAMPLES).toMatch(/illustration/i);
+    expect(ONBOARDING_CAPABILITY_EXAMPLES).toMatch(/not live results/i);
+    expect(ONBOARDING_CAPABILITY_EXAMPLES).toMatch(/amounts/i);
+    expect(ONBOARDING_CAPABILITY_EXAMPLES).not.toMatch(/disconnect/i);
+    expect(ONBOARDING_CAPABILITY_EXAMPLES).not.toMatch(/your Square/i);
+    expect(ONBOARDING_CAPABILITY_EXAMPLES).not.toMatch(
+      /\b(caption|label|watermark|footer|image \d+)\b/i
+    );
+  });
   it("keeps three clearly illustrative small-business example cards", () => {
     expect(ONBOARDING_EXAMPLE_CARDS).toHaveLength(3);
     for (const card of ONBOARDING_EXAMPLE_CARDS) {

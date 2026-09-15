@@ -5,7 +5,7 @@ export const ONBOARDING_INTRO =
   "Welcome! I’m Jory. I help you run your small business, right here in Messages.";
 
 export const ONBOARDING_CAPABILITY_EXAMPLES =
-  "Let’s try something useful. Here are a few ways I can help with your Square account, stock, and deliveries.";
+  "I can recap Square daily sales, flag low stock, and check deliveries. Pictures and amounts shown are illustrations, not live results.";
 
 export const ONBOARDING_EXAMPLE_CARDS = [
   {
