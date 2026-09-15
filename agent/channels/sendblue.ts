@@ -21,7 +21,17 @@ import type {
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getAuth } from "@/auth";
-import { env } from "@/env";
+import { env, isSendblueTextOnboardingEnabled } from "@/env";
+import {
+  drainSendblueChannelOnboarding,
+  type OpeningRequestDispatchResult,
+  type SendblueOpeningRequest,
+} from "@/agent/lib/onboarding/delivery";
+import { buildWelcomeOperations } from "@/agent/lib/onboarding/welcome";
+import {
+  enqueueChannelOnboardingOutboundReply,
+  getChannelOnboardingOutboundReplyDelivery,
+} from "@/db/services/channel-onboarding-delivery";
 import { accessScopeForUser, type AccessScope } from "@/lib/access-scope";
 import { scopeFromPrincipal } from "@/agent/lib/principal-scope";
 import {
@@ -30,6 +40,15 @@ import {
   resolveVerifiedConversationBinding,
 } from "@/db/services/channel-conversations";
 import { findVerifiedUserByPhoneNumber } from "@/db/services/phone-identities";
+import {
+  isChannelCommunicationStopped,
+  parseChannelCommunicationCommand,
+  provisionChannelEnrollment,
+  recordChannelCommunicationStart,
+  recordChannelCommunicationStop,
+  replayChannelOnboardingWelcome,
+  resolveChannelEnrollment,
+} from "@/db/services/channel-onboarding";
 import {
   verifyScopeAccess,
   WorkspaceNotOperableError,
@@ -56,6 +75,8 @@ import {
   partitionDirectPromptAttachments,
   prepareModelImageAttachments,
 } from "@/agent/lib/linq/inbound-media";
+import { maximumSendblueOnboardingTextCharacters } from "@/lib/channel-onboarding-contract";
+import { isChannelObservedSession } from "@/agent/lib/mode";
 
 const verifiedPhoneUserSchema = z.object({
   id: z.string().min(1),
@@ -110,6 +131,18 @@ const pendingSendblueInputSchema = z.object({
     .default([]),
   workspaceId: z.string().min(1),
 });
+const channelObservedSessionAttributesSchema = z.object({
+  authAssurance: z.literal("channel_observed"),
+  capabilityProfile: z.literal("channel-basic"),
+  channelBindingId: z.string().min(1),
+  conversationChannel: z.literal("sendblue"),
+  conversationId: z.string().min(1),
+  identityProvenance: z.literal("sendblue_direct"),
+  workspaceId: z.string().min(1),
+});
+const inputRequestTurnSchema = z.object({
+  turnId: z.string().min(1).optional(),
+});
 const approvalReplies = new Set([
   "do it",
   "go ahead",
@@ -146,12 +179,26 @@ interface PendingInputResult {
   readonly pendingInputState?: z.output<typeof pendingSendblueInputSchema>;
   readonly pendingInputStateKey?: string;
 }
+type OnboardingOpeningRequest = NonNullable<
+  Parameters<typeof provisionChannelEnrollment>[0]["openingRequest"]
+>;
+interface InputRequestEventMetadata {
+  readonly turnId?: string;
+}
 type SendblueThread = Thread;
 interface SendblueOnMessageResult extends PendingInputResult {
+  readonly drainOnboarding?: true;
+  readonly drainWelcomeOnly?: true;
+  /** Authenticated inbound handle used only for stable follow-up reply keys. */
+  readonly inboundMessageHandle?: string;
   readonly auth: {
     readonly attributes: {
+      readonly authAssurance: "channel_observed" | "otp_verified";
+      readonly capabilityProfile: "channel-basic" | "full";
+      readonly channelBindingId: string;
       readonly conversationChannel: "sendblue";
       readonly conversationId: string;
+      readonly identityProvenance: "phone_otp" | "sendblue_direct";
       readonly workspaceId: string;
     };
     readonly authenticator: "sendblue-message";
@@ -168,6 +215,43 @@ const adapter = createSendblueAdapter({
   webhookSecret: env.SENDBLUE_WEBHOOK_SECRET ?? "disabled",
   webhookSecretHeader: "sb-signing-secret",
 });
+
+function isResetOnboardingCommand(text: string) {
+  return (
+    text.trim().toLowerCase().replaceAll(/\s+/g, " ") === "reset onboarding"
+  );
+}
+
+async function replaySendblueOnboardingWelcome({
+  accountId,
+  fromNumber,
+  messageHandle,
+  senderNumber,
+  threadId,
+}: {
+  readonly accountId: string;
+  readonly fromNumber: string;
+  readonly messageHandle: string;
+  readonly senderNumber: string;
+  readonly threadId: string;
+}) {
+  const cardMode = env.SENDBLUE_TEXT_ONBOARDING_CARD_DELIVERY;
+  if (!cardMode) return { status: "not_ready" } as const;
+  return replayChannelOnboardingWelcome({
+    messageId: messageHandle,
+    phoneNumber: senderNumber,
+    provider: "sendblue",
+    providerAccountId: accountId,
+    providerConversationId: threadId,
+    providerLineId: fromNumber,
+    welcomeParts: buildWelcomeOperations({
+      cardMode,
+      from: fromNumber,
+      to: senderNumber,
+    }).map((operation) => operation.payload),
+  });
+}
+
 const nativeHandleWebhook = adapter.handleWebhook.bind(adapter);
 adapter.handleWebhook = async (request, options) => {
   if (!enabled) return new Response("Not Found", { status: 404 });
@@ -205,10 +289,129 @@ export const sendblueChannelConfig = {
     if (message.author.isBot === true) return null;
     const admitted = validateSendblueInboundPayload(message.raw, configured);
     if (!admitted || admitted.messageHandle !== message.id) return null;
+    const communicationSubject = {
+      phoneNumber: admitted.senderNumber,
+      provider: "sendblue" as const,
+      providerAccountId: admitted.accountId,
+      providerLineId: admitted.fromNumber,
+    };
+    const command = parseChannelCommunicationCommand(message.text);
+    if (command === "stop") {
+      await recordChannelCommunicationStop({
+        ...communicationSubject,
+        messageHandle: admitted.messageHandle,
+      });
+      return null;
+    }
+    if (command === "start") {
+      await recordChannelCommunicationStart({
+        ...communicationSubject,
+        messageHandle: admitted.messageHandle,
+      });
+      return null;
+    }
+    const enrolled = await resolveChannelEnrollment({
+      ...communicationSubject,
+      providerConversationId: context.thread.id,
+    });
+    if (enrolled) {
+      if (isResetOnboardingCommand(message.text)) {
+        const reset = await replaySendblueOnboardingWelcome({
+          accountId: admitted.accountId,
+          fromNumber: admitted.fromNumber,
+          messageHandle: admitted.messageHandle,
+          senderNumber: admitted.senderNumber,
+          threadId: context.thread.id,
+        });
+        if (reset.status !== "ready") return null;
+        return {
+          auth: channelEnrollmentAuth(reset, context.thread.id),
+          drainWelcomeOnly: true,
+        };
+      }
+      // A pending ask_question reply must resume its existing Eve input flow;
+      // it is not a new ordinary request to append behind onboarding work.
+      await state.connect();
+      const pending = await resolvePendingInputResponses({
+        message,
+        threadId: context.thread.id,
+        workspaceId: enrolled.workspaceId,
+      });
+      if (pending) {
+        return claimSendblueInboundTurn({
+          auth: channelEnrollmentAuth(enrolled, context.thread.id),
+          bindingId: enrolled.bindingId,
+          message,
+          threadId: context.thread.id,
+          workspaceId: enrolled.workspaceId,
+        });
+      }
+      const prepared = await prepareModelImageAttachments(message.attachments);
+      const partitioned = partitionDirectPromptAttachments(prepared.kept);
+      const continued = await provisionChannelEnrollment({
+        messageId: admitted.messageHandle,
+        openingDispatch: isKnownCapabilityGreeting(
+          message.text,
+          message.attachments.length
+        ),
+        openingRequest: openingRequestFrom(
+          message.text,
+          partitioned.kept,
+          message.attachments.length > 0
+        ),
+        phoneNumber: admitted.senderNumber,
+        provider: "sendblue",
+        providerAccountId: admitted.accountId,
+        providerConversationId: context.thread.id,
+        providerLineId: admitted.fromNumber,
+      });
+      if (continued.status !== "ready") return null;
+      return {
+        auth: channelEnrollmentAuth(continued, context.thread.id),
+        drainOnboarding: true,
+      };
+    }
+    // `resolveChannelEnrollment` intentionally returns undefined for a
+    // stopped enrollment. Recheck the exact authenticated subject before any
+    // legacy OTP fallback so a STOP cannot be bypassed through Better Auth.
+    if (await isChannelCommunicationStopped(communicationSubject)) return null;
     const verifiedUserId = await findVerifiedAuthUserIdByPhoneNumber(
       admitted.senderNumber
     );
-    if (!verifiedUserId) return null;
+    if (!verifiedUserId) {
+      if (!isSendblueTextOnboardingEnabled()) return null;
+      const cardMode = env.SENDBLUE_TEXT_ONBOARDING_CARD_DELIVERY;
+      if (!cardMode) return null;
+      const prepared = await prepareModelImageAttachments(message.attachments);
+      const partitioned = partitionDirectPromptAttachments(prepared.kept);
+      const enrollment = await provisionChannelEnrollment({
+        messageId: admitted.messageHandle,
+        openingRequest: openingRequestFrom(
+          message.text,
+          partitioned.kept,
+          message.attachments.length > 0
+        ),
+        phoneNumber: admitted.senderNumber,
+        provider: "sendblue",
+        providerAccountId: admitted.accountId,
+        providerConversationId: context.thread.id,
+        providerLineId: admitted.fromNumber,
+        openingDispatch: isKnownCapabilityGreeting(
+          message.text,
+          message.attachments.length
+        ),
+        welcomeParts: buildWelcomeOperations({
+          cardMode,
+          from: admitted.fromNumber,
+          to: admitted.senderNumber,
+        }).map((operation) => operation.payload),
+      });
+      if (enrollment.status !== "ready") return null;
+      return {
+        auth: channelEnrollmentAuth(enrollment, context.thread.id),
+        drainOnboarding: true,
+      };
+    }
     const scope = accessScopeForUser(`better-auth:${verifiedUserId}`);
     const verifiedScope = await verifyScopeAccess(scope);
     if (!verifiedScope) return null;
@@ -238,39 +441,40 @@ export const sendblueChannelConfig = {
       workspaceId: verifiedScope.workspaceId,
     });
     if (!binding) return null;
-    await state.connect();
-    const pendingInputLock = await acquirePendingInputLock(context.thread.id);
-    let lockHandedToDispatch = false;
-    try {
-      const claimed = await state.setIfNotExists(
-        inboundMessageKey(binding.id, admitted.messageHandle),
-        true
-      );
-      if (!claimed) return null;
-      const pendingInputResponse = await resolvePendingInputResponses({
-        message,
+    if (isResetOnboardingCommand(message.text)) {
+      const reset = await replaySendblueOnboardingWelcome({
+        accountId: admitted.accountId,
+        fromNumber: admitted.fromNumber,
+        messageHandle: admitted.messageHandle,
+        senderNumber: admitted.senderNumber,
         threadId: context.thread.id,
-        workspaceId: verifiedScope.workspaceId,
       });
-      const result: SendblueOnMessageResult = {
-        auth: {
-          attributes: {
-            conversationChannel: "sendblue" as const,
-            conversationId: context.thread.id,
-            workspaceId: verifiedScope.workspaceId,
-          },
-          authenticator: "sendblue-message" as const,
-          principalId: `better-auth:${verifiedUserId}`,
-          principalType: "user" as const,
-        },
-        ...pendingInputResponse,
-        pendingInputLock,
+      if (reset.status !== "ready") return null;
+      return {
+        auth: channelEnrollmentAuth(reset, context.thread.id),
+        drainWelcomeOnly: true,
       };
-      lockHandedToDispatch = true;
-      return result;
-    } finally {
-      if (!lockHandedToDispatch) await state.releaseLock(pendingInputLock);
     }
+    return claimSendblueInboundTurn({
+      auth: {
+        attributes: {
+          authAssurance: "otp_verified",
+          capabilityProfile: "full",
+          channelBindingId: binding.id,
+          conversationChannel: "sendblue",
+          conversationId: context.thread.id,
+          identityProvenance: "phone_otp",
+          workspaceId: verifiedScope.workspaceId,
+        },
+        authenticator: "sendblue-message",
+        principalId: `better-auth:${verifiedUserId}`,
+        principalType: "user",
+      },
+      bindingId: binding.id,
+      message,
+      threadId: context.thread.id,
+      workspaceId: verifiedScope.workspaceId,
+    });
   },
 };
 
@@ -287,36 +491,70 @@ const bridge = chatSdkChannel({
       await state.connect();
       const [request] = event.requests;
       if (!request) return;
-      const posted = await postSendblueReply(
-        context.thread,
-        { raw: renderInputRequest(request) },
-        scope
-      );
-      if (!posted) return;
-      await state.set(
-        pendingInputKey(context.thread.id),
-        {
-          // SMS receives one request at a time. The remaining requests and
-          // their accepted replies stay in the same scoped durable state.
-          generation: randomUUID(),
-          requests: event.requests.map((pendingRequest) => ({
-            allowFreeform: pendingRequest.allowFreeform,
-            kind: pendingRequest.kind,
-            options: pendingRequest.options?.map((option) => ({
-              id: option.id,
-              label: option.label,
-            })),
-            prompt: pendingRequest.prompt,
-            requestId: pendingRequest.requestId,
+      const observedBinding = channelObservedBindingForSession(session);
+      const prompt = renderInputRequest(request);
+      const eventTurnId = inputRequestTurnId(event);
+      if (isChannelObservedSession(session) && !observedBinding) return;
+      const generation = observedBinding
+        ? `observed:${session.session.id}:${observedBinding}:${eventTurnId}:${event.requests
+            .map((pendingRequest) => pendingRequest.requestId)
+            .join(",")}`
+        : randomUUID();
+      const existing = observedBinding
+        ? pendingSendblueInputSchema.safeParse(
+            await state.get(pendingInputKey(context.thread.id))
+          )
+        : undefined;
+      const retainedResponses =
+        existing?.success &&
+        existing.data.generation === generation &&
+        existing.data.workspaceId === scope.workspaceId
+          ? existing.data.responses
+          : [];
+      const pendingState = {
+        // A replayed observed request must retain the same state generation:
+        // the direct outbox may be accepted later by the scheduler.
+        generation,
+        requests: event.requests.map((pendingRequest) => ({
+          allowFreeform: pendingRequest.allowFreeform,
+          kind: pendingRequest.kind,
+          options: pendingRequest.options?.map((option) => ({
+            id: option.id,
+            label: option.label,
           })),
-          responses: [],
-          workspaceId: scope.workspaceId,
-        },
-        pendingInputTtlMs
-      );
+          prompt: pendingRequest.prompt,
+          requestId: pendingRequest.requestId,
+        })),
+        responses: retainedResponses,
+        workspaceId: scope.workspaceId,
+      };
+      // The outbox may need schedule recovery after this webhook returns. The
+      // response state must survive that recovery before any provider attempt.
+      if (observedBinding)
+        await state.set(
+          pendingInputKey(context.thread.id),
+          pendingState,
+          pendingInputTtlMs
+        );
+      const posted = observedBinding
+        ? await queueObservedSendblueReply({
+            bindingId: observedBinding,
+            replyKeyPrefix: `input:${session.session.id}:${observedBinding}:${eventTurnId}:${request.requestId}`,
+            text: prompt,
+            thread: context.thread,
+          })
+        : await postSendblueReply(context.thread, { raw: prompt }, scope);
+      if (!posted) return;
+      if (!observedBinding)
+        await state.set(
+          pendingInputKey(context.thread.id),
+          pendingState,
+          pendingInputTtlMs
+        );
     },
     async "action.result"(event, context, session) {
       if (event.status !== "completed" || !context.thread) return;
+      const actionThread = context.thread;
       if (isFinalDeliveryReplay(event.turnId, event.result.callId)) return;
       const scope = scopeForSession(session);
       const reaction = reactToMessageToolResultSchema.safeParse(event.result);
@@ -347,6 +585,51 @@ const bridge = chatSdkChannel({
       }
       const message = sendMessageToolResultSchema.safeParse(event.result);
       if (!message.success) return;
+      const observedBinding = channelObservedBindingForSession(session);
+      if (observedBinding) {
+        const replyText =
+          message.data.output.kind === "link"
+            ? message.data.output.url
+            : (message.data.output.text ?? "");
+        // A generated attachment needs an immutable, persistence-owned media
+        // reference before it can enter this outbox. Do not fall back to the
+        // legacy direct sender with a transient attachment URL.
+        if (
+          replyText.trim().length > 0 &&
+          (message.data.output.kind === "link" ||
+            (message.data.output.attachments?.length ?? 0) === 0)
+        ) {
+          let accepted = false;
+          try {
+            accepted = await queueObservedSendblueReply({
+              bindingId: observedBinding,
+              replyKeyPrefix: `${event.turnId}:${event.result.callId}:text`,
+              text: replyText,
+              thread: context.thread,
+            });
+            if (!accepted)
+              recordUnconfirmedDelivery(event.turnId, event.result.callId);
+          } finally {
+            settleFinalDelivery(event.result.callId, accepted);
+          }
+          requestFinalDeliveryCompletion(
+            event.result.callId,
+            event.turnId,
+            event.stepIndex
+          );
+          return;
+        }
+        // Never fall through to the legacy direct sender for a restricted
+        // principal: attachments need immutable outbox media references.
+        recordUnconfirmedDelivery(event.turnId, event.result.callId);
+        settleFinalDelivery(event.result.callId, false);
+        return;
+      }
+      if (isChannelObservedSession(session)) {
+        recordUnconfirmedDelivery(event.turnId, event.result.callId);
+        settleFinalDelivery(event.result.callId, false);
+        return;
+      }
       let accepted = false;
       try {
         if (message.data.output.kind === "link") {
@@ -479,6 +762,8 @@ const bridge = chatSdkChannel({
                   .digest("hex"),
                 conversationId,
                 dispatch: async () => {
+                  if (await isSendblueThreadCommunicationStopped(actionThread))
+                    throw new Error("SendBlue communication is stopped.");
                   const response = await adapter.getSdk().messages.send({
                     content: index === 0 ? attachmentCaption : "",
                     from_number: configured.fromNumber,
@@ -527,11 +812,22 @@ const bridge = chatSdkChannel({
         hasUnconfirmedProviderAttempt(event.turnId)
       )
         return;
+      const failure =
+        "I couldn’t complete that request because of a service error. Please try again later.";
+      const observedBinding = channelObservedBindingForSession(session);
+      if (observedBinding) {
+        await queueObservedSendblueReply({
+          bindingId: observedBinding,
+          replyKeyPrefix: `turn-failed:${session.session.id}:${event.turnId}`,
+          text: failure,
+          thread: context.thread,
+        });
+        return;
+      }
+      if (isChannelObservedSession(session)) return;
       await postSendblueReply(
         context.thread,
-        {
-          raw: "I couldn’t complete that request because of a service error. Please try again later.",
-        },
+        { raw: failure },
         scopeForSession(session)
       );
     },
@@ -579,22 +875,83 @@ export async function dispatchSendblueMessage(
       return;
     }
     if (result.pendingInputPrompt) {
-      const posted = await postSendblueReply(
-        thread,
-        { raw: result.pendingInputPrompt },
-        scopeFromPrincipal(result.auth)
+      const observedBinding = channelObservedBindingForAuth(result.auth);
+      const nextRequest = result.pendingInputState?.requests.find(
+        (request) =>
+          !result.pendingInputState?.responses.some(
+            (response) => response.requestId === request.requestId
+          )
       );
-      if (!posted) return;
-      if (lockRenewal?.lost())
-        throw new Error(
-          "Lost the SendBlue conversation lock before prompting."
-        );
-      if (result.pendingInputStateKey && result.pendingInputState)
+      // The held inbound lock makes this response-to-next-prompt transition
+      // atomic with respect to other SendBlue input. Persist it before the
+      // provider attempt so scheduler recovery cannot send a prompt whose
+      // preceding answer was lost.
+      if (
+        observedBinding &&
+        result.pendingInputStateKey &&
+        result.pendingInputState
+      )
         await state.set(
           result.pendingInputStateKey,
           result.pendingInputState,
           pendingInputTtlMs
         );
+      const posted =
+        observedBinding && result.inboundMessageHandle
+          ? await queueObservedSendblueReply({
+              bindingId: observedBinding,
+              replyKeyPrefix: `pending-input:${result.inboundMessageHandle}:${nextRequest?.requestId ?? "next"}`,
+              text: result.pendingInputPrompt,
+              thread,
+            })
+          : await postSendblueReply(
+              thread,
+              { raw: result.pendingInputPrompt },
+              scopeFromPrincipal(result.auth)
+            );
+      if (!posted) return;
+      if (lockRenewal?.lost())
+        throw new Error(
+          "Lost the SendBlue conversation lock before prompting."
+        );
+      if (
+        !observedBinding &&
+        result.pendingInputStateKey &&
+        result.pendingInputState
+      )
+        await state.set(
+          result.pendingInputStateKey,
+          result.pendingInputState,
+          pendingInputTtlMs
+        );
+      return;
+    }
+    if (result.drainOnboarding || result.drainWelcomeOnly) {
+      const dispatchOpeningRequest = async (
+        input: SendblueOpeningRequest
+      ): Promise<OpeningRequestDispatchResult> => {
+        if (input.threadId !== thread.id) return { kind: "proven_unsent" };
+        const session = await bridge.send(input.content, {
+          auth: input.auth,
+          thread,
+          turnPolicy: "queue",
+        });
+        return session.id
+          ? { kind: "accepted", sessionId: session.id }
+          : { kind: "proven_unsent" };
+      };
+      if (result.drainWelcomeOnly) {
+        await drainSendblueChannelOnboarding({
+          bindingId: result.auth.attributes.channelBindingId,
+          dispatchOpeningRequest,
+          kinds: ["welcome"],
+        });
+      } else {
+        await drainSendblueChannelOnboarding({
+          bindingId: result.auth.attributes.channelBindingId,
+          dispatchOpeningRequest,
+        });
+      }
       return;
     }
     const prepared = await prepareModelImageAttachments(message.attachments);
@@ -609,13 +966,23 @@ export async function dispatchSendblueMessage(
       (!Array.isArray(content) && content.trim().length === 0)
     ) {
       if (withheldCount > 0) {
-        await postSendblueReply(
-          thread,
-          {
-            raw: "I received your attachment, but I can't open that format. Please resend photos as JPEG or PNG and I'll take a look.",
-          },
-          scopeFromPrincipal(result.auth)
-        );
+        const fallback =
+          "I received your attachment, but I can't open that format. Please resend photos as JPEG or PNG and I'll take a look.";
+        const observedBinding = channelObservedBindingForAuth(result.auth);
+        if (observedBinding && result.inboundMessageHandle) {
+          await queueObservedSendblueReply({
+            bindingId: observedBinding,
+            replyKeyPrefix: `attachment-fallback:${result.inboundMessageHandle}:unsupported-format`,
+            text: fallback,
+            thread,
+          });
+        } else {
+          await postSendblueReply(
+            thread,
+            { raw: fallback },
+            scopeFromPrincipal(result.auth)
+          );
+        }
         if (lockRenewal?.lost())
           throw new Error(
             "Lost the SendBlue conversation lock after attachment fallback."
@@ -656,6 +1023,213 @@ function inboundMessageKey(bindingId: string, messageHandle: string) {
     .update(`${bindingId}:${messageHandle}`)
     .digest("hex");
   return `inbound:${digest}`;
+}
+
+function channelEnrollmentAuth(
+  enrollment: Awaited<
+    ReturnType<typeof resolveChannelEnrollment>
+  > extends infer T
+    ? Exclude<T, undefined>
+    : never,
+  conversationId: string
+): SendblueOnMessageResult["auth"] {
+  return {
+    attributes: {
+      authAssurance: enrollment.authAssurance,
+      capabilityProfile: enrollment.capabilityProfile,
+      channelBindingId: enrollment.bindingId,
+      conversationChannel: "sendblue",
+      conversationId,
+      identityProvenance: enrollment.identityProvenance,
+      workspaceId: enrollment.workspaceId,
+    },
+    authenticator: "sendblue-message",
+    principalId: enrollment.principalId,
+    principalType: "user",
+  };
+}
+
+function channelObservedBindingForSession(
+  session: Parameters<typeof isChannelObservedSession>[0]
+) {
+  if (!isChannelObservedSession(session)) return undefined;
+  const parsed = channelObservedSessionAttributesSchema.safeParse(
+    session.session.auth.initiator?.attributes
+  );
+  return parsed.success ? parsed.data.channelBindingId : undefined;
+}
+
+function channelObservedBindingForAuth(auth: SendblueOnMessageResult["auth"]) {
+  return auth.attributes.authAssurance === "channel_observed" &&
+    auth.attributes.capabilityProfile === "channel-basic"
+    ? auth.attributes.channelBindingId
+    : undefined;
+}
+
+/**
+ * The SendBlue API accepts at most 18,996 characters in one message. Keep the
+ * part ordinal in the durable key so a replay reuses each physical operation.
+ */
+function splitSendblueReply(text: string) {
+  const parts: string[] = [];
+  for (
+    let offset = 0;
+    offset < text.length;
+    offset += maximumSendblueOnboardingTextCharacters
+  ) {
+    parts.push(
+      text.slice(offset, offset + maximumSendblueOnboardingTextCharacters)
+    );
+  }
+  return parts;
+}
+
+/**
+ * Observed-channel replies always enter the delivery outbox before the
+ * provider sees them. A truthy result means every persisted part has a
+ * provider handle; it deliberately does not mean recipient delivery.
+ */
+async function queueObservedSendblueReply({
+  bindingId,
+  replyKeyPrefix,
+  text,
+  thread,
+}: {
+  readonly bindingId: string;
+  readonly replyKeyPrefix: string;
+  readonly text: string;
+  readonly thread: SendblueThread;
+}) {
+  const recipient = adapter.decodeThreadId(thread.id).contactNumber;
+  if (!recipient)
+    throw new Error("SendBlue reply requires a direct recipient.");
+  const parts = splitSendblueReply(text);
+  if (parts.length === 0) return false;
+  const replyKeys = parts.map((part, index) => {
+    const replyKey = `${replyKeyPrefix}:${String(index)}`;
+    return { part, replyKey };
+  });
+  // The operation ordinal is the visible multipart reply order. Inserting
+  // later parts only after their predecessor prevents concurrent transactions
+  // from assigning the same ordinal.
+  /* oxlint-disable eslint/no-await-in-loop */
+  for (const { part, replyKey } of replyKeys) {
+    await enqueueChannelOnboardingOutboundReply({
+      bindingId,
+      payload: {
+        from: configured.fromNumber,
+        presentation: { kind: "text" },
+        text: part,
+        to: recipient,
+        version: 1,
+      },
+      replyKey,
+    });
+  }
+  /* oxlint-enable eslint/no-await-in-loop */
+  await drainSendblueChannelOnboarding({
+    bindingId,
+    kinds: ["outbound_reply"],
+  });
+  const outcomes = await Promise.all(
+    replyKeys.map(({ replyKey }) =>
+      getChannelOnboardingOutboundReplyDelivery({ bindingId, replyKey })
+    )
+  );
+  return outcomes.every((outcome) => outcome?.kind === "provider_accepted");
+}
+
+function inputRequestTurnId(event: InputRequestEventMetadata) {
+  return inputRequestTurnSchema.safeParse(event).data?.turnId ?? "input";
+}
+
+function openingRequestFrom(
+  text: string,
+  attachments: readonly { readonly mimeType?: string; readonly url?: string }[],
+  hadAttachment: boolean
+) {
+  const preserved = attachments.flatMap((attachment) => {
+    const data = dataUrlPrivateAttachment(attachment.url, attachment.mimeType);
+    return data ? [data] : [];
+  });
+  const request: OnboardingOpeningRequest = {};
+  if (preserved.length) request.attachments = [...preserved];
+  if (text.trim().length) request.text = text;
+  else if (hadAttachment && preserved.length === 0)
+    request.text =
+      "The sender attached a file that could not be safely read. Ask them to resend it as a JPEG or PNG.";
+  return request;
+}
+
+function isKnownCapabilityGreeting(text: string, attachmentCount: number) {
+  if (attachmentCount > 0) return "after_intro";
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/[!.?]+$/u, "");
+  const shortGreetings = new Set(["hi", "hello", "hey", "hey jory"]);
+  return shortGreetings.has(normalized) ||
+    normalized.includes("what can you do")
+    ? "after_welcome"
+    : "after_intro";
+}
+
+function dataUrlPrivateAttachment(
+  url: string | undefined,
+  mimeType: string | undefined
+) {
+  if (!url?.startsWith("data:")) return undefined;
+  const comma = url.indexOf(",");
+  if (comma < 0) return undefined;
+  const metadata = url.slice(5, comma);
+  const [contentType] = metadata.split(";");
+  if (!contentType || !metadata.toLowerCase().includes(";base64"))
+    return undefined;
+  const privateData = url.slice(comma + 1);
+  if (!privateData) return undefined;
+  return { contentType: mimeType ?? contentType, privateData };
+}
+
+async function claimSendblueInboundTurn({
+  auth,
+  bindingId,
+  message,
+  threadId,
+  workspaceId,
+}: {
+  readonly auth: SendblueOnMessageResult["auth"];
+  readonly bindingId: string;
+  readonly message: Message;
+  readonly threadId: string;
+  readonly workspaceId: string;
+}): Promise<SendblueOnMessageResult | null> {
+  await state.connect();
+  const pendingInputLock = await acquirePendingInputLock(threadId);
+  let lockHandedToDispatch = false;
+  try {
+    const admitted = validateSendblueInboundPayload(message.raw, configured);
+    if (!admitted) return null;
+    const claimed = await state.setIfNotExists(
+      inboundMessageKey(bindingId, admitted.messageHandle),
+      true
+    );
+    if (!claimed) return null;
+    const pendingInputResponse = await resolvePendingInputResponses({
+      message,
+      threadId,
+      workspaceId,
+    });
+    const result: SendblueOnMessageResult = {
+      auth,
+      inboundMessageHandle: admitted.messageHandle,
+      ...pendingInputResponse,
+      pendingInputLock,
+    };
+    lockHandedToDispatch = true;
+    return result;
+  } finally {
+    if (!lockHandedToDispatch) await state.releaseLock(pendingInputLock);
+  }
 }
 
 function pendingInputKey(threadId: string) {
@@ -821,12 +1395,15 @@ async function postSendblueReply(
   scope?: AccessScope,
   report?: ReportDispatchOptions
 ) {
+  if (await isSendblueThreadCommunicationStopped(thread)) return false;
   if (!(await checkSendblueMessageBudget(thread, scope))) return false;
   const dispatched = await dispatchReportPart({
     channel: "sendblue",
     contentDigest: createHash("sha256").update(outgoing.raw).digest("hex"),
     conversationId: report?.conversationId ?? thread.id,
     dispatch: async () => {
+      if (await isSendblueThreadCommunicationStopped(thread))
+        throw new Error("SendBlue communication is stopped.");
       const posted = await thread.post(outgoing);
       if (!posted.id) throw new Error("SendBlue did not accept the message.");
     },
@@ -843,6 +1420,7 @@ async function checkSendblueMessageBudget(
   thread: SendblueThread,
   scope?: AccessScope
 ) {
+  if (await isSendblueThreadCommunicationStopped(thread)) return false;
   if (!scope) return true;
   try {
     await checkBudget(scope, "provider_message");
@@ -853,6 +1431,7 @@ async function checkSendblueMessageBudget(
       !(error instanceof WorkspaceNotOperableError)
     )
       throw error;
+    if (await isSendblueThreadCommunicationStopped(thread)) return false;
     const posted = await thread.post({ raw: error.message });
     if (!posted.id)
       throw new Error("SendBlue did not accept the message.", {
@@ -861,6 +1440,21 @@ async function checkSendblueMessageBudget(
     await recordSendblueUsage(scope);
     return false;
   }
+}
+
+async function isSendblueThreadCommunicationStopped(thread: SendblueThread) {
+  const recipient = adapter.decodeThreadId(thread.id);
+  if (
+    !recipient.contactNumber ||
+    recipient.fromNumber !== configured.fromNumber
+  )
+    return true;
+  return isChannelCommunicationStopped({
+    phoneNumber: recipient.contactNumber,
+    provider: "sendblue",
+    providerAccountId: configured.accountId,
+    providerLineId: configured.fromNumber,
+  });
 }
 
 async function recordSendblueUsage(scope?: AccessScope) {

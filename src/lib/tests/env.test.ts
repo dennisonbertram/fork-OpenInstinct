@@ -60,6 +60,64 @@ describe("environment", () => {
     );
   });
 
+  it("keeps new-sender SendBlue onboarding off by default", async () => {
+    const { env, isSendblueTextOnboardingEnabled } = await import("@/env");
+
+    expect(env.SENDBLUE_TEXT_ONBOARDING).toBe("off");
+    expect(isSendblueTextOnboardingEnabled()).toBe(false);
+  });
+
+  it("requires explicit bounded enrollment configuration before enabling SendBlue onboarding", async () => {
+    vi.stubEnv("SENDBLUE_CONVERSATIONS", "on");
+    vi.stubEnv("SENDBLUE_API_KEY_ID", "sendblue-test-key");
+    vi.stubEnv("SENDBLUE_API_SECRET_KEY", "sendblue-test-secret");
+    vi.stubEnv("SENDBLUE_ACCOUNT_ID", "account@example.test");
+    vi.stubEnv("SENDBLUE_FROM_NUMBER", "+12025550123");
+    vi.stubEnv("SENDBLUE_WEBHOOK_SECRET", "webhook-secret");
+    vi.stubEnv("SENDBLUE_TEXT_ONBOARDING", "on");
+
+    await expect(import("@/env")).rejects.toThrow(
+      "Invalid environment variables"
+    );
+  });
+
+  it("enables SendBlue onboarding only with all operator-supplied bounds", async () => {
+    vi.stubEnv("SENDBLUE_CONVERSATIONS", "on");
+    vi.stubEnv("SENDBLUE_API_KEY_ID", "sendblue-test-key");
+    vi.stubEnv("SENDBLUE_API_SECRET_KEY", "sendblue-test-secret");
+    vi.stubEnv("SENDBLUE_ACCOUNT_ID", "account@example.test");
+    vi.stubEnv("SENDBLUE_FROM_NUMBER", "+12025550123");
+    vi.stubEnv("SENDBLUE_WEBHOOK_SECRET", "webhook-secret");
+    vi.stubEnv("SENDBLUE_TEXT_ONBOARDING", "on");
+    vi.stubEnv("SENDBLUE_TEXT_ONBOARDING_MAX_ENROLLMENTS_PER_SENDER", "1");
+    vi.stubEnv("SENDBLUE_TEXT_ONBOARDING_MAX_MODEL_TURNS_PER_DAY", "10");
+    vi.stubEnv("SENDBLUE_TEXT_ONBOARDING_MAX_OUTBOUND_MESSAGES_PER_DAY", "20");
+    vi.stubEnv("SENDBLUE_TEXT_ONBOARDING_CARD_DELIVERY", "carousel");
+
+    const { env, isSendblueTextOnboardingEnabled } = await import("@/env");
+
+    expect(env.SENDBLUE_TEXT_ONBOARDING_MAX_ENROLLMENTS_PER_SENDER).toBe(1);
+    expect(env.SENDBLUE_TEXT_ONBOARDING_CARD_DELIVERY).toBe("carousel");
+    expect(isSendblueTextOnboardingEnabled()).toBe(true);
+  });
+
+  it("requires an explicit card-delivery capability when onboarding is enabled", async () => {
+    vi.stubEnv("SENDBLUE_CONVERSATIONS", "on");
+    vi.stubEnv("SENDBLUE_API_KEY_ID", "sendblue-test-key");
+    vi.stubEnv("SENDBLUE_API_SECRET_KEY", "sendblue-test-secret");
+    vi.stubEnv("SENDBLUE_ACCOUNT_ID", "account@example.test");
+    vi.stubEnv("SENDBLUE_FROM_NUMBER", "+12025550123");
+    vi.stubEnv("SENDBLUE_WEBHOOK_SECRET", "webhook-secret");
+    vi.stubEnv("SENDBLUE_TEXT_ONBOARDING", "on");
+    vi.stubEnv("SENDBLUE_TEXT_ONBOARDING_MAX_ENROLLMENTS_PER_SENDER", "1");
+    vi.stubEnv("SENDBLUE_TEXT_ONBOARDING_MAX_MODEL_TURNS_PER_DAY", "10");
+    vi.stubEnv("SENDBLUE_TEXT_ONBOARDING_MAX_OUTBOUND_MESSAGES_PER_DAY", "20");
+
+    await expect(import("@/env")).rejects.toThrow(
+      "Invalid environment variables"
+    );
+  });
+
   it("keeps developer features off in production", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("VERCEL_ENV", "production");

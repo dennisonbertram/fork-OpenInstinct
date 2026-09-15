@@ -92,17 +92,10 @@ export function createPhoneNumberOptions(
       phoneNumber: phoneNumberValue,
       user: verifiedUser,
     }) => {
-      try {
-        await dependencies.recordVerifiedPhoneIdentity({
-          phoneNumber: phoneNumberValue,
-          userId: verifiedUser.id,
-        });
-      } catch (error) {
-        console.error(
-          "Failed to record verified phone identity.",
-          error instanceof Error ? error.name : "UnknownError"
-        );
-      }
+      await dependencies.recordVerifiedPhoneIdentity({
+        phoneNumber: phoneNumberValue,
+        userId: verifiedUser.id,
+      });
     },
     sendOTP: dependencies.localPhoneAuthBypassEnabled
       ? () => undefined

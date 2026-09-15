@@ -33,6 +33,16 @@ the index update to the reviewer who dispatched the work.
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
+## New proposal, 2026-09-14
+
+| Plan | Title                                                                      | Priority | Depends on                                    | Status                                                                                          |
+| ---- | -------------------------------------------------------------------------- | -------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 026  | [Join and start using the assistant by text](026-text-first-onboarding.md) | P1       | Owner approval of channel enrollment contract | IN PROGRESS — local implementation verified; awaiting reviewed PR/merge; rollout not authorized |
+
+Plan 026 brings forward a bounded text-first consumer enrollment flow. It does
+not reopen the historical epics below or imply their recorded status is current.
+Its reusable UX and acceptance contract includes a Partyline-v2 handoff.
+
 ## GitHub execution map
 
 The two epics have six native subissues each. The issue map below was recorded

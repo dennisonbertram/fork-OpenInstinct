@@ -20,6 +20,8 @@ export default {
         "evals/evals.config.ts",
         // Spawned by the Square eval harness after its Compose database migrates.
         "evals/square/setup-access.ts",
+        // Run manually when onboarding example card assets are regenerated.
+        "scripts/render-onboarding-cards.ts",
         // Playwright discovers e2e specs and the auth setup via testMatch, not imports.
         "tests/e2e/**/*.ts",
         // Invoked in a fresh process by the Workflow resume timing boundary test.

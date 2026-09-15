@@ -1,5 +1,13 @@
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import type { DynamicResolveContext } from "eve/tools";
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import { createLaneEnvironment } from "@/scripts/verification/environment";
+import { accessScopeForUser } from "@/lib/access-scope";
+
+const testUserId = "better-auth:user-1";
+const testWorkspaceId = accessScopeForUser(testUserId).workspaceId;
 
 // Forcing now reads the obligation state, so a suite that resolves tools outside
 // an Eve context has to say what is owed. Nothing is: these cases are about the
@@ -16,6 +24,7 @@ import gmail from "@/agent/tools/gmail";
 import messaging from "@/agent/tools/messaging";
 import schedules from "@/agent/tools/schedules";
 import squareDateRangeTools from "@/agent/tools/square-date-range";
+import squareMoneyTotalTools from "@/agent/tools/square-money-total";
 import vault from "@/agent/tools/vault";
 
 const groupedTools = [
@@ -25,10 +34,86 @@ const groupedTools = [
   messaging,
   schedules,
   squareDateRangeTools,
+  squareMoneyTotalTools,
   vault,
 ];
 
 describe("authored mode capability matrix", () => {
+  it("denies channel-observed senders every authored capability except direct delivery", async () => {
+    expect(
+      await authoredCapabilities(
+        "sendblue-message",
+        channelObservedAttributes()
+      )
+    ).toEqual(["send_message"]);
+  });
+
+  // `eve info` compiles the real root. Concurrent full-suite CPU pressure took
+  // just over Vitest's default 20 seconds, so keep both the child and test
+  // envelope bounded while allowing that real compiler work to finish.
+  it("keeps the approved public and session-local Eve defaults in the resolved root", async () => {
+    const environment = await createLaneEnvironment({
+      artifactRoot: "/tmp/openinstinct-capability-default-tools",
+      lane: "build",
+      leaseNonce: "capability-default-tools",
+      repositoryRoot: process.cwd(),
+      runId: "capability-default-tools",
+      sourceFingerprint: "capability-default-tools",
+    });
+    const info = z.object({ tools: z.array(z.string()) }).parse(
+      JSON.parse(
+        execFileSync(
+          process.execPath,
+          [
+            join(process.cwd(), "node_modules/eve/bin/eve.js"),
+            "info",
+            "--json",
+          ],
+          {
+            cwd: process.cwd(),
+            encoding: "utf8",
+            env: environment,
+            maxBuffer: 1_000_000,
+            timeout: 45_000,
+          }
+        )
+      )
+    );
+
+    expect(info.tools.toSorted()).toEqual([
+      "ask_question",
+      "load_skill",
+      "task_cancel",
+      "web_fetch",
+      "web_search",
+    ]);
+  }, 60_000);
+
+  it("keeps an enrolled session restricted when a later current principal is full", async () => {
+    expect(
+      await authoredCapabilities(
+        "authjs",
+        { workspaceId: "personal:workspace" },
+        {
+          attributes: channelObservedAttributes(),
+          authenticator: "sendblue-message",
+          principalId: testUserId,
+          principalType: "user",
+        }
+      )
+    ).toEqual(["send_message"]);
+  });
+
+  it("fails closed for a malformed channel-observed capability claim", async () => {
+    expect(
+      await authoredCapabilities("sendblue-message", {
+        authAssurance: "channel_observed",
+        capabilityProfile: "channel-basic",
+        workspaceId: "personal:workspace",
+      })
+    ).toEqual(["send_message"]);
+  });
+
   it.each(["linq-message", "scheduled-worker"])(
     "requires a fresh model step between browser tool calls in %s mode",
     async (authenticator) => {
@@ -66,6 +151,7 @@ describe("authored mode capability matrix", () => {
       "schedules-update",
       "send_message",
       "square-date-range",
+      "square-money-total",
     ]);
   });
 
@@ -78,6 +164,7 @@ describe("authored mode capability matrix", () => {
       "gmail-read-thread",
       "gmail-search",
       "square-date-range",
+      "square-money-total",
     ]);
   });
 
@@ -90,8 +177,14 @@ describe("authored mode capability matrix", () => {
   });
 });
 
-async function authoredCapabilities(authenticator: string) {
-  const context = dynamicContext(authenticator);
+async function authoredCapabilities(
+  authenticator: string,
+  attributes: Record<string, string> = { workspaceId: testWorkspaceId },
+  initiator: NonNullable<
+    DynamicResolveContext["session"]["auth"]["initiator"]
+  > | null = null
+) {
+  const context = dynamicContext(authenticator, attributes, initiator);
   const capabilities: string[] = [];
 
   const resolvedGroups = await Promise.all(
@@ -110,7 +203,7 @@ async function authoredCapabilities(authenticator: string) {
       scope: {
         key: "personal-info-key",
         namespace: "openinstinct-personal-info-v1",
-        value: "personal:workspace",
+        value: testWorkspaceId,
       },
       slot: "personal_info",
     },
@@ -130,19 +223,37 @@ async function authoredCapabilities(authenticator: string) {
   return capabilities.toSorted();
 }
 
-function dynamicContext(authenticator: string) {
+function channelObservedAttributes() {
+  return {
+    authAssurance: "channel_observed",
+    capabilityProfile: "channel-basic",
+    channelBindingId: "binding-1",
+    conversationChannel: "sendblue",
+    conversationId: "conversation-1",
+    identityProvenance: "sendblue_direct",
+    workspaceId: testWorkspaceId,
+  };
+}
+
+function dynamicContext(
+  authenticator: string,
+  attributes: Record<string, string> = { workspaceId: testWorkspaceId },
+  initiator: NonNullable<
+    DynamicResolveContext["session"]["auth"]["initiator"]
+  > | null = null
+) {
   return {
     channel: { kind: "channel:linq", metadata: {} },
     messages: [],
     session: {
       auth: {
         current: {
-          attributes: { workspaceId: "personal:workspace" },
+          attributes,
           authenticator,
-          principalId: "user-1",
+          principalId: testUserId,
           principalType: "user",
         },
-        initiator: null,
+        initiator,
       },
       id: "session-1",
     },

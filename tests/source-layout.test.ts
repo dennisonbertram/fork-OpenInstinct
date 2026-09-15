@@ -29,6 +29,7 @@ const expectedLibFiles = [
   "application-origin.ts",
   "browser-activity.ts",
   "browser-artifact.ts",
+  "channel-onboarding-contract.ts",
   "chat.ts",
   "google-workspace.ts",
   "installation-secrets.ts",

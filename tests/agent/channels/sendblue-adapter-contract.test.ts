@@ -93,6 +93,17 @@ vi.mock("@/db/services/usage", async (importOriginal) => ({
   checkBudget: usageCapture.checkBudget,
   recordUsageEvent: usageCapture.recordUsageEvent,
 }));
+// This portable adapter contract owns a real SDK thread encoding but has no
+// persisted recipient subject. Admission and suppression persistence are
+// covered by SendBlue channel and PGlite integration tests.
+vi.mock("@/db/services/channel-onboarding", () => ({
+  isChannelCommunicationStopped: async () => false,
+  parseChannelCommunicationCommand: () => undefined,
+  provisionChannelEnrollment: async () => ({ status: "not_ready" }),
+  recordChannelCommunicationStart: async () => undefined,
+  recordChannelCommunicationStop: async () => undefined,
+  resolveChannelEnrollment: async () => undefined,
+}));
 vi.mock("@/env", async (importOriginal) => {
   const original = await importOriginal<typeof EnvModule>();
   return {
@@ -231,6 +242,7 @@ defineMessagingProviderContract("SendBlue", () => ({
     const inputRequested = config.events["input.requested"];
     if (!inputRequested)
       throw new Error("Missing SendBlue input request handler.");
+    const adapter = createAdapter();
     const post = vi
       .fn<
         (message: { readonly raw: string }) => Promise<{ readonly id: string }>
@@ -251,8 +263,28 @@ defineMessagingProviderContract("SendBlue", () => ({
           },
         ],
       },
-      { thread: { id: "sendblue:provider-contract", post } },
-      { session: { auth: { current: {}, initiator: null } } }
+      {
+        thread: {
+          id: adapter.encodeThreadId({
+            contactNumber: contact,
+            fromNumber: line,
+          }),
+          post,
+        },
+      },
+      {
+        session: {
+          auth: {
+            current: {
+              attributes: {},
+              authenticator: "provider-contract",
+              principalId: "provider-contract",
+              principalType: "user",
+            },
+            initiator: null,
+          },
+        },
+      }
     );
     const raw = post.mock.calls[0]?.[0];
     return raw?.raw ?? "";

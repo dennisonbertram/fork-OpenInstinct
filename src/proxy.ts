@@ -1,6 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAuthSession } from "@/auth/session";
 
+const publicOnboardingAssets = new Set([
+  "/onboarding/example-1.png",
+  "/onboarding/example-2.png",
+  "/onboarding/example-3.png",
+]);
+
 export const proxyDependencies = { getAuthSession };
 
 export function createProxy(dependencies = proxyDependencies) {
@@ -11,10 +17,12 @@ export function createProxy(dependencies = proxyDependencies) {
       pathname.startsWith("/api/auth/") ||
       pathname.startsWith("/api/cron/") ||
       pathname.startsWith("/v1/") ||
+      publicOnboardingAssets.has(pathname) ||
       pathname === "/eve/v1/health" ||
       pathname === "/eve/v1/sendblue" ||
       pathname.startsWith("/internal/scheduled-run/") ||
-      pathname === "/eve/v1/dev/schedules/dynamic"
+      pathname === "/eve/v1/dev/schedules/dynamic" ||
+      pathname === "/eve/v1/dev/schedules/channel-onboarding"
     ) {
       return NextResponse.next();
     }

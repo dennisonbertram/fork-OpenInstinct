@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  boolean,
   check,
   doublePrecision,
   foreignKey,
@@ -14,17 +15,24 @@ import {
 } from "drizzle-orm/pg-core";
 import type { AgentManifest } from "@/lib/agent-manifest";
 import { user } from "./auth";
-import { sqlValues, workspaces } from "./workspaces";
+import { sqlValues, workspaceMemberships, workspaces } from "./workspaces";
 
 const tsColumn = (name: string) =>
   timestamp(name, { mode: "date", precision: 3, withTimezone: true });
 
 export const phoneIdentityStatuses = [
   "verified",
+  "active",
   "revoked",
   "recycled",
 ] as const;
 export type PhoneIdentityStatus = (typeof phoneIdentityStatuses)[number];
+
+export const phoneIdentityAssurances = [
+  "otp_verified",
+  "channel_observed",
+] as const;
+export type PhoneIdentityAssurance = (typeof phoneIdentityAssurances)[number];
 
 export const platformLineProviders = ["linq", "sendblue"] as const;
 export type PlatformLineProvider = (typeof platformLineProviders)[number];
@@ -42,6 +50,56 @@ export type ChannelParticipantRole = (typeof channelParticipantRoles)[number];
 export const channelParticipantStatuses = ["active", "revoked"] as const;
 export type ChannelParticipantStatus =
   (typeof channelParticipantStatuses)[number];
+
+export const channelOnboardingEnrollmentStatuses = [
+  "ready",
+  "stopped",
+] as const;
+export type ChannelOnboardingEnrollmentStatus =
+  (typeof channelOnboardingEnrollmentStatuses)[number];
+
+export const channelOnboardingOperationKinds = [
+  "welcome",
+  "opening_request",
+  "outbound_reply",
+] as const;
+export type ChannelOnboardingOperationKind =
+  (typeof channelOnboardingOperationKinds)[number];
+
+export const channelOnboardingOperationStates = [
+  "pending",
+  "leased",
+  "attempted",
+  "accepted",
+  "delivered",
+  "failed",
+  "uncertain",
+  "cancelled",
+] as const;
+export type ChannelOnboardingOperationState =
+  (typeof channelOnboardingOperationStates)[number];
+
+export const channelOnboardingQuotaKinds = [
+  "enrollment",
+  "model_turn",
+  "outbound_message",
+] as const;
+export type ChannelOnboardingQuotaKind =
+  (typeof channelOnboardingQuotaKinds)[number];
+
+export const channelCommunicationSuppressionStates = [
+  "active",
+  "stopped",
+] as const;
+export type ChannelCommunicationSuppressionState =
+  (typeof channelCommunicationSuppressionStates)[number];
+
+export const channelCommunicationPreferenceCommands = [
+  "stop",
+  "start",
+] as const;
+export type ChannelCommunicationPreferenceCommand =
+  (typeof channelCommunicationPreferenceCommands)[number];
 
 export const connectionInstallationProviders = [
   "google",
@@ -334,7 +392,16 @@ export const phoneIdentities = pgTable(
     status: text("status", { enum: phoneIdentityStatuses })
       .notNull()
       .default("verified"),
-    verifiedAt: tsColumn("verified_at").notNull(),
+    assurance: text("assurance", { enum: phoneIdentityAssurances })
+      .notNull()
+      .default("otp_verified"),
+    provenanceProvider: text("provenance_provider", {
+      enum: platformLineProviders,
+    }),
+    provenanceAccountId: text("provenance_account_id"),
+    provenanceLineId: text("provenance_line_id"),
+    observedAt: tsColumn("observed_at"),
+    verifiedAt: tsColumn("verified_at"),
     revokedAt: tsColumn("revoked_at"),
     createdAt: tsColumn("created_at").defaultNow().notNull(),
     updatedAt: tsColumn("updated_at").defaultNow().notNull(),
@@ -344,15 +411,370 @@ export const phoneIdentities = pgTable(
       "phone_identities_status_check",
       sql`${table.status} IN (${sqlValues(phoneIdentityStatuses)})`
     ),
+    check(
+      "phone_identities_assurance_check",
+      sql`${table.assurance} IN (${sqlValues(phoneIdentityAssurances)})`
+    ),
+    check(
+      "phone_identities_assurance_provenance_check",
+      sql`(
+        (${table.assurance} = 'otp_verified' AND ${table.verifiedAt} IS NOT NULL)
+        OR (
+          ${table.assurance} = 'channel_observed'
+          AND ${table.verifiedAt} IS NULL
+          AND ${table.provenanceProvider} IS NOT NULL
+          AND ${table.provenanceAccountId} IS NOT NULL
+          AND ${table.provenanceLineId} IS NOT NULL
+          AND ${table.observedAt} IS NOT NULL
+        )
+      )`
+    ),
     foreignKey({
       name: "phone_identities_user_id_fkey",
       columns: [table.userId],
       foreignColumns: [user.id],
     }).onDelete("cascade"),
-    uniqueIndex("phone_identities_verified_lookup_hash_uidx")
+    uniqueIndex("phone_identities_active_lookup_hash_uidx")
       .on(table.phoneLookupHash)
-      .where(sql`${table.status} = 'verified'`),
+      .where(sql`${table.status} IN ('verified', 'active')`),
     index("phone_identities_user_id_idx").on(table.userId),
+    uniqueIndex("phone_identities_id_user_uidx").on(table.id, table.userId),
+  ]
+);
+
+export const channelOnboardingEnrollments = pgTable(
+  "channel_onboarding_enrollments",
+  {
+    id: text("id").primaryKey(),
+    phoneIdentityId: text("phone_identity_id").notNull(),
+    userId: text("user_id").notNull(),
+    principalId: text("principal_id").notNull(),
+    workspaceId: text("workspace_id").notNull(),
+    channelConversationId: text("channel_conversation_id")
+      .notNull()
+      .references(() => channelConversations.id, { onDelete: "cascade" }),
+    status: text("status", { enum: channelOnboardingEnrollmentStatuses })
+      .notNull()
+      .default("ready"),
+    capabilities: jsonb("capabilities").$type<readonly string[]>().notNull(),
+    nextOpeningRequestOrdinal: integer("next_opening_request_ordinal")
+      .notNull()
+      .default(0),
+    createdAt: tsColumn("created_at").defaultNow().notNull(),
+    updatedAt: tsColumn("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "channel_onboarding_enrollments_status_check",
+      sql`${table.status} IN (${sqlValues(channelOnboardingEnrollmentStatuses)})`
+    ),
+    foreignKey({
+      name: "channel_onboarding_enrollments_phone_identity_user_fkey",
+      columns: [table.phoneIdentityId, table.userId],
+      foreignColumns: [phoneIdentities.id, phoneIdentities.userId],
+    }),
+    foreignKey({
+      name: "channel_onboarding_enrollments_workspace_member_fkey",
+      columns: [table.workspaceId, table.principalId],
+      foreignColumns: [
+        workspaceMemberships.workspaceId,
+        workspaceMemberships.userId,
+      ],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "channel_onboarding_enrollments_user_id_fkey",
+      columns: [table.userId],
+      foreignColumns: [user.id],
+    }).onDelete("cascade"),
+    uniqueIndex("channel_onboarding_enrollments_phone_identity_uidx").on(
+      table.phoneIdentityId
+    ),
+    uniqueIndex("channel_onboarding_enrollments_conversation_uidx").on(
+      table.channelConversationId
+    ),
+    uniqueIndex(
+      "channel_onboarding_enrollments_workspace_conversation_uidx"
+    ).on(table.workspaceId, table.channelConversationId),
+  ]
+);
+
+export const channelCommunicationSuppressions = pgTable(
+  "channel_communication_suppressions",
+  {
+    id: text("id").primaryKey(),
+    provider: text("provider", { enum: platformLineProviders }).notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    providerLineId: text("provider_line_id").notNull(),
+    phoneLookupHash: text("phone_lookup_hash").notNull(),
+    status: text("status", { enum: channelCommunicationSuppressionStates })
+      .notNull()
+      .default("active"),
+    stoppedAt: tsColumn("stopped_at"),
+    providerOptedInAt: tsColumn("provider_opted_in_at"),
+    createdAt: tsColumn("created_at").defaultNow().notNull(),
+    updatedAt: tsColumn("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "channel_communication_suppressions_status_check",
+      sql`${table.status} IN (${sqlValues(channelCommunicationSuppressionStates)})`
+    ),
+    uniqueIndex("channel_communication_suppressions_subject_uidx").on(
+      table.provider,
+      table.providerAccountId,
+      table.providerLineId,
+      table.phoneLookupHash
+    ),
+  ]
+);
+
+/** Idempotency ledger for authenticated STOP/START events, never an account. */
+export const channelCommunicationPreferenceEvents = pgTable(
+  "channel_communication_preference_events",
+  {
+    id: text("id").primaryKey(),
+    provider: text("provider", { enum: platformLineProviders }).notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    providerLineId: text("provider_line_id").notNull(),
+    phoneLookupHash: text("phone_lookup_hash").notNull(),
+    messageHandle: text("message_handle").notNull(),
+    command: text("command", {
+      enum: channelCommunicationPreferenceCommands,
+    }).notNull(),
+    createdAt: tsColumn("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "channel_communication_preference_events_command_check",
+      sql`${table.command} IN (${sqlValues(channelCommunicationPreferenceCommands)})`
+    ),
+    uniqueIndex("channel_communication_preference_events_message_uidx").on(
+      table.provider,
+      table.providerAccountId,
+      table.providerLineId,
+      table.messageHandle
+    ),
+  ]
+);
+
+/**
+ * Narrow, durable counters for the explicitly configured SendBlue onboarding
+ * limits. They are not billing records and are intentionally scoped only to
+ * provider admission and first-contact delivery.
+ */
+export const channelOnboardingQuotaBuckets = pgTable(
+  "channel_onboarding_quota_buckets",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind", { enum: channelOnboardingQuotaKinds }).notNull(),
+    provider: text("provider", { enum: platformLineProviders }).notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    providerLineId: text("provider_line_id"),
+    senderLookupHash: text("sender_lookup_hash"),
+    bucketStart: tsColumn("bucket_start").notNull(),
+    used: integer("used").notNull().default(0),
+    createdAt: tsColumn("created_at").defaultNow().notNull(),
+    updatedAt: tsColumn("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "channel_onboarding_quota_buckets_kind_check",
+      sql`${table.kind} IN (${sqlValues(channelOnboardingQuotaKinds)})`
+    ),
+    check(
+      "channel_onboarding_quota_buckets_dimension_check",
+      sql`(
+        ${table.kind} = 'enrollment'
+        AND ${table.senderLookupHash} IS NOT NULL
+        AND ${table.providerLineId} IS NOT NULL
+      ) OR (
+        ${table.kind} IN ('model_turn', 'outbound_message')
+        AND ${table.senderLookupHash} IS NULL
+        AND ${table.providerLineId} IS NULL
+      )`
+    ),
+    check(
+      "channel_onboarding_quota_buckets_nonnegative_check",
+      sql`${table.used} >= 0`
+    ),
+    uniqueIndex("channel_onboarding_quota_buckets_sender_uidx")
+      .on(
+        table.kind,
+        table.provider,
+        table.providerAccountId,
+        table.providerLineId,
+        table.senderLookupHash,
+        table.bucketStart
+      )
+      .where(sql`${table.senderLookupHash} IS NOT NULL`),
+    uniqueIndex("channel_onboarding_quota_buckets_account_day_uidx")
+      .on(
+        table.kind,
+        table.provider,
+        table.providerAccountId,
+        table.bucketStart
+      )
+      .where(sql`${table.senderLookupHash} IS NULL`),
+  ]
+);
+
+export const channelOnboardingQuotaReservations = pgTable(
+  "channel_onboarding_quota_reservations",
+  {
+    operationKey: text("operation_key").primaryKey(),
+    counterId: text("counter_id").notNull(),
+    kind: text("kind", { enum: channelOnboardingQuotaKinds }).notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    provider: text("provider", { enum: platformLineProviders }).notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    providerLineId: text("provider_line_id"),
+    senderLookupHash: text("sender_lookup_hash"),
+    bucketStart: tsColumn("bucket_start").notNull(),
+    accepted: boolean("accepted").notNull(),
+    createdAt: tsColumn("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "channel_onboarding_quota_reservations_kind_check",
+      sql`${table.kind} IN (${sqlValues(channelOnboardingQuotaKinds)})`
+    ),
+    check(
+      "channel_onboarding_quota_reservations_quantity_check",
+      sql`${table.quantity} > 0`
+    ),
+    check(
+      "channel_onboarding_quota_reservations_dimension_check",
+      sql`(
+        ${table.kind} = 'enrollment'
+        AND ${table.senderLookupHash} IS NOT NULL
+        AND ${table.providerLineId} IS NOT NULL
+      ) OR (
+        ${table.kind} IN ('model_turn', 'outbound_message')
+        AND ${table.senderLookupHash} IS NULL
+        AND ${table.providerLineId} IS NULL
+      )`
+    ),
+    foreignKey({
+      name: "channel_onboarding_quota_reservations_counter_id_fkey",
+      columns: [table.counterId],
+      foreignColumns: [channelOnboardingQuotaBuckets.id],
+    }).onDelete("cascade"),
+    index("channel_onboarding_quota_reservations_counter_id_idx").on(
+      table.counterId
+    ),
+  ]
+);
+
+export const channelOnboardingReceipts = pgTable(
+  "channel_onboarding_receipts",
+  {
+    id: text("id").primaryKey(),
+    enrollmentId: text("enrollment_id").notNull(),
+    provider: text("provider", { enum: platformLineProviders }).notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    providerLineId: text("provider_line_id").notNull(),
+    providerConversationId: text("provider_conversation_id").notNull(),
+    messageHandle: text("message_handle").notNull(),
+    encryptedPayload: text("encrypted_payload").notNull(),
+    createdAt: tsColumn("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: "channel_onboarding_receipts_enrollment_id_fkey",
+      columns: [table.enrollmentId],
+      foreignColumns: [channelOnboardingEnrollments.id],
+    }).onDelete("cascade"),
+    uniqueIndex("channel_onboarding_receipts_provider_message_uidx").on(
+      table.provider,
+      table.providerAccountId,
+      table.providerLineId,
+      table.messageHandle
+    ),
+    uniqueIndex("channel_onboarding_receipts_id_enrollment_uidx").on(
+      table.id,
+      table.enrollmentId
+    ),
+  ]
+);
+
+export const channelOnboardingOperations = pgTable(
+  "channel_onboarding_operations",
+  {
+    id: text("id").primaryKey(),
+    enrollmentId: text("enrollment_id").notNull(),
+    receiptId: text("receipt_id"),
+    kind: text("kind", { enum: channelOnboardingOperationKinds }).notNull(),
+    provider: text("provider", { enum: platformLineProviders }).notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    providerLineId: text("provider_line_id").notNull(),
+    providerConversationId: text("provider_conversation_id").notNull(),
+    copyVersion: text("copy_version").notNull().default("v1"),
+    ordinal: integer("ordinal").notNull(),
+    optional: boolean("optional").notNull().default(false),
+    dependsOnOperationId: text("depends_on_operation_id"),
+    state: text("state", { enum: channelOnboardingOperationStates })
+      .notNull()
+      .default("pending"),
+    version: integer("version").notNull().default(0),
+    leaseToken: text("lease_token"),
+    leaseExpiresAt: tsColumn("lease_expires_at"),
+    retryAt: tsColumn("retry_at"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    providerHandle: text("provider_handle"),
+    eveSessionId: text("eve_session_id"),
+    replyKey: text("reply_key"),
+    encryptedPayload: text("encrypted_payload"),
+    lastError: text("last_error"),
+    createdAt: tsColumn("created_at").defaultNow().notNull(),
+    updatedAt: tsColumn("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "channel_onboarding_operations_kind_check",
+      sql`${table.kind} IN (${sqlValues(channelOnboardingOperationKinds)})`
+    ),
+    check(
+      "channel_onboarding_operations_state_check",
+      sql`${table.state} IN (${sqlValues(channelOnboardingOperationStates)})`
+    ),
+    check(
+      "channel_onboarding_operations_last_error_bound_check",
+      sql`${table.lastError} IS NULL OR char_length(${table.lastError}) <= 1000`
+    ),
+    check(
+      "channel_onboarding_operations_direct_payload_check",
+      sql`${table.kind} = 'opening_request' OR ${table.encryptedPayload} IS NOT NULL`
+    ),
+    foreignKey({
+      name: "channel_onboarding_operations_enrollment_id_fkey",
+      columns: [table.enrollmentId],
+      foreignColumns: [channelOnboardingEnrollments.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "channel_onboarding_operations_receipt_enrollment_fkey",
+      columns: [table.receiptId, table.enrollmentId],
+      foreignColumns: [
+        channelOnboardingReceipts.id,
+        channelOnboardingReceipts.enrollmentId,
+      ],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "channel_onboarding_operations_dependency_fkey",
+      columns: [table.dependsOnOperationId],
+      foreignColumns: [table.id],
+    }),
+    uniqueIndex(
+      "channel_onboarding_operations_enrollment_kind_copy_ordinal_uidx"
+    ).on(table.enrollmentId, table.kind, table.copyVersion, table.ordinal),
+    uniqueIndex("channel_onboarding_operations_reply_key_uidx")
+      .on(table.replyKey)
+      .where(sql`${table.replyKey} IS NOT NULL`),
+    index("channel_onboarding_operations_ready_drain_idx").on(
+      table.state,
+      table.retryAt,
+      table.leaseExpiresAt,
+      table.createdAt
+    ),
   ]
 );
 
@@ -450,6 +872,10 @@ export const channelConversations = pgTable(
       table.provider,
       table.providerAccountId,
       table.providerConversationId
+    ),
+    uniqueIndex("channel_conversations_workspace_id_uidx").on(
+      table.workspaceId,
+      table.id
     ),
     foreignKey({
       name: "channel_conversations_platform_line_id_fkey",

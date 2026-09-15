@@ -1,0 +1,1 @@
+ALTER TABLE "channel_onboarding_operations" ADD COLUMN "optional" boolean DEFAULT false NOT NULL;
