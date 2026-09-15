@@ -150,6 +150,191 @@ describe("channel enrollment provisioning", () => {
     expect(rows[2]?.dependsOnOperationId).toBe(rows[1]?.id);
   });
 
+  it("replays one receipt-scoped welcome for a duplicate reset without adding an opening request", async () => {
+    const {
+      client,
+      provisionChannelEnrollment,
+      replayChannelOnboardingWelcome,
+    } = await loadService();
+    const first = await provisionChannelEnrollment(enrollment);
+    if (!isReady(first)) throw new Error("Expected a ready enrollment.");
+    const reset = {
+      ...enrollment,
+      messageId: "sendblue-reset-1",
+      welcomeParts: welcomePartsFor(enrollment.phoneNumber),
+    };
+
+    const replayed = await replayChannelOnboardingWelcome(reset);
+    const duplicate = await replayChannelOnboardingWelcome(reset);
+
+    expect(replayed).toMatchObject({
+      bindingId: first.bindingId,
+      status: "ready",
+      userId: first.userId,
+      workspaceId: first.workspaceId,
+    });
+    if (!isReady(replayed) || !isReady(duplicate))
+      throw new Error("Expected reset replay to be ready.");
+    expect(duplicate).toMatchObject({ receiptId: replayed.receiptId });
+    await expect(
+      client.query<{
+        openingRequests: number;
+        receipts: number;
+        welcomeOperations: number;
+      }>(
+        `SELECT
+           (SELECT count(*) FROM channel_onboarding_operations WHERE enrollment_id = '${first.enrollmentId}' AND kind = 'opening_request')::int AS "openingRequests",
+           (SELECT count(*) FROM channel_onboarding_receipts WHERE enrollment_id = '${first.enrollmentId}')::int AS receipts,
+           (SELECT count(*) FROM channel_onboarding_operations WHERE enrollment_id = '${first.enrollmentId}' AND kind = 'welcome')::int AS "welcomeOperations"`
+      )
+    ).resolves.toMatchObject({
+      rows: [{ openingRequests: 1, receipts: 2, welcomeOperations: 4 }],
+    });
+  });
+
+  it("links an exact verified legacy binding to durable welcome replay without changing identity provenance", async () => {
+    const { client, phoneIdentities, replayChannelOnboardingWelcome } =
+      await loadService();
+    const legacyUserId = "legacy-reset-owner";
+    const legacyPhoneNumber = "+12025550125";
+    await client.exec(
+      `INSERT INTO "user" (id, email, name)
+       VALUES ('${legacyUserId}', 'legacy-reset@example.test', 'Legacy Reset')`
+    );
+    const { accessScopeForUser } = await import("@/lib/access-scope");
+    const { ensureScope } = await import("@/db/services/scope");
+    const scope = accessScopeForUser(`better-auth:${legacyUserId}`);
+    await ensureScope(scope);
+    const identity = await phoneIdentities.recordVerifiedPhoneIdentity({
+      phoneNumber: legacyPhoneNumber,
+      userId: legacyUserId,
+    });
+    const { createConversationBinding } =
+      await import("@/db/services/channel-conversations");
+    const binding = await createConversationBinding({
+      phoneIdentityId: identity.id,
+      platformLine: { providerLineId },
+      provider: "sendblue",
+      providerAccountId: enrollment.providerAccountId,
+      providerConversationId: "sendblue:legacy-reset",
+      userId: legacyUserId,
+    });
+    if (!binding) throw new Error("Expected a verified legacy binding.");
+
+    const replayed = await replayChannelOnboardingWelcome({
+      messageId: "sendblue-legacy-reset",
+      phoneNumber: legacyPhoneNumber,
+      provider: "sendblue",
+      providerAccountId: enrollment.providerAccountId,
+      providerConversationId: "sendblue:legacy-reset",
+      providerLineId,
+      welcomeParts: welcomePartsFor(legacyPhoneNumber),
+    });
+
+    expect(replayed).toMatchObject({
+      authAssurance: "otp_verified",
+      bindingId: binding.id,
+      capabilityProfile: "full",
+      status: "ready",
+      userId: legacyUserId,
+      workspaceId: scope.workspaceId,
+    });
+    if (!isReady(replayed))
+      throw new Error("Expected legacy replay to be ready.");
+    await expect(
+      client.query<{
+        enrollments: number;
+        provenanceProvider: string | null;
+        welcomeOperations: number;
+      }>(
+        `SELECT
+           (SELECT count(*) FROM channel_onboarding_enrollments WHERE user_id = '${legacyUserId}')::int AS enrollments,
+           (SELECT provenance_provider FROM phone_identities WHERE id = '${identity.id}') AS "provenanceProvider",
+           (SELECT count(*) FROM channel_onboarding_operations WHERE enrollment_id = '${replayed.enrollmentId}' AND kind = 'welcome')::int AS "welcomeOperations"`
+      )
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          enrollments: 1,
+          provenanceProvider: null,
+          welcomeOperations: 2,
+        },
+      ],
+    });
+    const { claimChannelOnboardingOperations } =
+      await import("@/db/services/channel-onboarding-delivery");
+    await expect(
+      claimChannelOnboardingOperations({
+        bindingId: binding.id,
+        kinds: ["welcome"],
+        limit: 1,
+        owner: "legacy-reset-test",
+        provider: "sendblue",
+      })
+    ).resolves.toMatchObject([
+      {
+        bindingId: binding.id,
+        identityAssurance: "otp_verified",
+        kind: "welcome",
+      },
+    ]);
+  });
+
+  it("refuses stopped, suspended, and foreign reset replay subjects without writing welcome work", async () => {
+    const {
+      client,
+      provisionChannelEnrollment,
+      recordChannelCommunicationStart,
+      recordChannelCommunicationStop,
+      replayChannelOnboardingWelcome,
+    } = await loadService();
+    const first = await provisionChannelEnrollment(enrollment);
+    if (!isReady(first)) throw new Error("Expected a ready enrollment.");
+    const reset = {
+      ...enrollment,
+      messageId: "sendblue-reset-denied",
+      welcomeParts: welcomePartsFor(enrollment.phoneNumber),
+    };
+    await recordChannelCommunicationStop({
+      messageHandle: "sendblue-stop-before-reset",
+      phoneNumber: enrollment.phoneNumber,
+      provider: enrollment.provider,
+      providerAccountId: enrollment.providerAccountId,
+      providerLineId: enrollment.providerLineId,
+    });
+    await expect(replayChannelOnboardingWelcome(reset)).resolves.toMatchObject({
+      status: "not_ready",
+    });
+    await recordChannelCommunicationStart({
+      messageHandle: "sendblue-start-before-reset",
+      phoneNumber: enrollment.phoneNumber,
+      provider: enrollment.provider,
+      providerAccountId: enrollment.providerAccountId,
+      providerLineId: enrollment.providerLineId,
+    });
+    await expect(
+      replayChannelOnboardingWelcome({
+        ...reset,
+        providerLineId: "+12025550126",
+      })
+    ).resolves.toMatchObject({ status: "not_ready" });
+    await client.exec(
+      `UPDATE workspaces SET lifecycle_state = 'suspended' WHERE id = '${first.workspaceId}'`
+    );
+    await expect(replayChannelOnboardingWelcome(reset)).resolves.toMatchObject({
+      status: "not_ready",
+    });
+    await expect(
+      client.query<{ resetReceipts: number; resetWelcomeOperations: number }>(
+        `SELECT
+           (SELECT count(*) FROM channel_onboarding_receipts WHERE message_handle = 'sendblue-reset-denied')::int AS "resetReceipts",
+           (SELECT count(*) FROM channel_onboarding_operations WHERE enrollment_id = '${first.enrollmentId}' AND copy_version LIKE 'reset:%')::int AS "resetWelcomeOperations"`
+      )
+    ).resolves.toMatchObject({
+      rows: [{ resetReceipts: 0, resetWelcomeOperations: 0 }],
+    });
+  });
+
   it("does not append receipt, operations, or cancel cards for a suspended enrollment scope", async () => {
     const { client, provisionChannelEnrollment } = await loadService();
     const first = await provisionChannelEnrollment(enrollment);
@@ -556,6 +741,7 @@ async function loadService() {
     parseChannelCommunicationCommand: service.parseChannelCommunicationCommand,
     phoneIdentities,
     provisionChannelEnrollment: service.provisionChannelEnrollment,
+    replayChannelOnboardingWelcome: service.replayChannelOnboardingWelcome,
     recordChannelCommunicationStart: service.recordChannelCommunicationStart,
     recordChannelCommunicationStop: service.recordChannelCommunicationStop,
     resolveChannelEnrollment: service.resolveChannelEnrollment,

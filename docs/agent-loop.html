@@ -564,7 +564,15 @@
       <code>agent/lib/onboarding/delivery.ts</code> plus
       <code>agent/schedules/channel-onboarding.ts</code> recover delivery →
       normal scoped Eve turn. <strong>STOP</strong> cancels unsent work; web OTP
-      is a later upgrade.
+      is a later upgrade. An authenticated direct sender can issue
+      <code>reset onboarding</code>: the same-user welcome and examples replay
+      through the existing durable queue, without a model turn. It does not
+      delete the account, history, or connections; pending requests and
+      approvals remain. Existing or OTP-verified users may use it. A full
+      destructive reset remains future backlog
+      <a href="https://github.com/dennisonbertram/fork-OpenInstinct/issues/272"
+        >#272</a
+      >.
     </div>
     <figcaption>
       One turn end to end. Existing users resolve to verified workspace scope; a

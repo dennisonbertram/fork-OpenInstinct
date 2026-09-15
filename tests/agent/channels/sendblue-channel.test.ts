@@ -47,6 +47,7 @@ const capture = vi.hoisted(() => ({
   recordChannelCommunicationStop: vi.fn(),
   recordChannelCommunicationStart: vi.fn(),
   resolveChannelEnrollment: vi.fn(),
+  replayChannelOnboardingWelcome: vi.fn(),
   checkBudget: vi.fn(),
   convertHeicToJpeg: vi.fn<(bytes: Uint8Array) => Promise<Uint8Array | null>>(),
   recordUsageEvent: vi.fn(),
@@ -102,13 +103,14 @@ vi.mock("eve/context", () => ({
 vi.mock("@/env", () => ({
   betterAuthSecretSchema: z.string(),
   env: {
+    BETTER_AUTH_URL: "https://app.example.test",
     DATABASE_URL: "postgres://synthetic",
     SENDBLUE_ACCOUNT_ID: "account@example.test",
     SENDBLUE_API_KEY_ID: "key",
     SENDBLUE_API_SECRET_KEY: "secret",
     SENDBLUE_CONVERSATIONS: "on",
     SENDBLUE_FROM_NUMBER: "+12025550123",
-    SENDBLUE_TEXT_ONBOARDING_CARD_DELIVERY: "disabled",
+    SENDBLUE_TEXT_ONBOARDING_CARD_DELIVERY: "single_media",
     SENDBLUE_WEBHOOK_SECRET: "webhook-secret",
   },
   isSendblueTextOnboardingEnabled: capture.isTextOnboardingEnabled,
@@ -173,6 +175,7 @@ vi.mock("@/db/services/channel-onboarding", () => ({
   recordChannelCommunicationStart: capture.recordChannelCommunicationStart,
   recordChannelCommunicationStop: capture.recordChannelCommunicationStop,
   resolveChannelEnrollment: capture.resolveChannelEnrollment,
+  replayChannelOnboardingWelcome: capture.replayChannelOnboardingWelcome,
 }));
 vi.mock("@/agent/lib/principal-scope", () => ({
   scopeFromPrincipal: () => ({ workspaceId }),
@@ -995,6 +998,131 @@ describe("SendBlue channel", () => {
     expect(capture.drainOnboarding).toHaveBeenCalledWith(
       expect.objectContaining({ bindingId: "binding-enrolled" })
     );
+    expect(capture.send).not.toHaveBeenCalled();
+  });
+
+  it("replays the durable welcome only for an exact enrolled reset command", async () => {
+    capture.isTextOnboardingEnabled.mockReturnValue(false);
+    capture.resolveChannelEnrollment.mockResolvedValue({
+      agentId: "agent-enrolled",
+      assurance: "channel_observed",
+      authAssurance: "channel_observed",
+      bindingId: "binding-enrolled",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "channel-basic",
+      enrollmentId: "enrollment-enrolled",
+      identityProvenance: "sendblue_direct",
+      phoneIdentityId: "phone-enrolled",
+      principalId: "existing-user",
+      receiptId: "receipt-enrolled",
+      status: "ready",
+      userId: "existing-user",
+      workspaceId,
+    });
+    capture.replayChannelOnboardingWelcome.mockResolvedValue({
+      agentId: "agent-enrolled",
+      assurance: "channel_observed",
+      authAssurance: "channel_observed",
+      bindingId: "binding-enrolled",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "channel-basic",
+      enrollmentId: "enrollment-enrolled",
+      identityProvenance: "sendblue_direct",
+      phoneIdentityId: "phone-enrolled",
+      principalId: "existing-user",
+      receiptId: "receipt-reset",
+      status: "ready",
+      userId: "existing-user",
+      workspaceId,
+    });
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({ text: "  RESET ONBOARDING  " })
+    );
+
+    expect(capture.replayChannelOnboardingWelcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: "message-1",
+        phoneNumber: "+12025550199",
+        providerAccountId: "account@example.test",
+        providerConversationId: thread.id,
+        providerLineId: "+12025550123",
+        welcomeParts: expect.any(Array),
+      })
+    );
+    expect(
+      capture.replayChannelOnboardingWelcome.mock.calls[0]?.[0]?.welcomeParts
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          media: [
+            expect.objectContaining({
+              contentType: "image/png",
+              url: "https://app.example.test/onboarding/example-1.png",
+            }),
+          ],
+          presentation: { kind: "single_media" },
+        }),
+      ])
+    );
+    expect(
+      capture.replayChannelOnboardingWelcome.mock.calls[0]?.[0]?.welcomeParts
+    ).toHaveLength(7);
+    expect(capture.provisionChannelEnrollment).not.toHaveBeenCalled();
+    expect(capture.drainOnboarding).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bindingId: "binding-enrolled",
+        kinds: ["welcome"],
+      })
+    );
+    expect(capture.send).not.toHaveBeenCalled();
+  });
+
+  it("replays welcome for a verified bound owner without admitting reset text to Eve", async () => {
+    capture.replayChannelOnboardingWelcome.mockResolvedValue({
+      agentId: "agent-verified",
+      assurance: "otp_verified",
+      authAssurance: "otp_verified",
+      bindingId: "binding-1",
+      capabilities: ["assistant_basic", "photo_input"],
+      capabilityProfile: "full",
+      enrollmentId: "enrollment-verified",
+      identityProvenance: "phone_otp",
+      phoneIdentityId: "phone-1",
+      principalId: "alice",
+      receiptId: "receipt-reset",
+      status: "ready",
+      userId: "alice",
+      workspaceId,
+    });
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({ text: "reset onboarding" })
+    );
+
+    expect(capture.replayChannelOnboardingWelcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: "message-1",
+        providerConversationId: thread.id,
+      })
+    );
+    expect(capture.send).not.toHaveBeenCalled();
+    expect(capture.drainOnboarding).toHaveBeenCalledWith(
+      expect.objectContaining({ bindingId: "binding-1", kinds: ["welcome"] })
+    );
+  });
+
+  it("does not replay onboarding after STOP or from a foreign direct line", async () => {
+    capture.isChannelCommunicationStopped.mockResolvedValue(true);
+
+    await dispatchSendblueMessage(
+      thread,
+      inbound({ text: "reset onboarding" })
+    );
+
+    expect(capture.replayChannelOnboardingWelcome).not.toHaveBeenCalled();
     expect(capture.send).not.toHaveBeenCalled();
   });
 

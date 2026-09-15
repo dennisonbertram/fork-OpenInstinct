@@ -22,7 +22,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getAuth } from "@/auth";
 import { env, isSendblueTextOnboardingEnabled } from "@/env";
-import { drainSendblueChannelOnboarding } from "@/agent/lib/onboarding/delivery";
+import {
+  drainSendblueChannelOnboarding,
+  type OpeningRequestDispatchResult,
+  type SendblueOpeningRequest,
+} from "@/agent/lib/onboarding/delivery";
 import { buildWelcomeOperations } from "@/agent/lib/onboarding/welcome";
 import {
   enqueueChannelOnboardingOutboundReply,
@@ -42,6 +46,7 @@ import {
   provisionChannelEnrollment,
   recordChannelCommunicationStart,
   recordChannelCommunicationStop,
+  replayChannelOnboardingWelcome,
   resolveChannelEnrollment,
 } from "@/db/services/channel-onboarding";
 import {
@@ -183,6 +188,7 @@ interface InputRequestEventMetadata {
 type SendblueThread = Thread;
 interface SendblueOnMessageResult extends PendingInputResult {
   readonly drainOnboarding?: true;
+  readonly drainWelcomeOnly?: true;
   /** Authenticated inbound handle used only for stable follow-up reply keys. */
   readonly inboundMessageHandle?: string;
   readonly auth: {
@@ -209,6 +215,43 @@ const adapter = createSendblueAdapter({
   webhookSecret: env.SENDBLUE_WEBHOOK_SECRET ?? "disabled",
   webhookSecretHeader: "sb-signing-secret",
 });
+
+function isResetOnboardingCommand(text: string) {
+  return (
+    text.trim().toLowerCase().replaceAll(/\s+/g, " ") === "reset onboarding"
+  );
+}
+
+async function replaySendblueOnboardingWelcome({
+  accountId,
+  fromNumber,
+  messageHandle,
+  senderNumber,
+  threadId,
+}: {
+  readonly accountId: string;
+  readonly fromNumber: string;
+  readonly messageHandle: string;
+  readonly senderNumber: string;
+  readonly threadId: string;
+}) {
+  const cardMode = env.SENDBLUE_TEXT_ONBOARDING_CARD_DELIVERY;
+  if (!cardMode) return { status: "not_ready" } as const;
+  return replayChannelOnboardingWelcome({
+    messageId: messageHandle,
+    phoneNumber: senderNumber,
+    provider: "sendblue",
+    providerAccountId: accountId,
+    providerConversationId: threadId,
+    providerLineId: fromNumber,
+    welcomeParts: buildWelcomeOperations({
+      cardMode,
+      from: fromNumber,
+      to: senderNumber,
+    }).map((operation) => operation.payload),
+  });
+}
+
 const nativeHandleWebhook = adapter.handleWebhook.bind(adapter);
 adapter.handleWebhook = async (request, options) => {
   if (!enabled) return new Response("Not Found", { status: 404 });
@@ -272,6 +315,20 @@ export const sendblueChannelConfig = {
       providerConversationId: context.thread.id,
     });
     if (enrolled) {
+      if (isResetOnboardingCommand(message.text)) {
+        const reset = await replaySendblueOnboardingWelcome({
+          accountId: admitted.accountId,
+          fromNumber: admitted.fromNumber,
+          messageHandle: admitted.messageHandle,
+          senderNumber: admitted.senderNumber,
+          threadId: context.thread.id,
+        });
+        if (reset.status !== "ready") return null;
+        return {
+          auth: channelEnrollmentAuth(reset, context.thread.id),
+          drainWelcomeOnly: true,
+        };
+      }
       // A pending ask_question reply must resume its existing Eve input flow;
       // it is not a new ordinary request to append behind onboarding work.
       await state.connect();
@@ -384,6 +441,20 @@ export const sendblueChannelConfig = {
       workspaceId: verifiedScope.workspaceId,
     });
     if (!binding) return null;
+    if (isResetOnboardingCommand(message.text)) {
+      const reset = await replaySendblueOnboardingWelcome({
+        accountId: admitted.accountId,
+        fromNumber: admitted.fromNumber,
+        messageHandle: admitted.messageHandle,
+        senderNumber: admitted.senderNumber,
+        threadId: context.thread.id,
+      });
+      if (reset.status !== "ready") return null;
+      return {
+        auth: channelEnrollmentAuth(reset, context.thread.id),
+        drainWelcomeOnly: true,
+      };
+    }
     return claimSendblueInboundTurn({
       auth: {
         attributes: {
@@ -855,21 +926,32 @@ export async function dispatchSendblueMessage(
         );
       return;
     }
-    if (result.drainOnboarding) {
-      await drainSendblueChannelOnboarding({
-        bindingId: result.auth.attributes.channelBindingId,
-        dispatchOpeningRequest: async (input) => {
-          if (input.threadId !== thread.id) return { kind: "proven_unsent" };
-          const session = await bridge.send(input.content, {
-            auth: input.auth,
-            thread,
-            turnPolicy: "queue",
-          });
-          return session.id
-            ? { kind: "accepted", sessionId: session.id }
-            : { kind: "proven_unsent" };
-        },
-      });
+    if (result.drainOnboarding || result.drainWelcomeOnly) {
+      const dispatchOpeningRequest = async (
+        input: SendblueOpeningRequest
+      ): Promise<OpeningRequestDispatchResult> => {
+        if (input.threadId !== thread.id) return { kind: "proven_unsent" };
+        const session = await bridge.send(input.content, {
+          auth: input.auth,
+          thread,
+          turnPolicy: "queue",
+        });
+        return session.id
+          ? { kind: "accepted", sessionId: session.id }
+          : { kind: "proven_unsent" };
+      };
+      if (result.drainWelcomeOnly) {
+        await drainSendblueChannelOnboarding({
+          bindingId: result.auth.attributes.channelBindingId,
+          dispatchOpeningRequest,
+          kinds: ["welcome"],
+        });
+      } else {
+        await drainSendblueChannelOnboarding({
+          bindingId: result.auth.attributes.channelBindingId,
+          dispatchOpeningRequest,
+        });
+      }
       return;
     }
     const prepared = await prepareModelImageAttachments(message.attachments);

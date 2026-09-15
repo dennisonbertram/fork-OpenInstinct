@@ -123,6 +123,24 @@ export type ResolveChannelEnrollmentInput = Omit<
   "messageId" | "openingRequest" | "welcomeParts" | "openingDispatch"
 >;
 
+const welcomeReplayInputSchema = enrollmentInputSchema
+  .pick({
+    messageId: true,
+    phoneNumber: true,
+    provider: true,
+    providerAccountId: true,
+    providerConversationId: true,
+    providerLineId: true,
+    welcomeParts: true,
+  })
+  .extend({
+    welcomeParts: enrollmentInputSchema.shape.welcomeParts.unwrap(),
+  });
+
+export type ReplayChannelOnboardingWelcomeInput = z.input<
+  typeof welcomeReplayInputSchema
+>;
+
 export type ChannelOnboardingOperationPayload = DirectChannelOnboardingPayload;
 
 const receiptPayloadSchema =
@@ -199,6 +217,313 @@ export async function provisionChannelEnrollment(
     }
     throw error;
   }
+}
+
+/**
+ * Replays only the authored welcome for an already authenticated channel
+ * conversation. It never appends an opening request or changes the user,
+ * workspace, identity assurance, or existing conversation binding.
+ */
+export async function replayChannelOnboardingWelcome(
+  input: ReplayChannelOnboardingWelcomeInput
+): Promise<ChannelEnrollmentResult> {
+  const parsed = welcomeReplayInputSchema.parse(input);
+  if (parsed.provider !== "sendblue") return notReady;
+  const material = await phoneIdentityMaterial(parsed.phoneNumber);
+  return db.transaction(async (transaction) => {
+    await lockChannelOnboardingSubject(transaction, {
+      phoneLookupHash: material.phoneLookupHash,
+      provider: parsed.provider,
+      providerAccountId: parsed.providerAccountId,
+      providerLineId: parsed.providerLineId,
+    });
+    const [suppression] = await transaction
+      .select({ status: channelCommunicationSuppressions.status })
+      .from(channelCommunicationSuppressions)
+      .where(
+        and(
+          eq(channelCommunicationSuppressions.provider, parsed.provider),
+          eq(
+            channelCommunicationSuppressions.providerAccountId,
+            parsed.providerAccountId
+          ),
+          eq(
+            channelCommunicationSuppressions.providerLineId,
+            parsed.providerLineId
+          ),
+          eq(
+            channelCommunicationSuppressions.phoneLookupHash,
+            material.phoneLookupHash
+          )
+        )
+      )
+      .limit(1);
+    if (suppression?.status === "stopped") return notReady;
+
+    const [existingReceipt] = await transaction
+      .select({
+        agentId: agents.id,
+        authAssurance: phoneIdentities.assurance,
+        bindingId: channelOnboardingEnrollments.channelConversationId,
+        enrollmentId: channelOnboardingEnrollments.id,
+        phoneIdentityId: channelOnboardingEnrollments.phoneIdentityId,
+        principalId: channelOnboardingEnrollments.principalId,
+        providerConversationId: channelConversations.providerConversationId,
+        receiptId: channelOnboardingReceipts.id,
+        userId: channelOnboardingEnrollments.userId,
+        workspaceId: channelOnboardingEnrollments.workspaceId,
+      })
+      .from(channelOnboardingReceipts)
+      .innerJoin(
+        channelOnboardingEnrollments,
+        eq(
+          channelOnboardingReceipts.enrollmentId,
+          channelOnboardingEnrollments.id
+        )
+      )
+      .innerJoin(
+        channelConversations,
+        eq(
+          channelOnboardingEnrollments.channelConversationId,
+          channelConversations.id
+        )
+      )
+      .innerJoin(
+        phoneIdentities,
+        eq(channelOnboardingEnrollments.phoneIdentityId, phoneIdentities.id)
+      )
+      .innerJoin(agents, eq(channelConversations.agentId, agents.id))
+      .where(
+        and(
+          eq(channelOnboardingReceipts.provider, parsed.provider),
+          eq(
+            channelOnboardingReceipts.providerAccountId,
+            parsed.providerAccountId
+          ),
+          eq(channelOnboardingReceipts.providerLineId, parsed.providerLineId),
+          eq(channelOnboardingReceipts.messageHandle, parsed.messageId)
+        )
+      )
+      .limit(1);
+    if (existingReceipt) {
+      if (
+        existingReceipt.providerConversationId !== parsed.providerConversationId
+      )
+        return notReady;
+      if (
+        !(await isEnrollmentScopeOperable(transaction, {
+          principalId: existingReceipt.principalId,
+          workspaceId: existingReceipt.workspaceId,
+        }))
+      )
+        return notReady;
+      return ready(existingReceipt);
+    }
+
+    const [subject] = await transaction
+      .select({
+        agentId: agents.id,
+        authAssurance: phoneIdentities.assurance,
+        bindingId: channelConversations.id,
+        phoneIdentityId: phoneIdentities.id,
+        userId: phoneIdentities.userId,
+        workspaceId: channelConversations.workspaceId,
+      })
+      .from(phoneIdentities)
+      .innerJoin(
+        channelParticipants,
+        eq(channelParticipants.phoneIdentityId, phoneIdentities.id)
+      )
+      .innerJoin(
+        channelConversations,
+        eq(channelParticipants.conversationId, channelConversations.id)
+      )
+      .innerJoin(
+        platformLines,
+        eq(channelConversations.platformLineId, platformLines.id)
+      )
+      .innerJoin(agents, eq(channelConversations.agentId, agents.id))
+      .where(
+        and(
+          eq(phoneIdentities.phoneLookupHash, material.phoneLookupHash),
+          inArray(phoneIdentities.status, ["active", "verified"]),
+          inArray(phoneIdentities.assurance, [
+            "channel_observed",
+            "otp_verified",
+          ]),
+          eq(channelParticipants.status, "active"),
+          eq(channelConversations.status, "active"),
+          eq(channelConversations.provider, parsed.provider),
+          eq(channelConversations.providerAccountId, parsed.providerAccountId),
+          eq(
+            channelConversations.providerConversationId,
+            parsed.providerConversationId
+          ),
+          eq(platformLines.provider, parsed.provider),
+          eq(platformLines.providerLineId, parsed.providerLineId),
+          eq(platformLines.status, "active"),
+          eq(agents.status, "active")
+        )
+      )
+      .limit(1);
+    if (!subject) return notReady;
+    if (
+      subject.authAssurance === "channel_observed" &&
+      !(await exactObservedProvenance(
+        transaction,
+        subject.phoneIdentityId,
+        parsed
+      ))
+    )
+      return notReady;
+    const scope = accessScopeForUser(`better-auth:${subject.userId}`);
+    if (scope.workspaceId !== subject.workspaceId) return notReady;
+    if (
+      !(await isEnrollmentScopeOperable(transaction, {
+        principalId: scope.userId,
+        workspaceId: subject.workspaceId,
+      }))
+    )
+      return notReady;
+
+    const [existingEnrollment] = await transaction
+      .select({
+        bindingId: channelOnboardingEnrollments.channelConversationId,
+        enrollmentId: channelOnboardingEnrollments.id,
+        principalId: channelOnboardingEnrollments.principalId,
+        status: channelOnboardingEnrollments.status,
+        userId: channelOnboardingEnrollments.userId,
+        workspaceId: channelOnboardingEnrollments.workspaceId,
+      })
+      .from(channelOnboardingEnrollments)
+      .where(
+        and(
+          eq(
+            channelOnboardingEnrollments.phoneIdentityId,
+            subject.phoneIdentityId
+          )
+        )
+      )
+      .for("update")
+      .limit(1);
+    if (
+      existingEnrollment &&
+      (existingEnrollment.bindingId !== subject.bindingId ||
+        existingEnrollment.status !== "ready")
+    )
+      return notReady;
+    if (
+      existingEnrollment &&
+      (existingEnrollment.principalId !== scope.userId ||
+        existingEnrollment.userId !== subject.userId ||
+        existingEnrollment.workspaceId !== subject.workspaceId)
+    )
+      return notReady;
+    const enrollmentId = existingEnrollment?.enrollmentId ?? randomUUID();
+    if (!existingEnrollment) {
+      await transaction.insert(channelOnboardingEnrollments).values({
+        capabilities: channelCapabilities,
+        channelConversationId: subject.bindingId,
+        id: enrollmentId,
+        nextOpeningRequestOrdinal: 0,
+        phoneIdentityId: subject.phoneIdentityId,
+        principalId: scope.userId,
+        userId: subject.userId,
+        workspaceId: subject.workspaceId,
+      });
+    }
+
+    // Reset does not alter queued ordinary requests or approvals. It replaces
+    // only welcome work that has not reached a terminal delivery state.
+    await transaction
+      .update(channelOnboardingOperations)
+      .set({ state: "cancelled", updatedAt: new Date() })
+      .where(
+        and(
+          eq(channelOnboardingOperations.enrollmentId, enrollmentId),
+          eq(channelOnboardingOperations.kind, "welcome"),
+          inArray(channelOnboardingOperations.state, ["pending", "leased"])
+        )
+      );
+    const receiptId = randomUUID();
+    const welcomeIds = parsed.welcomeParts.map(() => randomUUID());
+    const copyVersion = replayWelcomeCopyVersion(parsed.messageId);
+    await transaction.insert(channelOnboardingReceipts).values({
+      encryptedPayload: encrypt(
+        receiptId,
+        JSON.stringify({}),
+        material.secretEncryptionKey,
+        "receipt"
+      ),
+      enrollmentId,
+      id: receiptId,
+      messageHandle: parsed.messageId,
+      provider: parsed.provider,
+      providerAccountId: parsed.providerAccountId,
+      providerConversationId: parsed.providerConversationId,
+      providerLineId: parsed.providerLineId,
+    });
+    await transaction.insert(channelOnboardingOperations).values(
+      welcomeIds.map((id, ordinal) => ({
+        copyVersion,
+        dependsOnOperationId: ordinal === 0 ? null : welcomeIds[ordinal - 1],
+        encryptedPayload: encrypt(
+          id,
+          JSON.stringify(parsed.welcomeParts[ordinal]),
+          material.secretEncryptionKey,
+          "operation"
+        ),
+        enrollmentId,
+        id,
+        kind: "welcome" as const,
+        optional: Boolean(
+          parsed.welcomeParts[ordinal]?.presentation &&
+          parsed.welcomeParts[ordinal].presentation.kind !== "text"
+        ),
+        ordinal,
+        provider: parsed.provider,
+        providerAccountId: parsed.providerAccountId,
+        providerConversationId: parsed.providerConversationId,
+        providerLineId: parsed.providerLineId,
+        receiptId,
+      }))
+    );
+    return ready({
+      agentId: subject.agentId,
+      authAssurance: subject.authAssurance,
+      bindingId: subject.bindingId,
+      enrollmentId,
+      phoneIdentityId: subject.phoneIdentityId,
+      principalId: scope.userId,
+      receiptId,
+      userId: subject.userId,
+      workspaceId: subject.workspaceId,
+    });
+  });
+}
+
+function replayWelcomeCopyVersion(messageId: string) {
+  return `reset:${createHash("sha256").update(messageId).digest("base64url")}`;
+}
+
+async function exactObservedProvenance(
+  transaction: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  phoneIdentityId: string,
+  input: z.output<typeof welcomeReplayInputSchema>
+) {
+  const [identity] = await transaction
+    .select({ id: phoneIdentities.id })
+    .from(phoneIdentities)
+    .where(
+      and(
+        eq(phoneIdentities.id, phoneIdentityId),
+        eq(phoneIdentities.provenanceProvider, input.provider),
+        eq(phoneIdentities.provenanceAccountId, input.providerAccountId),
+        eq(phoneIdentities.provenanceLineId, input.providerLineId)
+      )
+    )
+    .limit(1);
+  return identity !== undefined;
 }
 
 async function qualifyProvisionResult(
